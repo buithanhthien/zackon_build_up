@@ -1,0 +1,31 @@
+{
+    "ROS2.distro": "jazzy",
+    "python.autoComplete.extraPaths": [
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/view_robot_pkg/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/robot_ui/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/my_joy_teleop/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/micro_ros_msgs/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/drive_base_msgs/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/view_robot_pkg/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/robot_ui/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/robot_localization/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/my_joy_teleop/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/micro_ros_msgs/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/drive_base_msgs/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/view_robot_pkg/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/robot_ui/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/my_joy_teleop/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/micro_ros_msgs/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/drive_base_msgs/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/view_robot_pkg/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/robot_ui/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/robot_localization/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/my_joy_teleop/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/micro_ros_msgs/lib/python3.12/site-packages",
+        "/home/khoaiuh/zackon_ws/install/drive_base_msgs/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ]
+}

@@ -1,0 +1,7 @@
+image: tangtret_update.pgm
+mode: trinary
+resolution: 0.050
+origin: [-15.032, -6.008, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/micro_ros_agent/include/**",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/micro_ros_msgs/include/**",
+        "/home/khoaiuh/zackon_ws/src/MangoMobileRobot/install/drive_base_msgs/include/**",
+        "/home/khoaiuh/zackon_ws/install/robot_localization/include/**",
+        "/home/khoaiuh/zackon_ws/install/micro_ros_agent/include/**",
+        "/home/khoaiuh/zackon_ws/install/micro_ros_msgs/include/**",
+        "/home/khoaiuh/zackon_ws/install/drive_base_msgs/include/**",
+        "/opt/ros/jazzy/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ros2",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}

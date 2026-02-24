@@ -1,0 +1,36 @@
+# Ignore only top-level colcon folders
+/build/
+/install/
+/log/
+
+# Also ignore colcon metadata
+/.colcon/
+/.colcon_metadata/
+
+# Python cache
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ===== Virtual env =====
+venv/
+.env/
+
+# ===== UI build =====
+ui/__pycache__/
+
+# CMake generated files inside packages
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/Makefile
+
+# Test results
+**/test_results/
+
+# VS Code
+.vscode/browse.vc.db*
+.vscode/*.db*
+
+require.txt

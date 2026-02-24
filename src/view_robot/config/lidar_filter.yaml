@@ -1,0 +1,9 @@
+scan_front_filter:
+  ros__parameters:
+    filter1:
+      name: front_180
+      type: laser_filters/LaserScanAngularBoundsFilter
+      params:
+        lower_angle:  1.57079632679   # -90 deg
+        upper_angle:  4.7124493   # +90 deg
+        replace_with_nan: true

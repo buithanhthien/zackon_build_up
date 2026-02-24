@@ -1,0 +1,14 @@
+Starting >>> my_joy_teleop
+Starting >>> sllidar_ros2
+Starting >>> view_robot_pkg
+Finished <<< sllidar_ros2 [0.29s]
+--- stderr: my_joy_teleop
+error: can't copy 'resource/my_joy_teleop': doesn't exist or not a regular file
+---
+Failed   <<< my_joy_teleop [0.80s, exited with code 1]
+Aborted  <<< view_robot_pkg [0.91s]
+
+Summary: 1 package finished [1.02s]
+  1 package failed: my_joy_teleop
+  1 package aborted: view_robot_pkg
+  1 package had stderr output: my_joy_teleop

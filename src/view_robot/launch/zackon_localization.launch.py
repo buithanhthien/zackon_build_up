@@ -1,0 +1,104 @@
+# Copyright (c) 2018 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import os
+
+from ament_index_python.packages import get_package_share_directory
+
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+from nav2_common.launch import RewrittenYaml
+
+
+def generate_launch_description():
+    bringup_dir = get_package_share_directory('view_robot_pkg')
+
+    namespace = LaunchConfiguration('namespace')
+    map_yaml_file = LaunchConfiguration('map')
+    use_sim_time = LaunchConfiguration('use_sim_time')
+    autostart = LaunchConfiguration('autostart')
+    params_file = LaunchConfiguration('params_file')
+    lifecycle_nodes = ['map_server', 'amcl'] #lifecycle_nodes = [ 'amcl']  
+
+    remappings = [('/tf', 'tf'),
+                  ('/tf_static', 'tf_static')]
+
+    # CHỈ thay thế use_sim_time trong file params, KHÔNG thay thế yaml_filename ở đây
+    param_substitutions = {
+        'use_sim_time': use_sim_time}
+
+    configured_params = RewrittenYaml(
+        source_file=params_file,
+        root_key=namespace,
+        param_rewrites=param_substitutions,
+        convert_types=True)
+
+    return LaunchDescription([
+        SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1'),
+
+        DeclareLaunchArgument(
+            'namespace', default_value='',
+            description='Top-level namespace'),
+
+        DeclareLaunchArgument(
+            'map',
+            # Get from parent launch
+            default_value=os.path.join(bringup_dir, 'maps', 'khoi_sofa_map3.yaml'),
+            description='Full path to map yaml file to load'),
+
+        DeclareLaunchArgument(
+            'use_sim_time', default_value='false',
+            description='Use simulation (Gazebo) clock if true'),
+
+        DeclareLaunchArgument(
+            'autostart', default_value='true',
+            description='Automatically startup the nav2 stack'),
+
+        DeclareLaunchArgument(
+            'params_file',
+            default_value=os.path.join(bringup_dir, 'config', 'nav2_params.yaml'),
+            description='Full path to the ROS2 parameters file to use'),
+    
+        # --- NODE MAP SERVER ---
+        Node(
+            package='nav2_map_server',
+            executable='map_server',
+            name='map_server',
+            output='screen',
+            parameters=[
+                configured_params, 
+                {'yaml_filename': map_yaml_file}  # <--- TRUYỀN TRỰC TIẾP Ở ĐÂY (QUAN TRỌNG)
+            ],
+            remappings=remappings),
+
+        # --- NODE AMCL ---
+        Node(
+            package='nav2_amcl',
+            executable='amcl',
+            name='amcl',
+            output='screen',
+            parameters=[configured_params],
+            remappings=remappings),
+
+        # --- LIFECYCLE MANAGER ---
+        Node(
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_localization',
+            output='screen',
+            parameters=[{'use_sim_time': use_sim_time},
+                        {'autostart': autostart},
+                        {'node_names': lifecycle_nodes}])
+    ])

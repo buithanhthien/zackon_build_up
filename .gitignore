@@ -34,3 +34,4 @@ ui/__pycache__/
 .vscode/*.db*
 
 require.txt
+kiro_feedback.txt

@@ -14,7 +14,7 @@ class HumanFollowingNode(Node):
         self.declare_parameter('camera_url', 'http://10.67.199.145:8080/video')
         camera_url = self.get_parameter('camera_url').get_parameter_value().string_value
         
-        self.publisher = self.create_publisher(Twist, '/cmd_vel', 20)
+        self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
         
         self.camera = Camera(source=camera_url)
         self.detector = HumanDetector()

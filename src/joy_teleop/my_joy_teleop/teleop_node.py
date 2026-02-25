@@ -17,8 +17,8 @@ class JoyTeleopNode(Node):
         # Tạo một subscriber lắng nghe chủ đề /joy
         self.subscription = self.create_subscription(Joy, 'joy', self.joy_callback, 10)
         
-        # Tạo một publisher xuất bản lên topic /cmd_vel
-        self.publisher = self.create_publisher(Twist, 'cmd_vel', 10)
+        # Tạo một publisher xuất bản lên topic /cmd_vel_teleop
+        self.publisher = self.create_publisher(Twist, 'cmd_vel_teleop', 10)
 
         # Khai báo các tham số cho tốc độ tối đa (tùy chọn nhưng nên làm)
         self.declare_parameter('scale_linear', 0.3)  # Tốc độ tiến/lùi tối đa (m/s)

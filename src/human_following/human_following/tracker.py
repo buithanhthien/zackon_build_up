@@ -14,16 +14,16 @@ class HumanTracker:
         
         self.desired_distance = 1.5
         self.angle_threshold = 0.1
-        self.angle_deadzone = 0.03
+        self.angle_deadzone = 0.01
         self.vertical_margin = 10
         
         # Velocity limits
-        self.max_angular = 1.5
-        self.max_linear = 0.5
+        self.max_angular = 1.0
+        self.max_linear = 1.0
         
         # PID controllers
-        self.angular_pid = PIDController(kp=1.0, ki=0.1, kd=0.05, output_limits=(-self.max_angular, self.max_angular))
-        self.linear_pid = PIDController(kp=0.5, ki=0.05, kd=0.1, output_limits=(0.0, self.max_linear))
+        self.angular_pid = PIDController(kp=2.0, ki=0.02, kd=0.25, output_limits=(-self.max_angular, self.max_angular))
+        self.linear_pid = PIDController(kp=2.0, ki=0.0, kd=0.08, output_limits=(0.0, self.max_linear))
         
     def get_human_position(self, results):
         """Returns (linear_velocity, angular_velocity) tuple"""
@@ -53,23 +53,27 @@ class HumanTracker:
         delta_px = bbox_center_x - self.center_x
         
         # Compute rotation angle using pinhole camera model
-        theta = math.asin(max(-1.0, min(1.0, delta_px / self.focal_length_px)))
+        theta = math.atan2(delta_px, self.focal_length_px)
 
-        # Compute angular velocity using PID
-        if abs(theta) < self.angle_deadzone:
+        # Compute angular velocity using PID (independent of distance)
+        if abs(theta) <= self.angle_deadzone:
             angular_z = 0.0
             self.angular_pid.reset()
         else:
             angular_z = float(-self.angular_pid.compute(theta))
         
-        # Compute linear velocity using PID (only if aligned)
-        if abs(theta) < self.angle_threshold:
-            # Calculate distance using pinhole camera model
-            bbox_height = y_max - y_min
-            estimated_distance = (1.7 * self.focal_length_px) / bbox_height
+
+        # Calculate distance using pinhole camera model
+        bbox_height = y_max - y_min
+        estimated_distance = (1.7 * self.focal_length_px) / bbox_height
             
-            distance_error = estimated_distance - self.desired_distance
+        distance_error = estimated_distance - self.desired_distance
+            
+        # Only move forward if distance error is positive (too far)
+        if distance_error > 0:
             linear_x = float(self.linear_pid.compute(distance_error))
+            alignment_factor = max(0, 1 - abs(theta)/0.3)
+            linear_x *= alignment_factor
         else:
             linear_x = 0.0
             self.linear_pid.reset()

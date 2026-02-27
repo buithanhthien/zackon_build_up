@@ -42,6 +42,9 @@ class WaypointsModeLayout(QMainWindow):
         self.waypoints_file = '/home/khoaiuh/thien_ws/robot_ui/waypoints.json'
         self.waypoints = self.load_waypoints()
         self.current_mode = None
+        self.selected_sequence = []  # Track clicked waypoints in order
+        self.running_sequence = False
+        self.current_sequence_index = 0
         self.init_ui()
         
         self.timer = QTimer()
@@ -63,10 +66,12 @@ class WaypointsModeLayout(QMainWindow):
         
         self.save_btn = QPushButton('Save')
         self.clear_btn = QPushButton('Clear')
+        self.run_btn = QPushButton('Run')
+        self.reset_btn = QPushButton('Reset')
         self.stop_btn = QPushButton('Stop')
         self.back_btn = QPushButton('Back')
         
-        for btn in [self.save_btn, self.clear_btn, self.stop_btn, self.back_btn]:
+        for btn in [self.save_btn, self.clear_btn, self.run_btn, self.reset_btn, self.stop_btn, self.back_btn]:
             btn.setFont(QFont('Fira Sans', 24))
             left_layout.addWidget(btn)
         
@@ -74,6 +79,8 @@ class WaypointsModeLayout(QMainWindow):
         
         self.save_btn.clicked.connect(lambda: self.set_mode('save'))
         self.clear_btn.clicked.connect(lambda: self.set_mode('clear'))
+        self.run_btn.clicked.connect(self.run_sequence)
+        self.reset_btn.clicked.connect(self.reset_sequence)
         self.stop_btn.clicked.connect(self.stop_navigation)
         self.back_btn.clicked.connect(self.go_back)
         
@@ -166,7 +173,18 @@ class WaypointsModeLayout(QMainWindow):
             self.clear_waypoint(slot_num)
             self.current_mode = None  # Reset after action
         else:
-            self.navigate_to_waypoint(slot_num)
+            # Add to sequence if not in save/clear mode
+            if str(slot_num) not in self.waypoints:
+                self.log(f'Slot {slot_num} is empty')
+                return
+            
+            # Prevent consecutive duplicates
+            if self.selected_sequence and self.selected_sequence[-1] == slot_num:
+                self.log(f'Cannot select slot {slot_num} consecutively')
+                return
+            
+            self.selected_sequence.append(slot_num)
+            self.log(f'Added slot {slot_num} to sequence: {self.selected_sequence}')
         
     def save_waypoint(self, slot_num):
         # FIXED: Use 1-based slot numbering
@@ -240,9 +258,49 @@ class WaypointsModeLayout(QMainWindow):
         if goal_handle.accepted:
             self.ros_node.current_goal_handle = goal_handle
             self.log(f'Navigating to slot {slot_num}')
+            
+            # If running sequence, set up result callback
+            if self.running_sequence:
+                result_future = goal_handle.get_result_async()
+                result_future.add_done_callback(self._goal_result_callback)
         else:
             self.log(f'Goal to slot {slot_num} rejected')
             self.ros_node.current_goal_handle = None
+            if self.running_sequence:
+                self.running_sequence = False
+    
+    def _goal_result_callback(self, future):
+        # When goal completes, navigate to next in sequence
+        if self.running_sequence and self.current_sequence_index < len(self.selected_sequence) - 1:
+            self.current_sequence_index += 1
+            next_slot = self.selected_sequence[self.current_sequence_index]
+            
+            # Skip if same as current position (already there)
+            current_slot = self.selected_sequence[self.current_sequence_index - 1]
+            if next_slot == current_slot:
+                self.log(f'Already at slot {next_slot}, skipping...')
+                self._goal_result_callback(future)  # Recursively check next
+            else:
+                self.navigate_to_waypoint(next_slot)
+        else:
+            self.running_sequence = False
+            self.log('Sequence completed')
+    
+    def run_sequence(self):
+        if not self.selected_sequence:
+            self.log('No waypoints selected. Click slots to build sequence.')
+            return
+        
+        self.log(f'Running sequence: {self.selected_sequence}')
+        self.running_sequence = True
+        self.current_sequence_index = 0
+        self.navigate_to_waypoint(self.selected_sequence[0])
+    
+    def reset_sequence(self):
+        self.selected_sequence = []
+        self.running_sequence = False
+        self.current_sequence_index = 0
+        self.log('Sequence reset')
         
     def stop_navigation(self):
         # FIXED: Proper goal cancellation without cmd_vel
@@ -252,6 +310,11 @@ class WaypointsModeLayout(QMainWindow):
             self.log('Navigation cancelled')
         else:
             self.log('No active navigation to stop')
+        
+        # Stop sequence and clear selection
+        self.running_sequence = False
+        self.selected_sequence = []
+        self.log('Sequence cleared')
         
     def update_button_colors(self):
         # FIXED: Use 1-based slot numbering
@@ -265,8 +328,11 @@ class WaypointsModeLayout(QMainWindow):
     def load_waypoints(self):
         try:
             with open(self.waypoints_file, 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
+                content = f.read().strip()
+                if not content:
+                    return {}
+                return json.loads(content)
+        except (FileNotFoundError, json.JSONDecodeError):
             return {}
             
     def save_waypoints(self):

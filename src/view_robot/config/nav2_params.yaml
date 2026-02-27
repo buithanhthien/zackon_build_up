@@ -916,6 +916,3 @@ loopback_simulator:
     scan_angle_max: 3.1415
     scan_angle_increment: 0.02617
     scan_use_inf: true
-
-
-    read all above and compare to /home/khoaiuh/thien_ws/src/view_robot/config/nav2_params.yaml then replace

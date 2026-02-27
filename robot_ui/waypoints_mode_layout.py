@@ -10,24 +10,25 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
-from geometry_msgs.msg import PoseStamped, Twist
 
 
 class WaypointsNode(Node):
     def __init__(self):
         super().__init__('waypoints_node')
-        self.subscription = self.create_subscription(Odometry, '/odomfromSTM32', self.odom_callback, 10)
+        self.subscription = self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
+        # FIXED: Proper action client with goal handle management
         self.nav_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.current_odom = None
+        self.current_pose = None
+        self.current_goal_handle = None  # ADDED: Track active goal
+        self.nav_server_available = False
         
-    def odom_callback(self, msg):
-        self.current_odom = msg
+        # FIXED: Check server availability once at init
+        self.nav_server_available = self.nav_client.wait_for_server(timeout_sec=2.0)
         
-    def stop_robot(self):
-        stop_msg = Twist()
-        self.cmd_vel_pub.publish(stop_msg)
+    def pose_callback(self, msg):
+        self.current_pose = msg
 
 
 class WaypointsModeLayout(QMainWindow):
@@ -41,7 +42,6 @@ class WaypointsModeLayout(QMainWindow):
         self.waypoints_file = '/home/khoaiuh/thien_ws/robot_ui/waypoints.json'
         self.waypoints = self.load_waypoints()
         self.current_mode = None
-        self.zackon_process = None
         self.init_ui()
         
         self.timer = QTimer()
@@ -64,10 +64,9 @@ class WaypointsModeLayout(QMainWindow):
         self.save_btn = QPushButton('Save')
         self.clear_btn = QPushButton('Clear')
         self.stop_btn = QPushButton('Stop')
-        self.nav2_btn = QPushButton('Nav2')
         self.back_btn = QPushButton('Back')
         
-        for btn in [self.save_btn, self.clear_btn, self.stop_btn, self.nav2_btn, self.back_btn]:
+        for btn in [self.save_btn, self.clear_btn, self.stop_btn, self.back_btn]:
             btn.setFont(QFont('Fira Sans', 24))
             left_layout.addWidget(btn)
         
@@ -76,7 +75,6 @@ class WaypointsModeLayout(QMainWindow):
         self.save_btn.clicked.connect(lambda: self.set_mode('save'))
         self.clear_btn.clicked.connect(lambda: self.set_mode('clear'))
         self.stop_btn.clicked.connect(self.stop_navigation)
-        self.nav2_btn.clicked.connect(self.launch_zackon)
         self.back_btn.clicked.connect(self.go_back)
         
         # Right area (3/4)
@@ -135,63 +133,91 @@ class WaypointsModeLayout(QMainWindow):
         self.update_button_colors()
         self.log("Mode changed to waypoints")
         
+        # FIXED: Disable navigation if server unavailable
+        if not self.ros_node.nav_server_available:
+            self.log("WARNING: Nav2 action server not available")
+            for btn in self.waypoint_btns:
+                btn.setEnabled(False)
+        
     def spin_and_update(self):
         rclpy.spin_once(self.ros_node, timeout_sec=0)
-        if self.ros_node.current_odom:
-            msg = self.ros_node.current_odom
+        if self.ros_node.current_pose:
+            msg = self.ros_node.current_pose
             self.pos_label.setText(f"position:\n    x: {msg.pose.pose.position.x:.2f}\n    y: {msg.pose.pose.position.y:.2f}\n    z: {msg.pose.pose.position.z:.2f}")
             self.orient_label.setText(f"orientation:\n    x: {msg.pose.pose.orientation.x:.2f}\n    y: {msg.pose.pose.orientation.y:.2f}\n    z: {msg.pose.pose.orientation.z:.2f}\n    w: {msg.pose.pose.orientation.w:.2f}")
     
     def set_mode(self, mode):
-        self.current_mode = mode
-        self.log(f'Mode: {mode.capitalize()}')
+        # FIXED: Mode persists until action completes
+        if self.current_mode == mode:
+            self.current_mode = None  # Toggle off
+            self.log(f'Mode: {mode.capitalize()} cancelled')
+        else:
+            self.current_mode = mode
+            self.log(f'Mode: {mode.capitalize()} - select a slot')
         
     def waypoint_clicked(self, idx):
-        if self.current_mode == 'save':
-            self.save_waypoint(idx)
-        elif self.current_mode == 'clear':
-            self.clear_waypoint(idx)
-        else:
-            self.navigate_to_waypoint(idx)
-        self.current_mode = None
+        # FIXED: Use 1-based indexing consistently
+        slot_num = idx + 1
         
-    def save_waypoint(self, idx):
-        if str(idx) in self.waypoints:
-            self.log(f'Slot {idx + 1} already has data. Clear it first.')
+        if self.current_mode == 'save':
+            self.save_waypoint(slot_num)
+            self.current_mode = None  # Reset after action
+        elif self.current_mode == 'clear':
+            self.clear_waypoint(slot_num)
+            self.current_mode = None  # Reset after action
+        else:
+            self.navigate_to_waypoint(slot_num)
+        
+    def save_waypoint(self, slot_num):
+        # FIXED: Use 1-based slot numbering
+        if str(slot_num) in self.waypoints:
+            self.log(f'Slot {slot_num} already has data. Clear it first.')
             return
             
-        if self.ros_node.current_odom:
-            odom = self.ros_node.current_odom
-            self.waypoints[str(idx)] = {
-                'x': odom.pose.pose.position.x,
-                'y': odom.pose.pose.position.y,
-                'z': odom.pose.pose.position.z,
-                'qx': odom.pose.pose.orientation.x,
-                'qy': odom.pose.pose.orientation.y,
-                'qz': odom.pose.pose.orientation.z,
-                'qw': odom.pose.pose.orientation.w
+        if self.ros_node.current_pose:
+            pose = self.ros_node.current_pose
+            self.waypoints[str(slot_num)] = {
+                'x': pose.pose.pose.position.x,
+                'y': pose.pose.pose.position.y,
+                'z': pose.pose.pose.position.z,
+                'qx': pose.pose.pose.orientation.x,
+                'qy': pose.pose.pose.orientation.y,
+                'qz': pose.pose.pose.orientation.z,
+                'qw': pose.pose.pose.orientation.w
             }
             self.save_waypoints()
-            self.log(f'Saved to slot {idx + 1}')
+            self.log(f'Saved to slot {slot_num}')
             self.update_button_colors()
         else:
-            self.log('No odometry data available')
+            self.log('No pose data available')
             
-    def clear_waypoint(self, idx):
-        if str(idx) in self.waypoints:
-            del self.waypoints[str(idx)]
+    def clear_waypoint(self, slot_num):
+        # FIXED: Use 1-based slot numbering
+        if str(slot_num) in self.waypoints:
+            del self.waypoints[str(slot_num)]
             self.save_waypoints()
-            self.log(f'Cleared slot {idx + 1}')
+            self.log(f'Cleared slot {slot_num}')
             self.update_button_colors()
         else:
-            self.log(f'Slot {idx + 1} is already empty')
+            self.log(f'Slot {slot_num} is already empty')
             
-    def navigate_to_waypoint(self, idx):
-        if str(idx) not in self.waypoints:
-            self.log(f'Slot {idx + 1} is empty')
+    def navigate_to_waypoint(self, slot_num):
+        # FIXED: Proper goal handle management and cancellation
+        if str(slot_num) not in self.waypoints:
+            self.log(f'Slot {slot_num} is empty')
             return
+        
+        if not self.ros_node.nav_server_available:
+            self.log('Nav2 server not available')
+            return
+        
+        # FIXED: Cancel previous goal if active
+        if self.ros_node.current_goal_handle is not None:
+            self.log('Cancelling previous navigation...')
+            self.ros_node.current_goal_handle.cancel_goal_async()
+            self.ros_node.current_goal_handle = None
             
-        wp = self.waypoints[str(idx)]
+        wp = self.waypoints[str(slot_num)]
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose = PoseStamped()
         goal_msg.pose.header.frame_id = 'map'
@@ -204,34 +230,34 @@ class WaypointsModeLayout(QMainWindow):
         goal_msg.pose.pose.orientation.z = wp['qz']
         goal_msg.pose.pose.orientation.w = wp['qw']
         
-        self.ros_node.nav_client.wait_for_server()
-        self.ros_node.nav_client.send_goal_async(goal_msg)
-        self.log(f'Go to position saved in slot {idx + 1}')
+        # FIXED: Store goal handle for proper cancellation
+        send_goal_future = self.ros_node.nav_client.send_goal_async(goal_msg)
+        send_goal_future.add_done_callback(lambda future: self._goal_response_callback(future, slot_num))
+        
+    def _goal_response_callback(self, future, slot_num):
+        # FIXED: Callback to store goal handle
+        goal_handle = future.result()
+        if goal_handle.accepted:
+            self.ros_node.current_goal_handle = goal_handle
+            self.log(f'Navigating to slot {slot_num}')
+        else:
+            self.log(f'Goal to slot {slot_num} rejected')
+            self.ros_node.current_goal_handle = None
         
     def stop_navigation(self):
-        self.ros_node.nav_client.cancel_goal_async()
-        self.ros_node.stop_robot()
-        self.log('Navigation stopped')
-        
-    def launch_zackon(self):
-        try:
-            self.zackon_process = subprocess.Popen(
-                ['gnome-terminal', '--', 'bash', '-c',
-                 'source /home/khoaiuh/thien_ws/install/setup.bash && ros2 launch view_robot_pkg zackon_synthesis.launch.py; exec bash']
-            )
-            self.log('Zackon synthesis launched (includes Nav2)')
-        except Exception as e:
-            self.log(f'Failed to launch zackon: {e}')
-            
-    def kill_processes(self):
-        if self.zackon_process:
-            subprocess.run(['pkill', '-f', 'zackon_synthesis.launch.py'])
-            self.zackon_process.terminate()
-            self.log('Zackon synthesis stopped')
+        # FIXED: Proper goal cancellation without cmd_vel
+        if self.ros_node.current_goal_handle is not None:
+            self.ros_node.current_goal_handle.cancel_goal_async()
+            self.ros_node.current_goal_handle = None
+            self.log('Navigation cancelled')
+        else:
+            self.log('No active navigation to stop')
         
     def update_button_colors(self):
+        # FIXED: Use 1-based slot numbering
         for i, btn in enumerate(self.waypoint_btns):
-            if str(i) in self.waypoints:
+            slot_num = i + 1
+            if str(slot_num) in self.waypoints:
                 btn.setStyleSheet('background-color: lightgreen;')
             else:
                 btn.setStyleSheet('')
@@ -251,16 +277,22 @@ class WaypointsModeLayout(QMainWindow):
         self.log_text.append(message)
         
     def go_back(self):
-        self.ros_node.stop_robot()
-        self.kill_processes()
+        # FIXED: Cancel active navigation before going back
+        if self.ros_node.current_goal_handle is not None:
+            self.ros_node.current_goal_handle.cancel_goal_async()
         subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def closeEvent(self, event):
-        self.ros_node.stop_robot()
-        self.kill_processes()
+        # FIXED: Proper ROS shutdown
+        if self.ros_node.current_goal_handle is not None:
+            self.ros_node.current_goal_handle.cancel_goal_async()
         if self.ros_node:
             self.ros_node.destroy_node()
+        try:
+            rclpy.shutdown()
+        except:
+            pass
         event.accept()
 
 

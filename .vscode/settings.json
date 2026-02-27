@@ -28,5 +28,8 @@
         "/home/khoaiuh/zackon_ws/install/drive_base_msgs/lib/python3.12/site-packages",
         "/opt/ros/jazzy/lib/python3.12/site-packages"
     ],
-    "cmake.ignoreCMakeListsMissing": true
+    "cmake.ignoreCMakeListsMissing": true,
+    "code-runner.executorMap": {
+        "python": "python3 -u"
+    }
 }

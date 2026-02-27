@@ -36,4 +36,6 @@ ui/__pycache__/
 require.txt
 kiro_feedback.txt
 
+robot_ui/waypoints.json
+
 src/uros

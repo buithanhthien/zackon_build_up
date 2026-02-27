@@ -4,6 +4,7 @@ import subprocess
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTextEdit, QLabel)
 from PyQt6.QtCore import QTimer, Qt
@@ -80,7 +81,7 @@ class TrackingModeUI(QMainWindow):
         rclpy.init()
         self.ros_node = Node('tracking_ui_node')
         self.odom_sub = self.ros_node.create_subscription(
-            Odometry, '/odomfromSTM32', self.odom_callback, 10)
+            PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
         
         self.ros_timer = QTimer()
         self.ros_timer.timeout.connect(lambda: rclpy.spin_once(self.ros_node, timeout_sec=0))
@@ -88,7 +89,7 @@ class TrackingModeUI(QMainWindow):
         
         self.log("Mode changed to tracking")
         
-    def odom_callback(self, msg):
+    def pose_callback(self, msg):
         pos = msg.pose.pose.position
         ori = msg.pose.pose.orientation
         text = f"Position:\n  x: {pos.x:.3f}\n  y: {pos.y:.3f}\n  z: {pos.z:.3f}\n\n"

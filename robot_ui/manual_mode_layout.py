@@ -12,6 +12,7 @@ os.environ['ROS_DOMAIN_ID'] = '0'
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
 
 class ManualModeUI(QMainWindow):
     def __init__(self):
@@ -21,12 +22,11 @@ class ManualModeUI(QMainWindow):
         except:
             pass
         self.node = Node('manual_mode_ui')
-        self.odom_sub = self.node.create_subscription(Odometry, '/odomfromSTM32', self.odom_callback, 10)
+        self.odom_sub = self.node.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
         self.init_ui()
         
     def init_ui(self):
         self.setWindowTitle("Manual Mode")
-        self.showMaximized()
         self.setStyleSheet("background-color: white; color: black;")
         
         central = QWidget()
@@ -90,7 +90,7 @@ class ManualModeUI(QMainWindow):
         
         self.log("Mode changed to manual")
         
-    def odom_callback(self, msg):
+    def pose_callback(self, msg):
         self.pos_label.setText(f"position:\n    x: {msg.pose.pose.position.x:.2f}\n    y: {msg.pose.pose.position.y:.2f}\n    z: {msg.pose.pose.position.z:.2f}")
         self.orient_label.setText(f"orientation:\n    x: {msg.pose.pose.orientation.x:.2f}\n    y: {msg.pose.pose.orientation.y:.2f}\n    z: {msg.pose.pose.orientation.z:.2f}\n    w: {msg.pose.pose.orientation.w:.2f}")
     
@@ -112,4 +112,5 @@ class ManualModeUI(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = ManualModeUI()
+    window.showMaximized()
     sys.exit(app.exec())

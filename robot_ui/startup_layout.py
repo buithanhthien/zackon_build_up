@@ -18,7 +18,7 @@ class RobotUI(QMainWindow):
         
     def init_ui(self):
         self.setWindowTitle("Robot Control Interface")
-        self.showMaximized()
+        self.setStyleSheet("background-color: white; color: black;")
         
         central = QWidget()
         self.setCentralWidget(central)
@@ -33,8 +33,9 @@ class RobotUI(QMainWindow):
         self.btn_manual = QPushButton("Manual")
         self.btn_tracking = QPushButton("Tracking")
         self.btn_waypoints = QPushButton("Waypoints")
+        self.btn_nav2 = QPushButton("Nav2")
         
-        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints]:
+        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints, self.btn_nav2]:
             btn.setFont(QFont("Fira Sans", 24))
             btn.setMinimumHeight(100)
             btn.clicked.connect(lambda checked, b=btn: self.mode_changed(b.text()))
@@ -151,6 +152,15 @@ class RobotUI(QMainWindow):
         elif mode == "Waypoints":
             subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/waypoints_mode_layout.py'])
             self.close()
+        elif mode == "Nav2":
+            try:
+                subprocess.Popen([
+                    'gnome-terminal', '--', 'bash', '-c',
+                    'source ~/thien_ws/install/setup.bash && ros2 launch view_robot_pkg zackon_synthesis.launch.py; exec bash'
+                ])
+                self.log("Launched Nav2 navigation system")
+            except Exception as e:
+                self.log(f"Failed to launch Nav2: {e}")
     
     def log(self, message):
         self.log_text.append(message)
@@ -163,4 +173,6 @@ if __name__ == '__main__':
     app.setFont(QFont("Fira Sans", 12))
     skip_micro_ros = '--skip-micro-ros' in sys.argv
     window = RobotUI(skip_micro_ros=skip_micro_ros)
+    window.show()
+    window.setWindowState(Qt.WindowState.WindowMaximized)
     sys.exit(app.exec())

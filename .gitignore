@@ -36,9 +36,4 @@ ui/__pycache__/
 require.txt
 kiro_feedback.txt
 
-robot_ui/waypoints_mode_layout.txt
-robot_ui/tracking_mode_layout.txt
-robot_ui/manual_mode_layout.txt
-robot_ui/startup_layout.txt
-
 src/uros

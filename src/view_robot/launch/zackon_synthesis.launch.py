@@ -20,7 +20,7 @@ def generate_launch_description():
     # ----------------------------------------------------
     
     # File Config & Map
-    nav2_params_file = PathJoinSubstitution([pkg_dir, 'config', 'nav2_params_update.yaml'])
+    nav2_params_file = PathJoinSubstitution([pkg_dir, 'config', 'nav2_params.yaml'])
     slam_params_file = PathJoinSubstitution([pkg_dir, 'config', 'mapper_params_online_async.yaml'])
     map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'khoi_sofa_map4.yaml'])
 
@@ -157,7 +157,7 @@ def generate_launch_description():
         
         # --- Hardware (Luôn chạy) ---
         robot_state_and_rviz,
-        micro_ros_agent,
+        # micro_ros_agent,
         sllidar_driver,
         lidar_filter,
         # slam_node, 

@@ -5,6 +5,7 @@ import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from std_msgs.msg import String
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTextEdit, QLabel)
 from PyQt6.QtCore import QTimer, Qt
@@ -28,7 +29,6 @@ class TrackingModeUI(QMainWindow):
         main_layout = QHBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Left area - Mode selector (1/4)
         mode_widget = QWidget()
         mode_widget.setStyleSheet("background-color: #f0f0f0;")
         mode_layout = QVBoxLayout(mode_widget)
@@ -40,12 +40,10 @@ class TrackingModeUI(QMainWindow):
         mode_layout.addWidget(self.btn_back)
         mode_layout.addStretch()
         
-        # Right area (3/4) - split into position and logging
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Position area (top half)
         pos_widget = QWidget()
         pos_layout = QVBoxLayout(pos_widget)
         
@@ -58,7 +56,6 @@ class TrackingModeUI(QMainWindow):
         pos_layout.addWidget(self.pos_label)
         pos_layout.addStretch()
         
-        # Logging area (bottom half)
         log_widget = QWidget()
         log_layout = QVBoxLayout(log_widget)
         
@@ -82,6 +79,8 @@ class TrackingModeUI(QMainWindow):
         self.ros_node = Node('tracking_ui_node')
         self.odom_sub = self.ros_node.create_subscription(
             PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
+        self.lock_sub = self.ros_node.create_subscription(
+            String, '/human_lock_status', self.lock_callback, 10)
         
         self.ros_timer = QTimer()
         self.ros_timer.timeout.connect(lambda: rclpy.spin_once(self.ros_node, timeout_sec=0))
@@ -95,6 +94,9 @@ class TrackingModeUI(QMainWindow):
         text = f"Position:\n  x: {pos.x:.3f}\n  y: {pos.y:.3f}\n  z: {pos.z:.3f}\n\n"
         text += f"Orientation:\n  x: {ori.x:.3f}\n  y: {ori.y:.3f}\n  z: {ori.z:.3f}\n  w: {ori.w:.3f}"
         self.pos_label.setText(text)
+        
+    def lock_callback(self, msg):
+        self.log(msg.data)
         
     def launch_tracking(self):
         try:

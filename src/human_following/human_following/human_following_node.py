@@ -2,6 +2,7 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from std_msgs.msg import String
 from .camera import Camera
 from .detector import HumanDetector
 from .tracker import HumanTracker
@@ -15,6 +16,7 @@ class HumanFollowingNode(Node):
         camera_url = self.get_parameter('camera_url').get_parameter_value().string_value
         
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.lock_publisher = self.create_publisher(String, '/human_lock_status', 10)
         
         self.camera = Camera(source=camera_url)
         self.detector = HumanDetector()
@@ -23,6 +25,7 @@ class HumanFollowingNode(Node):
         self.last_reconnect_attempt = 0
         self.reconnect_interval = 1.0
         self.camera_connected = False
+        self.last_locked_id = None
         
         self.timer = self.create_timer(0.1, self.process_frame)
         self.get_logger().info(f'Human following node started with camera: {camera_url}')
@@ -52,7 +55,14 @@ class HumanFollowingNode(Node):
             self.get_logger().info('Camera connected successfully')
             
         results = self.detector.detect(frame)
-        linear, angular = self.tracker.get_human_position(results)
+        linear, angular, tracked = self.tracker.get_human_position(results, time.time())
+        
+        if self.tracker.locked_id and self.tracker.locked_id != self.last_locked_id:
+            lock_msg = String()
+            lock_msg.data = f"Human locked: ID {self.tracker.locked_id}"
+            self.lock_publisher.publish(lock_msg)
+            self.get_logger().info(f'Human locked: ID {self.tracker.locked_id}')
+            self.last_locked_id = self.tracker.locked_id
         
         msg = Twist()
         msg.linear.x = linear
@@ -61,7 +71,8 @@ class HumanFollowingNode(Node):
         
         if linear != 0.0 or angular != 0.0:
             elapsed_ms = (time.time() - start_time) * 1000
-            self.get_logger().info(f'Tracking human - linear: {linear:.2f}, angular: {angular:.2f}, speed: {elapsed_ms:.2f}ms')
+            track_info = ', '.join([f'ID{t[0]}' for t in tracked])
+            self.get_logger().info(f'Tracking [{track_info}] - linear: {linear:.2f}, angular: {angular:.2f}, speed: {elapsed_ms:.2f}ms')
         
     def stop(self):
         msg = Twist()

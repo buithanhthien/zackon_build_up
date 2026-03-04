@@ -32,6 +32,8 @@ ui/__pycache__/
 # VS Code
 .vscode/browse.vc.db*
 .vscode/*.db*
+**/.vscode/c_cpp_properties.json
+**/.vscode/settings.json
 
 require.txt
 kiro_feedback.txt

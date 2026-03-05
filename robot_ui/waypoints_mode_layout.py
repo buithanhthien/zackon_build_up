@@ -2,15 +2,15 @@
 import sys
 import json
 import subprocess
+import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                               QLabel, QGridLayout, QTextEdit, QApplication, QMainWindow)
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QTimer, QPointF
+from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, Twist
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
 from nav2_msgs.action import NavigateToPose
 
 
@@ -18,17 +18,57 @@ class WaypointsNode(Node):
     def __init__(self):
         super().__init__('waypoints_node')
         self.subscription = self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
-        # FIXED: Proper action client with goal handle management
         self.nav_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.current_pose = None
-        self.current_goal_handle = None  # ADDED: Track active goal
+        self.current_goal_handle = None
         self.nav_server_available = False
-        
-        # FIXED: Check server availability once at init
         self.nav_server_available = self.nav_client.wait_for_server(timeout_sec=2.0)
         
     def pose_callback(self, msg):
         self.current_pose = msg
+
+
+class MapWidget(QWidget):
+    def __init__(self, map_path, yaml_data):
+        super().__init__()
+        self.map_image = QPixmap(map_path)
+        self.resolution = yaml_data['resolution']
+        self.origin = yaml_data['origin']
+        self.robot_pose = None
+        self.setMinimumSize(400, 400)
+        
+    def set_robot_pose(self, pose):
+        self.robot_pose = pose
+        self.update()
+        
+    def world_to_pixel(self, x, y):
+        px = int((x - self.origin[0]) / self.resolution)
+        py = int((self.origin[1] - y) / self.resolution + self.map_image.height())
+        return px, py
+        
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        
+        scaled_map = self.map_image.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        x_offset = (self.width() - scaled_map.width()) // 2
+        y_offset = (self.height() - scaled_map.height()) // 2
+        painter.drawPixmap(x_offset, y_offset, scaled_map)
+        
+        if self.robot_pose:
+            scale_x = scaled_map.width() / self.map_image.width()
+            scale_y = scaled_map.height() / self.map_image.height()
+            
+            px, py = self.world_to_pixel(
+                self.robot_pose.pose.pose.position.x,
+                self.robot_pose.pose.pose.position.y
+            )
+            
+            px = int(px * scale_x + x_offset)
+            py = int(py * scale_y + y_offset)
+            
+            painter.setPen(QPen(QColor(255, 0, 0), 3))
+            painter.setBrush(QColor(255, 0, 0))
+            painter.drawEllipse(px - 5, py - 5, 10, 10)
 
 
 class WaypointsModeLayout(QMainWindow):
@@ -39,10 +79,10 @@ class WaypointsModeLayout(QMainWindow):
         except:
             pass
         self.ros_node = WaypointsNode()
-        self.waypoints_file = '/home/khoaiuh/thien_ws/robot_ui/waypoints.json'
+        self.waypoints_file = '/home/thien/zackon_build_up/robot_ui/waypoints.json'
         self.waypoints = self.load_waypoints()
         self.current_mode = None
-        self.selected_sequence = []  # Track clicked waypoints in order
+        self.selected_sequence = []
         self.running_sequence = False
         self.current_sequence_index = 0
         self.init_ui()
@@ -59,9 +99,10 @@ class WaypointsModeLayout(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Left area (1/4)
         left_widget = QWidget()
+        left_widget.setStyleSheet("background-color: #f0f0f0;")
         left_layout = QVBoxLayout(left_widget)
         
         self.save_btn = QPushButton('Save')
@@ -73,7 +114,20 @@ class WaypointsModeLayout(QMainWindow):
         
         for btn in [self.save_btn, self.clear_btn, self.run_btn, self.reset_btn, self.stop_btn, self.back_btn]:
             btn.setFont(QFont('Fira Sans', 24))
+            btn.setMinimumHeight(80)
             left_layout.addWidget(btn)
+        
+        pos_title = QLabel('Current Position')
+        pos_title.setFont(QFont('Fira Sans', 18))
+        left_layout.addWidget(pos_title)
+        
+        self.pos_label = QLabel('x: 0.00\ny: 0.00\nz: 0.00')
+        self.pos_label.setFont(QFont('Fira Sans', 14))
+        left_layout.addWidget(self.pos_label)
+        
+        self.orient_label = QLabel('qx: 0.00\nqy: 0.00\nqz: 0.00\nqw: 1.00')
+        self.orient_label.setFont(QFont('Fira Sans', 14))
+        left_layout.addWidget(self.orient_label)
         
         left_layout.addStretch()
         
@@ -84,54 +138,47 @@ class WaypointsModeLayout(QMainWindow):
         self.stop_btn.clicked.connect(self.stop_navigation)
         self.back_btn.clicked.connect(self.go_back)
         
-        # Right area (3/4)
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Top half - Current position
-        position_widget = QWidget()
-        position_layout = QVBoxLayout(position_widget)
+        map_and_buttons_widget = QWidget()
+        map_and_buttons_layout = QVBoxLayout(map_and_buttons_widget)
         
-        pos_title = QLabel('Current Position')
-        pos_title.setFont(QFont('Fira Sans', 28))
-        position_layout.addWidget(pos_title)
+        map_yaml_path = '/home/thien/zackon_build_up/src/view_robot/maps/khoi_sofa_map4.yaml'
+        map_dir = os.path.dirname(map_yaml_path)
+        yaml_data = self.load_map_yaml(map_yaml_path)
+        map_image_path = os.path.join(map_dir, yaml_data['image'])
         
-        self.pos_label = QLabel('position:\n    x: 0.00\n    y: 0.00\n    z: 0.00')
-        self.pos_label.setFont(QFont('Fira Sans', 20))
-        position_layout.addWidget(self.pos_label)
+        self.map_widget = MapWidget(map_image_path, yaml_data)
+        map_and_buttons_layout.addWidget(self.map_widget, 2)
         
-        self.orient_label = QLabel('orientation:\n    x: 0.00\n    y: 0.00\n    z: 0.00\n    w: 1.00')
-        self.orient_label.setFont(QFont('Fira Sans', 20))
-        position_layout.addWidget(self.orient_label)
-        
-        # Waypoint buttons grid
         grid_layout = QGridLayout()
         self.waypoint_btns = []
         
         for i in range(10):
             btn = QPushButton(str(i + 1))
             btn.setFont(QFont('Fira Sans', 18))
+            btn.setMinimumHeight(50)
             btn.clicked.connect(lambda checked, idx=i: self.waypoint_clicked(idx))
             grid_layout.addWidget(btn, i // 5, i % 5)
             self.waypoint_btns.append(btn)
         
-        position_layout.addLayout(grid_layout)
-        position_layout.addStretch()
+        map_and_buttons_layout.addLayout(grid_layout)
         
-        # Bottom half - Logging
         log_widget = QWidget()
         log_layout = QVBoxLayout(log_widget)
         
         log_title = QLabel('Logging')
-        log_title.setFont(QFont('Fira Sans', 20))
+        log_title.setFont(QFont('Fira Sans', 18))
         log_layout.addWidget(log_title)
         
         self.log_text = QTextEdit()
-        self.log_text.setFont(QFont('Fira Sans', 14))
+        self.log_text.setFont(QFont('Fira Sans', 12))
         self.log_text.setReadOnly(True)
         log_layout.addWidget(self.log_text)
         
-        right_layout.addWidget(position_widget, 1)
+        right_layout.addWidget(map_and_buttons_widget, 2)
         right_layout.addWidget(log_widget, 1)
         
         main_layout.addWidget(left_widget, 1)
@@ -140,45 +187,57 @@ class WaypointsModeLayout(QMainWindow):
         self.update_button_colors()
         self.log("Mode changed to waypoints")
         
-        # FIXED: Disable navigation if server unavailable
         if not self.ros_node.nav_server_available:
             self.log("WARNING: Nav2 action server not available")
             for btn in self.waypoint_btns:
                 btn.setEnabled(False)
+    
+    def load_map_yaml(self, yaml_path):
+        data = {}
+        with open(yaml_path, 'r') as f:
+            for line in f:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    if key == 'origin':
+                        data[key] = eval(value)
+                    elif key == 'resolution':
+                        data[key] = float(value)
+                    else:
+                        data[key] = value
+        return data
         
     def spin_and_update(self):
         rclpy.spin_once(self.ros_node, timeout_sec=0)
         if self.ros_node.current_pose:
             msg = self.ros_node.current_pose
-            self.pos_label.setText(f"position:\n    x: {msg.pose.pose.position.x:.2f}\n    y: {msg.pose.pose.position.y:.2f}\n    z: {msg.pose.pose.position.z:.2f}")
-            self.orient_label.setText(f"orientation:\n    x: {msg.pose.pose.orientation.x:.2f}\n    y: {msg.pose.pose.orientation.y:.2f}\n    z: {msg.pose.pose.orientation.z:.2f}\n    w: {msg.pose.pose.orientation.w:.2f}")
+            self.pos_label.setText(f"x: {msg.pose.pose.position.x:.2f}\ny: {msg.pose.pose.position.y:.2f}\nz: {msg.pose.pose.position.z:.2f}")
+            self.orient_label.setText(f"qx: {msg.pose.pose.orientation.x:.2f}\nqy: {msg.pose.pose.orientation.y:.2f}\nqz: {msg.pose.pose.orientation.z:.2f}\nqw: {msg.pose.pose.orientation.w:.2f}")
+            self.map_widget.set_robot_pose(msg)
     
     def set_mode(self, mode):
-        # FIXED: Mode persists until action completes
         if self.current_mode == mode:
-            self.current_mode = None  # Toggle off
+            self.current_mode = None
             self.log(f'Mode: {mode.capitalize()} cancelled')
         else:
             self.current_mode = mode
             self.log(f'Mode: {mode.capitalize()} - select a slot')
         
     def waypoint_clicked(self, idx):
-        # FIXED: Use 1-based indexing consistently
         slot_num = idx + 1
         
         if self.current_mode == 'save':
             self.save_waypoint(slot_num)
-            self.current_mode = None  # Reset after action
+            self.current_mode = None
         elif self.current_mode == 'clear':
             self.clear_waypoint(slot_num)
-            self.current_mode = None  # Reset after action
+            self.current_mode = None
         else:
-            # Add to sequence if not in save/clear mode
             if str(slot_num) not in self.waypoints:
                 self.log(f'Slot {slot_num} is empty')
                 return
             
-            # Prevent consecutive duplicates
             if self.selected_sequence and self.selected_sequence[-1] == slot_num:
                 self.log(f'Cannot select slot {slot_num} consecutively')
                 return
@@ -187,7 +246,6 @@ class WaypointsModeLayout(QMainWindow):
             self.log(f'Added slot {slot_num} to sequence: {self.selected_sequence}')
         
     def save_waypoint(self, slot_num):
-        # FIXED: Use 1-based slot numbering
         if str(slot_num) in self.waypoints:
             self.log(f'Slot {slot_num} already has data. Clear it first.')
             return
@@ -210,7 +268,6 @@ class WaypointsModeLayout(QMainWindow):
             self.log('No pose data available')
             
     def clear_waypoint(self, slot_num):
-        # FIXED: Use 1-based slot numbering
         if str(slot_num) in self.waypoints:
             del self.waypoints[str(slot_num)]
             self.save_waypoints()
@@ -220,7 +277,6 @@ class WaypointsModeLayout(QMainWindow):
             self.log(f'Slot {slot_num} is already empty')
             
     def navigate_to_waypoint(self, slot_num):
-        # FIXED: Proper goal handle management and cancellation
         if str(slot_num) not in self.waypoints:
             self.log(f'Slot {slot_num} is empty')
             return
@@ -229,7 +285,6 @@ class WaypointsModeLayout(QMainWindow):
             self.log('Nav2 server not available')
             return
         
-        # FIXED: Cancel previous goal if active
         if self.ros_node.current_goal_handle is not None:
             self.log('Cancelling previous navigation...')
             self.ros_node.current_goal_handle.cancel_goal_async()
@@ -248,18 +303,15 @@ class WaypointsModeLayout(QMainWindow):
         goal_msg.pose.pose.orientation.z = wp['qz']
         goal_msg.pose.pose.orientation.w = wp['qw']
         
-        # FIXED: Store goal handle for proper cancellation
         send_goal_future = self.ros_node.nav_client.send_goal_async(goal_msg)
         send_goal_future.add_done_callback(lambda future: self._goal_response_callback(future, slot_num))
         
     def _goal_response_callback(self, future, slot_num):
-        # FIXED: Callback to store goal handle
         goal_handle = future.result()
         if goal_handle.accepted:
             self.ros_node.current_goal_handle = goal_handle
             self.log(f'Navigating to slot {slot_num}')
             
-            # If running sequence, set up result callback
             if self.running_sequence:
                 result_future = goal_handle.get_result_async()
                 result_future.add_done_callback(self._goal_result_callback)
@@ -270,16 +322,14 @@ class WaypointsModeLayout(QMainWindow):
                 self.running_sequence = False
     
     def _goal_result_callback(self, future):
-        # When goal completes, navigate to next in sequence
         if self.running_sequence and self.current_sequence_index < len(self.selected_sequence) - 1:
             self.current_sequence_index += 1
             next_slot = self.selected_sequence[self.current_sequence_index]
             
-            # Skip if same as current position (already there)
             current_slot = self.selected_sequence[self.current_sequence_index - 1]
             if next_slot == current_slot:
                 self.log(f'Already at slot {next_slot}, skipping...')
-                self._goal_result_callback(future)  # Recursively check next
+                self._goal_result_callback(future)
             else:
                 self.navigate_to_waypoint(next_slot)
         else:
@@ -303,7 +353,6 @@ class WaypointsModeLayout(QMainWindow):
         self.log('Sequence reset')
         
     def stop_navigation(self):
-        # FIXED: Proper goal cancellation without cmd_vel
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
             self.ros_node.current_goal_handle = None
@@ -311,13 +360,11 @@ class WaypointsModeLayout(QMainWindow):
         else:
             self.log('No active navigation to stop')
         
-        # Stop sequence and clear selection
         self.running_sequence = False
         self.selected_sequence = []
         self.log('Sequence cleared')
         
     def update_button_colors(self):
-        # FIXED: Use 1-based slot numbering
         for i, btn in enumerate(self.waypoint_btns):
             slot_num = i + 1
             if str(slot_num) in self.waypoints:
@@ -343,14 +390,12 @@ class WaypointsModeLayout(QMainWindow):
         self.log_text.append(message)
         
     def go_back(self):
-        # FIXED: Cancel active navigation before going back
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
-        subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen(['python3', '/home/thien/zackon_build_up/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def closeEvent(self, event):
-        # FIXED: Proper ROS shutdown
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
         if self.ros_node:

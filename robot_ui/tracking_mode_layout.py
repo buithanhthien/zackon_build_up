@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import subprocess
+import os
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
@@ -9,7 +10,51 @@ from std_msgs.msg import String
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTextEdit, QLabel)
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor
+
+
+class MapWidget(QWidget):
+    def __init__(self, map_path, yaml_data):
+        super().__init__()
+        self.map_image = QPixmap(map_path)
+        self.resolution = yaml_data['resolution']
+        self.origin = yaml_data['origin']
+        self.robot_pose = None
+        self.setMinimumSize(400, 400)
+        
+    def set_robot_pose(self, pose):
+        self.robot_pose = pose
+        self.update()
+        
+    def world_to_pixel(self, x, y):
+        px = int((x - self.origin[0]) / self.resolution)
+        py = int((self.origin[1] - y) / self.resolution + self.map_image.height())
+        return px, py
+        
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        
+        scaled_map = self.map_image.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        x_offset = (self.width() - scaled_map.width()) // 2
+        y_offset = (self.height() - scaled_map.height()) // 2
+        painter.drawPixmap(x_offset, y_offset, scaled_map)
+        
+        if self.robot_pose:
+            scale_x = scaled_map.width() / self.map_image.width()
+            scale_y = scaled_map.height() / self.map_image.height()
+            
+            px, py = self.world_to_pixel(
+                self.robot_pose.pose.pose.position.x,
+                self.robot_pose.pose.pose.position.y
+            )
+            
+            px = int(px * scale_x + x_offset)
+            py = int(py * scale_y + y_offset)
+            
+            painter.setPen(QPen(QColor(255, 0, 0), 3))
+            painter.setBrush(QColor(255, 0, 0))
+            painter.drawEllipse(px - 5, py - 5, 10, 10)
+
 
 class TrackingModeUI(QMainWindow):
     def __init__(self):
@@ -38,23 +83,28 @@ class TrackingModeUI(QMainWindow):
         self.btn_back.setMinimumHeight(100)
         self.btn_back.clicked.connect(self.go_back)
         mode_layout.addWidget(self.btn_back)
+        
+        pos_title = QLabel("Current Position")
+        pos_title.setFont(QFont("Fira Sans", 18))
+        mode_layout.addWidget(pos_title)
+        
+        self.pos_label = QLabel("x: 0.0\ny: 0.0\nz: 0.0\n\nqx: 0.0\nqy: 0.0\nqz: 0.0\nqw: 1.0")
+        self.pos_label.setFont(QFont("Fira Sans", 14))
+        mode_layout.addWidget(self.pos_label)
+        
         mode_layout.addStretch()
         
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(10, 10, 10, 10)
         
-        pos_widget = QWidget()
-        pos_layout = QVBoxLayout(pos_widget)
+        map_yaml_path = '/home/khoaiuh/thien_ws/src/view_robot/maps/khoi_sofa_map4.yaml'
+        map_dir = os.path.dirname(map_yaml_path)
+        yaml_data = self.load_map_yaml(map_yaml_path)
+        map_image_path = os.path.join(map_dir, yaml_data['image'])
         
-        title = QLabel("Current Position")
-        title.setFont(QFont("Fira Sans", 28, QFont.Weight.Bold))
-        pos_layout.addWidget(title)
-        
-        self.pos_label = QLabel("Position:\n  x: 0.0\n  y: 0.0\n  z: 0.0\n\nOrientation:\n  x: 0.0\n  y: 0.0\n  z: 0.0\n  w: 1.0")
-        self.pos_label.setFont(QFont("Fira Sans", 18))
-        pos_layout.addWidget(self.pos_label)
-        pos_layout.addStretch()
+        self.map_widget = MapWidget(map_image_path, yaml_data)
+        right_layout.addWidget(self.map_widget, 2)
         
         log_widget = QWidget()
         log_layout = QVBoxLayout(log_widget)
@@ -68,7 +118,6 @@ class TrackingModeUI(QMainWindow):
         self.log_text.setFont(QFont("Fira Sans", 14))
         log_layout.addWidget(self.log_text)
         
-        right_layout.addWidget(pos_widget, 1)
         right_layout.addWidget(log_widget, 1)
         
         main_layout.addWidget(mode_widget, 1)
@@ -87,13 +136,30 @@ class TrackingModeUI(QMainWindow):
         self.ros_timer.start(50)
         
         self.log("Mode changed to tracking")
+    
+    def load_map_yaml(self, yaml_path):
+        data = {}
+        with open(yaml_path, 'r') as f:
+            for line in f:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    if key == 'origin':
+                        data[key] = eval(value)
+                    elif key == 'resolution':
+                        data[key] = float(value)
+                    else:
+                        data[key] = value
+        return data
         
     def pose_callback(self, msg):
         pos = msg.pose.pose.position
         ori = msg.pose.pose.orientation
-        text = f"Position:\n  x: {pos.x:.3f}\n  y: {pos.y:.3f}\n  z: {pos.z:.3f}\n\n"
-        text += f"Orientation:\n  x: {ori.x:.3f}\n  y: {ori.y:.3f}\n  z: {ori.z:.3f}\n  w: {ori.w:.3f}"
+        text = f"x: {pos.x:.2f}\ny: {pos.y:.2f}\nz: {pos.z:.2f}\n\n"
+        text += f"qx: {ori.x:.2f}\nqy: {ori.y:.2f}\nqz: {ori.z:.2f}\nqw: {ori.w:.2f}"
         self.pos_label.setText(text)
+        self.map_widget.set_robot_pose(msg)
         
     def lock_callback(self, msg):
         self.log(msg.data)

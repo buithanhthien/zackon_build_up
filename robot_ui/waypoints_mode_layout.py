@@ -79,7 +79,7 @@ class WaypointsModeLayout(QMainWindow):
         except:
             pass
         self.ros_node = WaypointsNode()
-        self.waypoints_file = '/home/thien/zackon_build_up/robot_ui/waypoints.json'
+        self.waypoints_file = '/home/khoaiuh/thien_ws/robot_ui/waypoints.json'
         self.waypoints = self.load_waypoints()
         self.current_mode = None
         self.selected_sequence = []
@@ -145,7 +145,7 @@ class WaypointsModeLayout(QMainWindow):
         map_and_buttons_widget = QWidget()
         map_and_buttons_layout = QVBoxLayout(map_and_buttons_widget)
         
-        map_yaml_path = '/home/thien/zackon_build_up/src/view_robot/maps/khoi_sofa_map4.yaml'
+        map_yaml_path = '/home/thien/zackon_build_up/src/view_robot/maps/F5.yaml'
         map_dir = os.path.dirname(map_yaml_path)
         yaml_data = self.load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])
@@ -392,7 +392,7 @@ class WaypointsModeLayout(QMainWindow):
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
-        subprocess.Popen(['python3', '/home/thien/zackon_build_up/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def closeEvent(self, event):

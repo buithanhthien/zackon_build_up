@@ -145,7 +145,7 @@ class WaypointsModeLayout(QMainWindow):
         map_and_buttons_widget = QWidget()
         map_and_buttons_layout = QVBoxLayout(map_and_buttons_widget)
         
-        map_yaml_path = '/home/thien/zackon_build_up/src/view_robot/maps/F5.yaml'
+        map_yaml_path = '/home/khoaiuh/thien_ws/src/view_robot/maps/F5.yaml'
         map_dir = os.path.dirname(map_yaml_path)
         yaml_data = self.load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])

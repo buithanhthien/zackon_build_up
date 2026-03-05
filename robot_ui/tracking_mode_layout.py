@@ -98,7 +98,7 @@ class TrackingModeUI(QMainWindow):
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(10, 10, 10, 10)
         
-        map_yaml_path = '/home/khoaiuh/thien_ws/src/view_robot/maps/khoi_sofa_map4.yaml'
+        map_yaml_path = '/home/khoaiuh/thien_ws/src/view_robot/maps/F5.yaml'
         map_dir = os.path.dirname(map_yaml_path)
         yaml_data = self.load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])

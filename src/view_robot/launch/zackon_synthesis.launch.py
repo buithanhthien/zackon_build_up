@@ -22,7 +22,7 @@ def generate_launch_description():
     # File Config & Map
     nav2_params_file = PathJoinSubstitution([pkg_dir, 'config', 'nav2_params.yaml'])
     slam_params_file = PathJoinSubstitution([pkg_dir, 'config', 'mapper_params_online_async.yaml'])
-    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'khoi_sofa_map4.yaml'])
+    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'F5.yaml'])
 
     # Hardware Params
     lidar_frame_arg = DeclareLaunchArgument('lidar_frame', default_value='lidar_link')
@@ -157,7 +157,7 @@ def generate_launch_description():
         
         # --- Hardware (Luôn chạy) ---
         robot_state_and_rviz,
-        # micro_ros_agent,
+        micro_ros_agent, # disable this when run UI
         sllidar_driver,
         lidar_filter,
         # slam_node, 

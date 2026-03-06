@@ -140,7 +140,7 @@ class HumanTracker:
             self.angular_pid.reset()
             self.linear_pid.reset()
             self.update_tracks([], current_time)
-            return (0.0, 0.0, [])
+            return (0.0, 0.0, [], None)
             
         detections = [box.xyxy[0].cpu().numpy() for box in results[0].boxes]
         tracked = self.update_tracks(detections, current_time)
@@ -148,7 +148,7 @@ class HumanTracker:
         if len(tracked) == 0:
             self.angular_pid.reset()
             self.linear_pid.reset()
-            return (0.0, 0.0, [])
+            return (0.0, 0.0, [], None)
             
         if self.locked_id:
             target = next((t for t in tracked if t[0] == self.locked_id), None)
@@ -163,7 +163,7 @@ class HumanTracker:
         if y_min <= self.vertical_margin or y_max >= self.frame_height - self.vertical_margin:
             self.angular_pid.reset()
             self.linear_pid.reset()
-            return (0.0, 0.0, tracked)
+            return (0.0, 0.0, tracked, None)
             
         bbox_center_x = (x_min + x_max) / 2
         delta_px = bbox_center_x - self.center_x
@@ -186,5 +186,12 @@ class HumanTracker:
         else:
             linear_x = 0.0
             self.linear_pid.reset()
+        
+        human_pose = {
+            'x': estimated_distance * math.cos(theta),
+            'y': estimated_distance * math.sin(theta),
+            'distance': estimated_distance,
+            'angle': theta
+        }
             
-        return (float(linear_x), float(angular_z), tracked)
+        return (float(linear_x), float(angular_z), tracked, human_pose)

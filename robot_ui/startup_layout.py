@@ -3,6 +3,8 @@ import sys
 import subprocess
 import os
 import threading
+import time
+import math
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTextEdit, QLabel)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
@@ -13,86 +15,256 @@ from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
 from std_srvs.srv import Empty
 
 
+# ── Tuning constants ──────────────────────────────────────────────────────────
+ANGULAR_SPEED        = 0.314          # rad/s  (~18 °/s)
+HALF_ROTATION_RAD    = math.pi        # 180 °  → time = π / ANGULAR_SPEED ≈ 10 s
+HALF_ROTATION_TIME   = HALF_ROTATION_RAD / ANGULAR_SPEED   # seconds per half-spin
+
+RAMP_STEPS           = 5              # number of steps for velocity ramp
+RAMP_INTERVAL        = 0.05           # seconds between ramp steps
+
+GOOD_COV_THRESHOLD   = 0.10           # early-exit: both x+y+yaw below this → well localised
+ACCEPTABLE_COV       = 0.20           # after full spin: "good enough" to skip retry
+MAX_RETRIES          = 2              # extra full rotations if covariance stays poor
+SPIN_TICK            = 0.05           # seconds per spin-loop iteration
+COV_LOCK_TIMEOUT     = 15.0           # seconds to wait for first AMCL message before abort
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 class LocalizationWorker(QObject):
-    log_signal = pyqtSignal(str)
+    log_signal      = pyqtSignal(str)
     finished_signal = pyqtSignal()
-    
+
     def __init__(self):
         super().__init__()
-        self.running = False
-        self.stable_count = 0
-        self.current_pose = None
-        
+        self._stop_event   = threading.Event()
+        self._cov_lock     = threading.Lock()
+        self._current_cov  = float('inf')   # latest covariance reading (thread-safe)
+        self._best_cov     = float('inf')   # best seen so far across the whole sequence
+        self._received_pose = threading.Event()   # set on first AMCL message
+
+    # ── Public helpers ────────────────────────────────────────────────────────
+
+    def stop(self):
+        self._stop_event.set()
+
+    # ── ROS callback (background thread) ─────────────────────────────────────
+
+    def _pose_callback(self, msg):
+        cov = msg.pose.covariance
+        total = cov[0] + cov[7] + cov[35]   # σ²_x + σ²_y + σ²_yaw
+        with self._cov_lock:
+            self._current_cov = total
+            if total < self._best_cov:
+                self._best_cov = total
+        self._received_pose.set()
+
+    # ── Velocity helpers ──────────────────────────────────────────────────────
+
+    def _ramp_velocity(self, publisher, target_z: float):
+        """Linearly ramp angular.z from 0 → target_z (or target_z → 0)."""
+        twist = Twist()
+        for i in range(1, RAMP_STEPS + 1):
+            if self._stop_event.is_set():
+                break
+            twist.angular.z = target_z * (i / RAMP_STEPS)
+            publisher.publish(twist)
+            time.sleep(RAMP_INTERVAL)
+
+    def _stop_robot(self, publisher):
+        self._ramp_velocity(publisher, 0.0)   # ramp down before hard-zero
+        twist = Twist()
+        twist.angular.z = 0.0
+        publisher.publish(twist)
+
+    def _spin_arc(self, publisher, node, arc_time: float, label: str):
+        """
+        Rotate at ANGULAR_SPEED for *arc_time* seconds.
+        Returns early if covariance drops below GOOD_COV_THRESHOLD.
+        Returns (elapsed_seconds, best_covariance_seen_during_arc).
+        """
+        self._ramp_velocity(publisher, ANGULAR_SPEED)
+
+        twist = Twist()
+        twist.angular.z = ANGULAR_SPEED
+
+        elapsed    = 0.0
+        arc_best   = float('inf')
+        tick_count = max(1, int(arc_time / SPIN_TICK))
+
+        for i in range(tick_count):
+            if self._stop_event.is_set():
+                self.log_signal.emit(f"[{label}] Stop requested — aborting arc")
+                break
+
+            publisher.publish(twist)
+            rclpy.spin_once(node, timeout_sec=SPIN_TICK)
+            elapsed += SPIN_TICK
+
+            with self._cov_lock:
+                cov = self._current_cov
+
+            if cov < arc_best:
+                arc_best = cov
+
+            progress = int(elapsed / arc_time * 100)
+            if i > 0 and i % int(tick_count / 5 or 1) == 0:   # log ~5 times per arc
+                self.log_signal.emit(
+                    f"[{label}] {progress}% — current σ²={cov:.4f}, best={arc_best:.4f}"
+                )
+
+            # ── Early exit: already well-localised ───────────────────────────
+            if cov < GOOD_COV_THRESHOLD:
+                self.log_signal.emit(
+                    f"[{label}] Early exit at {elapsed:.1f}s — covariance {cov:.4f} "
+                    f"< threshold {GOOD_COV_THRESHOLD}"
+                )
+                break
+
+        return elapsed, arc_best
+    
     def run(self):
+        # ── ROS initialisation ────────────────────────────────────────────────
         try:
             rclpy.init()
-        except:
+        except Exception:
             pass
-            
+
         node = Node('localization_worker')
-        
-        cmd_vel_pub = node.create_publisher(Twist, '/cmd_vel', 10)
-        pose_sub = node.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
-        
-        global_loc_client = node.create_client(Empty, '/global_localization')
-        
-        self.log_signal.emit("Calling /global_localization")
-        if not global_loc_client.wait_for_service(timeout_sec=5.0):
-            self.log_signal.emit("Global localization service not available")
+
+        cmd_vel_pub       = node.create_publisher(Twist, '/cmd_vel', 10)
+        _pose_sub         = node.create_subscription(          # noqa: F841
+            PoseWithCovarianceStamped, '/amcl_pose',
+            self._pose_callback, 10
+        )
+        global_loc_client = node.create_client(Empty, '/reinitialize_global_localization')
+        clear_local_client= node.create_client(Empty, '/local_costmap/clear_entirely_local_costmap')
+
+        try:
+            self._run_sequence(node, cmd_vel_pub, global_loc_client, clear_local_client)
+        except Exception as exc:
+            self.log_signal.emit(f"[ERROR] Localization sequence failed: {exc}")
+            self._stop_robot(cmd_vel_pub)
+        finally:
             node.destroy_node()
             self.finished_signal.emit()
+
+    def _run_sequence(self, node, cmd_vel_pub, global_loc_client, clear_local_client):
+        # ── Step 1: Trigger global (particle-spread) localisation ─────────────
+        self.log_signal.emit("Waiting for /reinitialize_global_localization service…")
+        if not global_loc_client.wait_for_service(timeout_sec=10.0):
+            self.log_signal.emit("[ERROR] Reinitialize service unavailable — aborting")
             return
-            
-        future = global_loc_client.call_async(Empty.Request())
-        rclpy.spin_until_future_complete(node, future, timeout_sec=5.0)
-        
-        self.log_signal.emit("Rotation started")
-        self.log_signal.emit("Monitoring AMCL covariance")
-        
-        twist = Twist()
-        twist.angular.z = 0.3
-        
-        rate = node.create_rate(10)
-        timeout = 60
-        elapsed = 0
-        
-        self.running = True
-        while self.running and elapsed < timeout:
-            cmd_vel_pub.publish(twist)
-            rclpy.spin_once(node, timeout_sec=0.01)
-            
-            if self.is_stable():
-                self.log_signal.emit("Localization stable")
+
+        self.log_signal.emit("Calling /reinitialize_global_localization")
+        global_loc_client.call_async(Empty.Request())
+
+        # Brief pause — let AMCL spread particles before we start moving
+        rclpy.spin_once(node, timeout_sec=1.0)
+
+        # ── Step 2: Wait for first AMCL pose ──────────────────────────────────
+        self.log_signal.emit(f"Waiting up to {COV_LOCK_TIMEOUT}s for first AMCL pose…")
+        deadline = time.monotonic() + COV_LOCK_TIMEOUT
+        while not self._received_pose.is_set() and not self._stop_event.is_set():
+            rclpy.spin_once(node, timeout_sec=0.2)
+            if time.monotonic() > deadline:
+                self.log_signal.emit("[ERROR] No AMCL pose received — check Nav2/AMCL — aborting")
+                return
+
+        if self._stop_event.is_set():
+            return
+
+        # ── Step 3: Spin-and-monitor loop (up to MAX_RETRIES full rotations) ──
+        # Each "full rotation" = 2 × 180 ° arcs so we can report per-half
+        # covariance (useful for half-occlusion diagnosis).
+
+        for attempt in range(1, MAX_RETRIES + 2):   # attempt 1 = first try
+            if self._stop_event.is_set():
                 break
-                
-            elapsed += 0.1
-            
-        twist.angular.z = 0.0
-        cmd_vel_pub.publish(twist)
-        
-        if elapsed >= timeout:
-            self.log_signal.emit("Localization timeout")
+
+            # Check if already good before spinning
+            with self._cov_lock:
+                pre_cov = self._current_cov
+            if pre_cov < GOOD_COV_THRESHOLD:
+                self.log_signal.emit(
+                    f"Covariance already {pre_cov:.4f} < {GOOD_COV_THRESHOLD} "
+                    f"— skipping rotation {attempt}"
+                )
+                break
+
+            self.log_signal.emit(
+                f"── Rotation attempt {attempt}/{MAX_RETRIES + 1} "
+                f"(pre-spin σ²={pre_cov:.4f}) ──"
+            )
+
+            # First 180 °
+            t1, best_1 = self._spin_arc(
+                cmd_vel_pub, node, HALF_ROTATION_TIME, f"R{attempt} first 180°"
+            )
+            self.log_signal.emit(
+                f"First 180° done in {t1:.1f}s — best σ²={best_1:.4f}"
+            )
+
+            # If early-exit already got us below threshold, stop here
+            with self._cov_lock:
+                mid_cov = self._current_cov
+            if mid_cov < GOOD_COV_THRESHOLD:
+                self.log_signal.emit(f"Well-localised after first half — stopping spin")
+                break
+
+            # Second 180 °
+            t2, best_2 = self._spin_arc(
+                cmd_vel_pub, node, HALF_ROTATION_TIME, f"R{attempt} second 180°"
+            )
+            self.log_signal.emit(
+                f"Second 180° done in {t2:.1f}s — best σ²={best_2:.4f}"
+            )
+
+            # Per-half delta: useful for detecting asymmetric LiDAR occlusion
+            delta = abs(best_1 - best_2)
+            self.log_signal.emit(
+                f"Half-covariance delta: {delta:.4f} "
+                f"({'asymmetric occlusion suspected' if delta > 0.15 else 'symmetric'})"
+            )
+
+            with self._cov_lock:
+                post_cov = self._best_cov
+            self.log_signal.emit(
+                f"Best overall σ² after attempt {attempt}: {post_cov:.4f}"
+            )
+
+            if post_cov < ACCEPTABLE_COV:
+                self.log_signal.emit(f"Acceptable covariance reached — done")
+                break
+            elif attempt <= MAX_RETRIES:
+                self.log_signal.emit(
+                    f"Covariance {post_cov:.4f} still above {ACCEPTABLE_COV} "
+                    f"— retrying ({attempt}/{MAX_RETRIES})…"
+                )
+            else:
+                self.log_signal.emit(
+                    f"[WARN] Max retries reached — best σ²={post_cov:.4f}. "
+                    f"Manual intervention may be needed."
+                )
+
+        # ── Step 4: Stop robot ────────────────────────────────────────────────
+        self._stop_robot(cmd_vel_pub)
+        self.log_signal.emit("Robot stopped")
+
+        # ── Step 5: Clear costmaps ────────────────────────────────────────────
+        if clear_local_client.wait_for_service(timeout_sec=2.0):
+            clear_local_client.call_async(Empty.Request())
+            self.log_signal.emit("Cleared local costmap")
         else:
-            self.log_signal.emit("Stopping rotation")
-            self.log_signal.emit("Localization completed")
-            
-        node.destroy_node()
-        self.finished_signal.emit()
-        
-    def pose_callback(self, msg):
-        self.current_pose = msg
-        cov = msg.pose.covariance
-        
-        if cov[0] < 0.05 and cov[7] < 0.05 and cov[35] < 0.1:
-            self.stable_count += 1
-        else:
-            self.stable_count = 0
-            
-    def is_stable(self):
-        return self.stable_count >= 3
-        
-    def stop(self):
-        self.running = False
+            self.log_signal.emit("[WARN] local_costmap clear service not available")
+
+        rclpy.spin_once(node, timeout_sec=1.0)
+
+        with self._cov_lock:
+            final_cov = self._best_cov
+        self.log_signal.emit(
+            f"Relocalization complete — final best σ²={final_cov:.4f}"
+        )
 
 
 class RobotUI(QMainWindow):
@@ -265,13 +437,15 @@ class RobotUI(QMainWindow):
             self.log("Localization already running")
             return
             
-        self.log("Starting adaptive localization")
+        self.log("Starting global relocalization")
         
         self.localization_worker = LocalizationWorker()
         self.localization_worker.log_signal.connect(self.log)
         self.localization_worker.finished_signal.connect(self.localization_finished)
         
-        self.localization_thread = threading.Thread(target=self.localization_worker.run)
+        self.localization_thread = threading.Thread(
+            target=self.localization_worker.run, daemon=True
+        )
         self.localization_thread.start()
         
     def localization_finished(self):
@@ -282,6 +456,8 @@ class RobotUI(QMainWindow):
         self.log_text.append(message)
     
     def closeEvent(self, event):
+        if self.localization_worker:
+            self.localization_worker.stop()
         event.accept()
 
 if __name__ == '__main__':

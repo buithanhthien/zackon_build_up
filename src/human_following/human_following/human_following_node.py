@@ -12,7 +12,7 @@ class HumanFollowingNode(Node):
     def __init__(self):
         super().__init__('human_following_node')
         
-        self.declare_parameter('camera_url', 'http://10.67.199.145:8080/video')
+        self.declare_parameter('camera_url', 1)
         camera_url = self.get_parameter('camera_url').get_parameter_value().string_value
         
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)

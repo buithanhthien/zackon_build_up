@@ -12,7 +12,6 @@ class NewMapUI(QMainWindow):
         super().__init__()
         self.mapping_process = None
         self.init_ui()
-        self.start_mapping()
         
     def init_ui(self):
         self.setWindowTitle("New Map - SLAM Mapping")
@@ -28,11 +27,18 @@ class NewMapUI(QMainWindow):
         left_panel.setStyleSheet("background-color: #f0f0f0;")
         left_layout = QVBoxLayout(left_panel)
         
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setFont(QFont("Fira Sans", 24))
+        self.btn_cancel.setMinimumHeight(100)
+        self.btn_cancel.clicked.connect(self.cancel_mapping)
+        left_layout.addWidget(self.btn_cancel)
+        
         self.btn_back = QPushButton("Back")
         self.btn_back.setFont(QFont("Fira Sans", 24))
         self.btn_back.setMinimumHeight(100)
         self.btn_back.clicked.connect(self.go_back)
         left_layout.addWidget(self.btn_back)
+        
         left_layout.addStretch()
         
         # Right panel - Main content
@@ -40,15 +46,22 @@ class NewMapUI(QMainWindow):
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(10, 10, 10, 10)
         
-        title = QLabel("SLAM Mapping Active")
+        title = QLabel("SLAM Mapping")
         title.setFont(QFont("Fira Sans", 28, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         right_layout.addWidget(title)
         
-        info = QLabel("Generating new map using SLAM Toolbox\nDrive the robot to explore the environment")
+        info = QLabel("Click Start to begin generating a new map using SLAM Toolbox")
         info.setFont(QFont("Fira Sans", 16))
         info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         right_layout.addWidget(info)
+        
+        # Start button
+        self.btn_start = QPushButton("Start")
+        self.btn_start.setFont(QFont("Fira Sans", 24))
+        self.btn_start.setMinimumHeight(100)
+        self.btn_start.clicked.connect(self.start_mapping)
+        right_layout.addWidget(self.btn_start)
         
         # Save map section
         save_widget = QWidget()
@@ -91,9 +104,26 @@ class NewMapUI(QMainWindow):
             ])
             self.log("Started MAP_GENERATING.launch.py")
             self.log("SLAM mapping is now active")
+            self.log("Drive the robot to explore the environment")
             self.log("Enter a map name and click Apply to save the map")
+            self.btn_start.setEnabled(False)
+            self.btn_start.setText("Mapping Active")
         except Exception as e:
             self.log(f"Failed to start mapping: {e}")
+    
+    def cancel_mapping(self):
+        self.log("Cancelling SLAM mapping process...")
+        try:
+            subprocess.run(['pkill', '-f', 'MAP_GENERATING.launch.py'], check=False)
+            subprocess.run(['pkill', '-f', 'rviz2'], check=False)
+            self.log("Killed MAP_GENERATING and RViz2 processes")
+        except Exception as e:
+            self.log(f"Error killing processes: {e}")
+        finally:
+            self.mapping_process = None
+            self.btn_start.setEnabled(True)
+            self.btn_start.setText("Start")
+            self.log("Start button restored to normal state")
     
     def save_map(self):
         map_name = self.map_name_input.text().strip()

@@ -13,23 +13,27 @@ class HumanFollowingNode(Node):
     def __init__(self):
         super().__init__('human_following_node')
         
-        self.declare_parameter('camera_device', '/dev/integrated_cam')
-        camera_device = self.get_parameter('camera_device').get_parameter_value().string_value
+        self.declare_parameter('camera_device', 1)
+        camera_device = self.get_parameter('camera_device').get_parameter_value().integer_value
         
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.lock_publisher = self.create_publisher(String, '/human_lock_status', 10)
         
-        self.camera = Camera(source=camera_device)
+        self.camera = Camera(source=camera_device, width=640, height=480)
         self.detector = HumanDetector()
-        self.tracker = HumanTracker(frame_width=640, frame_height=480, horizontal_fov=88.2)
+        self.tracker = HumanTracker(frame_width=640, frame_height=480, horizontal_fov=145.0)
         
         self.last_reconnect_attempt = 0
         self.reconnect_interval = 1.0
         self.camera_connected = False
         self.last_locked_id = None
         
-        self.timer = self.create_timer(0.1, self.process_frame)
+        self.frame_count = 0
+        self.fps_start_time = time.time()
+        self.fps_publisher = self.create_publisher(String, '/tracking_fps', 10)
+        
+        self.timer = self.create_timer(0.03, self.process_frame)
         self.get_logger().info(f'Human following node started with camera: {camera_device}')
         
     def process_frame(self):
@@ -57,19 +61,29 @@ class HumanFollowingNode(Node):
             self.get_logger().info('Camera connected successfully')
             
         results = self.detector.detect(frame)
+        num_detections = len(results[0].boxes) if results and len(results) > 0 else 0
+        
+        if num_detections > 0:
+            self.get_logger().info(f'Detected {num_detections} humans', throttle_duration_sec=2.0)
+        
         linear, angular, tracked, human_pose = self.tracker.get_human_position(results, time.time())
+        
+        if len(tracked) > 0:
+            self.get_logger().info(f'Tracked: {len(tracked)}, Locked: {self.tracker.locked_id}, Linear: {linear:.2f}, Angular: {angular:.2f}', throttle_duration_sec=1.0)
+            if human_pose:
+                self.get_logger().info(f'Human pose - distance: {human_pose["distance"]:.2f}m, angle: {human_pose["angle"]:.2f}rad', throttle_duration_sec=1.0)
         
         if human_pose is not None:
             goal_msg = PoseStamped()
             goal_msg.header.stamp = self.get_clock().now().to_msg()
             goal_msg.header.frame_id = 'base_link'
-            goal_msg.pose.position.x = human_pose['x']
-            goal_msg.pose.position.y = human_pose['y']
+            goal_msg.pose.position.x = float(human_pose['x'])
+            goal_msg.pose.position.y = float(human_pose['y'])
             goal_msg.pose.position.z = 0.0
             
             yaw = math.atan2(human_pose['y'], human_pose['x'])
-            goal_msg.pose.orientation.z = math.sin(yaw / 2)
-            goal_msg.pose.orientation.w = math.cos(yaw / 2)
+            goal_msg.pose.orientation.z = float(math.sin(yaw / 2))
+            goal_msg.pose.orientation.w = float(math.cos(yaw / 2))
             
             self.goal_publisher.publish(goal_msg)
         
@@ -84,6 +98,16 @@ class HumanFollowingNode(Node):
         msg.linear.x = linear
         msg.angular.z = angular
         self.publisher.publish(msg)
+        
+        self.frame_count += 1
+        if self.frame_count % 30 == 0:
+            elapsed = time.time() - self.fps_start_time
+            fps = self.frame_count / elapsed
+            fps_msg = String()
+            fps_msg.data = f"FPS: {fps:.1f}"
+            self.fps_publisher.publish(fps_msg)
+            self.frame_count = 0
+            self.fps_start_time = time.time()
         
         if linear != 0.0 or angular != 0.0:
             elapsed_ms = (time.time() - start_time) * 1000

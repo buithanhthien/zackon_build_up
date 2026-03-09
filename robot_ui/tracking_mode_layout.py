@@ -5,7 +5,7 @@ import os
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from std_msgs.msg import String
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTextEdit, QLabel)
@@ -130,6 +130,10 @@ class TrackingModeUI(QMainWindow):
             PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
         self.lock_sub = self.ros_node.create_subscription(
             String, '/human_lock_status', self.lock_callback, 10)
+        self.cmd_vel_sub = self.ros_node.create_subscription(
+            Twist, '/cmd_vel', self.cmd_vel_callback, 10)
+        self.fps_sub = self.ros_node.create_subscription(
+            String, '/tracking_fps', self.fps_callback, 10)
         
         self.ros_timer = QTimer()
         self.ros_timer.timeout.connect(lambda: rclpy.spin_once(self.ros_node, timeout_sec=0))
@@ -162,6 +166,13 @@ class TrackingModeUI(QMainWindow):
         self.map_widget.set_robot_pose(msg)
         
     def lock_callback(self, msg):
+        self.log(msg.data)
+    
+    def cmd_vel_callback(self, msg):
+        if msg.linear.x != 0.0 or msg.angular.z != 0.0:
+            self.log(f"CMD_VEL → STM32: linear={msg.linear.x:.2f} m/s, angular={msg.angular.z:.2f} rad/s")
+    
+    def fps_callback(self, msg):
         self.log(msg.data)
         
     def launch_tracking(self):

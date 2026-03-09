@@ -3,7 +3,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, TextSubstitution
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 def generate_launch_description():
@@ -20,11 +20,18 @@ def generate_launch_description():
         camera_url_arg,
         
         Node(
+            package='view_robot_pkg',
+            executable='odom_tf_broadcaster',
+            name='odom_tf_broadcaster',
+            output='screen'
+        ),
+        
+        Node(
             package='human_following',
             executable='human_following_node',
             name='human_following_node',
             parameters=[{
-                'camera_url': LaunchConfiguration('camera_url')
+                'camera_device': 1
             }],
             output='screen'
         ),

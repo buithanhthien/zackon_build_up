@@ -21,7 +21,7 @@ class Track:
         self.lost_frames = 0
 
 class HumanTracker:
-    def __init__(self, frame_width=640, frame_height=480, horizontal_fov=88.2):
+    def __init__(self, frame_width=640, frame_height=480, horizontal_fov=70):
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.center_x = frame_width / 2
@@ -32,11 +32,11 @@ class HumanTracker:
         
         self.desired_distance = 1.5
         self.angle_threshold = 0.1
-        self.angle_deadzone = 0.01
+        self.angle_deadzone = 0.03
         self.vertical_margin = 10
         
         self.max_angular = 1.0
-        self.max_linear = 1.0
+        self.max_linear = 0.2
         
         self.angular_pid = PIDController(kp=2.0, ki=0.02, kd=0.25, output_limits=(-self.max_angular, self.max_angular))
         self.linear_pid = PIDController(kp=2.0, ki=0.0, kd=0.08, output_limits=(0.0, self.max_linear))
@@ -49,7 +49,7 @@ class HumanTracker:
         self.locked_id = None
         self.lock_candidate_id = None
         self.lock_candidate_start_time = None
-        self.lock_duration = 5.0
+        self.lock_duration = 1.0
         
     def iou(self, box1, box2):
         x1 = max(box1[0], box2[0])
@@ -160,14 +160,18 @@ class HumanTracker:
         track_id, bbox = target
         x_min, y_min, x_max, y_max = bbox
         
-        if y_min <= self.vertical_margin or y_max >= self.frame_height - self.vertical_margin:
-            self.angular_pid.reset()
-            self.linear_pid.reset()
-            return (0.0, 0.0, tracked, None)
+        # Temporarily disabled vertical margin check for debugging
+        # if y_min <= self.vertical_margin or y_max >= self.frame_height - self.vertical_margin:
+        #     self.angular_pid.reset()
+        #     self.linear_pid.reset()
+        #     return (0.0, 0.0, tracked, None)
             
         bbox_center_x = (x_min + x_max) / 2
         delta_px = bbox_center_x - self.center_x
         theta = math.atan2(delta_px, self.focal_length_px)
+        
+        # Debug logging
+        print(f"DEBUG: bbox_center={bbox_center_x:.1f}, frame_center={self.center_x:.1f}, delta_px={delta_px:.1f}, theta={theta:.3f}rad")
         
         if abs(theta) <= self.angle_deadzone:
             angular_z = 0.0
@@ -179,10 +183,9 @@ class HumanTracker:
         estimated_distance = (1.7 * self.focal_length_px) / bbox_height
         distance_error = estimated_distance - self.desired_distance
         
-        if distance_error > 0:
+        # Move to maintain desired distance (forward if too far, backward if too close)
+        if abs(distance_error) > 0.2:
             linear_x = float(self.linear_pid.compute(distance_error))
-            alignment_factor = max(0, 1 - abs(theta)/0.3)
-            linear_x *= alignment_factor
         else:
             linear_x = 0.0
             self.linear_pid.reset()

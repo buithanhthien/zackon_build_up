@@ -21,7 +21,7 @@ class Track:
         self.lost_frames = 0
 
 class HumanTracker:
-    def __init__(self, frame_width=640, frame_height=480, horizontal_fov=170.2):
+    def __init__(self, frame_width=640, frame_height=480, horizontal_fov=88.2):
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.center_x = frame_width / 2

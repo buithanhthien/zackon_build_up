@@ -13,16 +13,16 @@ class HumanFollowingNode(Node):
     def __init__(self):
         super().__init__('human_following_node')
         
-        self.declare_parameter('camera_url', 1)
-        camera_url = self.get_parameter('camera_url').get_parameter_value().string_value
+        self.declare_parameter('camera_device', '/dev/integrated_cam')
+        camera_device = self.get_parameter('camera_device').get_parameter_value().string_value
         
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.lock_publisher = self.create_publisher(String, '/human_lock_status', 10)
         
-        self.camera = Camera(source=camera_url)
+        self.camera = Camera(source=camera_device)
         self.detector = HumanDetector()
-        self.tracker = HumanTracker(frame_width=640, frame_height=480)
+        self.tracker = HumanTracker(frame_width=640, frame_height=480, horizontal_fov=88.2)
         
         self.last_reconnect_attempt = 0
         self.reconnect_interval = 1.0
@@ -30,7 +30,7 @@ class HumanFollowingNode(Node):
         self.last_locked_id = None
         
         self.timer = self.create_timer(0.1, self.process_frame)
-        self.get_logger().info(f'Human following node started with camera: {camera_url}')
+        self.get_logger().info(f'Human following node started with camera: {camera_device}')
         
     def process_frame(self):
         start_time = time.time()

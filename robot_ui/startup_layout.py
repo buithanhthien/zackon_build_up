@@ -297,15 +297,17 @@ class RobotUI(QMainWindow):
         self.btn_waypoints = QPushButton("Waypoints")
         self.btn_nav2 = QPushButton("Nav2")
         self.btn_reestimate = QPushButton("Re-estimate")
+        self.btn_new_map = QPushButton("New Map")
         
-        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate]:
+        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate, self.btn_new_map]:
             btn.setFont(QFont("Fira Sans", 24))
             btn.setMinimumHeight(100)
-            if btn != self.btn_reestimate:
+            if btn not in [self.btn_reestimate, self.btn_new_map]:
                 btn.clicked.connect(lambda checked, b=btn: self.mode_changed(b.text()))
             mode_layout.addWidget(btn)
         
         self.btn_reestimate.clicked.connect(self.start_reestimate)
+        self.btn_new_map.clicked.connect(self.start_new_map)
         
         mode_layout.addStretch()
         
@@ -451,6 +453,11 @@ class RobotUI(QMainWindow):
     def localization_finished(self):
         self.localization_thread = None
         self.localization_worker = None
+    
+    def start_new_map(self):
+        self.log("Switching to New Map mode")
+        subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/new_map_layout.py'])
+        self.close()
     
     def log(self, message):
         self.log_text.append(message)

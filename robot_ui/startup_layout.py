@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import math
+import re
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTextEdit, QLabel)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
@@ -13,6 +14,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
 from std_srvs.srv import Empty
+from load_map_dialog import LoadMapDialog
 
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
@@ -159,7 +161,7 @@ class LocalizationWorker(QObject):
         self.log_signal.emit("Calling /reinitialize_global_localization")
         global_loc_client.call_async(Empty.Request())
 
-        # Brief pause — let AMCL spread particles before we start moving
+        # Brief pause — let AMCL spread particles before we start moving 
         rclpy.spin_once(node, timeout_sec=1.0)
 
         # ── Step 2: Wait for first AMCL pose ──────────────────────────────────
@@ -298,16 +300,18 @@ class RobotUI(QMainWindow):
         self.btn_nav2 = QPushButton("Nav2")
         self.btn_reestimate = QPushButton("Re-estimate")
         self.btn_new_map = QPushButton("New Map")
+        self.btn_load_map = QPushButton("Load Map")
         
-        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate, self.btn_new_map]:
+        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate, self.btn_new_map, self.btn_load_map]:
             btn.setFont(QFont("Fira Sans", 24))
             btn.setMinimumHeight(100)
-            if btn not in [self.btn_reestimate, self.btn_new_map]:
+            if btn not in [self.btn_reestimate, self.btn_new_map, self.btn_load_map]:
                 btn.clicked.connect(lambda checked, b=btn: self.mode_changed(b.text()))
             mode_layout.addWidget(btn)
         
         self.btn_reestimate.clicked.connect(self.start_reestimate)
         self.btn_new_map.clicked.connect(self.start_new_map)
+        self.btn_load_map.clicked.connect(self.load_map)
         
         mode_layout.addStretch()
         
@@ -458,6 +462,85 @@ class RobotUI(QMainWindow):
         self.log("Switching to New Map mode")
         subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/new_map_layout.py'])
         self.close()
+    
+    def load_map(self):
+        dialog = LoadMapDialog(self)
+        if dialog.exec():
+            map_name = dialog.get_selected_map()
+            if map_name:
+                self.log(f"Loading map: {map_name}")
+                self.update_map_files(map_name)
+    
+    def update_map_files(self, map_name):
+        map_path = f'/home/khoaiuh/thien_ws/src/view_robot/maps/{map_name}.yaml'
+        
+        # 1. Update nav2_params.yaml
+        nav2_params = '/home/khoaiuh/thien_ws/src/view_robot/config/nav2_params.yaml'
+        try:
+            with open(nav2_params, 'r') as f:
+                content = f.read()
+            
+            updated = re.sub(
+                r'(yaml_filename:\s*")[^"]*(")',
+                rf'\1{map_path}\2',
+                content
+            )
+            
+            with open(nav2_params, 'w') as f:
+                f.write(updated)
+            self.log(f"✓ Updated nav2_params.yaml")
+        except Exception as e:
+            self.log(f"✗ Error updating nav2_params.yaml: {e}")
+            return
+        
+        # 2. Update zackon_synthesis.launch.py
+        synthesis_launch = '/home/khoaiuh/thien_ws/src/view_robot/launch/zackon_synthesis.launch.py'
+        try:
+            with open(synthesis_launch, 'r') as f:
+                content = f.read()
+            
+            updated = re.sub(
+                r"(map_file_path\s*=\s*PathJoinSubstitution\(\[pkg_dir,\s*'maps',\s*')[^']*('\]\))",
+                rf"\1{map_name}.yaml\2",
+                content
+            )
+            
+            with open(synthesis_launch, 'w') as f:
+                f.write(updated)
+            self.log(f"✓ Updated zackon_synthesis.launch.py")
+        except Exception as e:
+            self.log(f"✗ Error updating zackon_synthesis.launch.py: {e}")
+            return
+        
+        # 3. Update zackon_localization.launch.py
+        localization_launch = '/home/khoaiuh/thien_ws/src/view_robot/launch/zackon_localization.launch.py'
+        try:
+            with open(localization_launch, 'r') as f:
+                content = f.read()
+            
+            updated = re.sub(
+                r"(default_value=os\.path\.join\(bringup_dir,\s*'maps',\s*')[^']*('\))",
+                rf"\1{map_name}.yaml\2",
+                content
+            )
+            
+            with open(localization_launch, 'w') as f:
+                f.write(updated)
+            self.log(f"✓ Updated zackon_localization.launch.py")
+        except Exception as e:
+            self.log(f"✗ Error updating zackon_localization.launch.py: {e}")
+            return
+        
+        # 4. Build and source workspace
+        self.log("Building workspace...")
+        try:
+            subprocess.Popen([
+                'gnome-terminal', '--', 'bash', '-c',
+                'cd ~/thien_ws && colcon build --packages-select view_robot_pkg && source install/setup.bash && echo "Build complete. Closing in 2 seconds..." && sleep 2'
+            ])
+            self.log(f"✓ Map '{map_name}' loaded and workspace building")
+        except Exception as e:
+            self.log(f"✗ Error building workspace: {e}")
     
     def log(self, message):
         self.log_text.append(message)

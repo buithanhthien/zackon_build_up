@@ -73,7 +73,7 @@ class NewMapUI(QMainWindow):
         
         input_layout = QHBoxLayout()
         self.map_name_input = QLineEdit()
-        self.map_name_input.setPlaceholderText("Enter map name...")
+        self.map_name_input.setPlaceholderText("Enter map name you want...")
         self.map_name_input.setFont(QFont("Fira Sans", 16))
         self.map_name_input.setMinimumHeight(50)
         input_layout.addWidget(self.map_name_input)

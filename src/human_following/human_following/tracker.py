@@ -21,7 +21,7 @@ class Track:
         self.lost_frames = 0
 
 class HumanTracker:
-    def __init__(self, frame_width=640, frame_height=480, horizontal_fov=80.2):
+    def __init__(self, frame_width=640, frame_height=480, horizontal_fov=77.2):
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.center_x = frame_width / 2
@@ -30,7 +30,7 @@ class HumanTracker:
         horizontal_fov_rad = math.radians(horizontal_fov)
         self.focal_length_px = frame_width / (2 * math.tan(horizontal_fov_rad / 2))
         
-        self.desired_distance = 1.5
+        self.desired_distance = 2
         self.angle_threshold = 0.1
         self.angle_deadzone = 0.01
         self.vertical_margin = 10

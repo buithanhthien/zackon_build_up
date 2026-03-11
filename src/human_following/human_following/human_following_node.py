@@ -49,7 +49,7 @@ class HumanFollowingNode(Node):
         if current_time - self.last_goal_time < self.goal_interval:
             return
             
-        if self.current_goal_handle and not self.current_goal_handle.done():
+        if self.current_goal_handle:
             self.current_goal_handle.cancel_goal_async()
         
         goal_msg = FollowPath.Goal()

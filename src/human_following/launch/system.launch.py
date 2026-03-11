@@ -8,7 +8,7 @@ from launch.substitutions import LaunchConfiguration
 def generate_launch_description():
     camera_url_arg = DeclareLaunchArgument(
         'camera_url',
-        default_value='1',
+        default_value='0',
         description='Camera URL for human following'
     )
     
@@ -23,7 +23,8 @@ def generate_launch_description():
             executable='human_following_node',
             name='human_following_node',
             parameters=[{
-                'camera_url': LaunchConfiguration('camera_url')
+                'camera_url': LaunchConfiguration('camera_url'),
+                'use_nav2': False
             }],
             output='screen'
         ),

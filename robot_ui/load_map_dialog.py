@@ -10,7 +10,7 @@ class LoadMapDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.selected_map = None
-        self.maps_dir = '/home/khoaiuh/thien_ws/src/view_robot/maps'
+        self.maps_dir = '/home/khoaiuh/zackon_build_up/src/view_robot/maps'
         self.init_ui()
         
     def init_ui(self):

@@ -368,7 +368,7 @@ class RobotUI(QMainWindow):
         try:
             subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
-                'source ~/thien_ws/install/setup.bash && ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash'
+                'source ~/zackon_build_up/install/setup.bash && ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash'
             ])
             self.log("Started micro-ROS agent in new terminal")
         except Exception as e:
@@ -416,19 +416,19 @@ class RobotUI(QMainWindow):
     def mode_changed(self, mode):
         self.log(f"Mode changed to {mode}")
         if mode == "Manual":
-            subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/manual_mode_layout.py'])
+            subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/manual_mode_layout.py'])
             self.close()
         elif mode == "Tracking":
-            subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/tracking_mode_layout.py'])
+            subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/tracking_mode_layout.py'])
             self.close()
         elif mode == "Waypoints":
-            subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/waypoints_mode_layout.py'])
+            subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/waypoints_mode_layout.py'])
             self.close()
         elif mode == "Nav2":
             try:
                 subprocess.Popen([
                     'gnome-terminal', '--', 'bash', '-c',
-                    'source ~/thien_ws/install/setup.bash && ros2 launch view_robot_pkg zackon_synthesis.launch.py; exec bash'
+                    'source ~/zackon_build_up/install/setup.bash && ros2 launch view_robot_pkg zackon_synthesis.launch.py; exec bash'
                 ])
                 self.log("Launched Nav2 navigation system")
             except Exception as e:
@@ -460,7 +460,7 @@ class RobotUI(QMainWindow):
     
     def start_new_map(self):
         self.log("Switching to New Map mode")
-        subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/new_map_layout.py'])
+        subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/new_map_layout.py'])
         self.close()
     
     def load_map(self):
@@ -472,10 +472,10 @@ class RobotUI(QMainWindow):
                 self.update_map_files(map_name)
     
     def update_map_files(self, map_name):
-        map_path = f'/home/khoaiuh/thien_ws/src/view_robot/maps/{map_name}.yaml'
+        map_path = f'/home/khoaiuh/zackon_build_up/src/view_robot/maps/{map_name}.yaml'
         
         # 1. Update nav2_params.yaml
-        nav2_params = '/home/khoaiuh/thien_ws/src/view_robot/config/nav2_params.yaml'
+        nav2_params = '/home/khoaiuh/zackon_build_up/src/view_robot/config/nav2_params.yaml'
         try:
             with open(nav2_params, 'r') as f:
                 content = f.read()
@@ -494,7 +494,7 @@ class RobotUI(QMainWindow):
             return
         
         # 2. Update zackon_synthesis.launch.py
-        synthesis_launch = '/home/khoaiuh/thien_ws/src/view_robot/launch/zackon_synthesis.launch.py'
+        synthesis_launch = '/home/khoaiuh/zackon_build_up/src/view_robot/launch/zackon_synthesis.launch.py'
         try:
             with open(synthesis_launch, 'r') as f:
                 content = f.read()
@@ -513,7 +513,7 @@ class RobotUI(QMainWindow):
             return
         
         # 3. Update zackon_localization.launch.py
-        localization_launch = '/home/khoaiuh/thien_ws/src/view_robot/launch/zackon_localization.launch.py'
+        localization_launch = '/home/khoaiuh/zackon_build_up/src/view_robot/launch/zackon_localization.launch.py'
         try:
             with open(localization_launch, 'r') as f:
                 content = f.read()
@@ -536,7 +536,7 @@ class RobotUI(QMainWindow):
         try:
             subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
-                'cd ~/thien_ws && colcon build --packages-select view_robot_pkg && source install/setup.bash && echo "Build complete. Closing in 2 seconds..." && sleep 2'
+                'cd ~/zackon_build_up && colcon build --packages-select view_robot_pkg && source install/setup.bash && echo "Build complete. Closing in 2 seconds..." && sleep 2'
             ])
             self.log(f"✓ Map '{map_name}' loaded and workspace building")
         except Exception as e:

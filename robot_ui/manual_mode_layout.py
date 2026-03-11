@@ -99,7 +99,7 @@ class ManualModeUI(QMainWindow):
     
     def go_back(self):
         self.log("Returning to startup layout")
-        subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def log(self, message):

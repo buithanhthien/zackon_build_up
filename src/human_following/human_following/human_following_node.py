@@ -14,7 +14,7 @@ class HumanFollowingNode(Node):
         super().__init__('human_following_node')
         
         self.declare_parameter('camera_url', 1)
-        camera_url = self.get_parameter('camera_url').get_parameter_value().string_value
+        camera_url = self.get_parameter('camera_url').value
         
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
@@ -63,13 +63,13 @@ class HumanFollowingNode(Node):
             goal_msg = PoseStamped()
             goal_msg.header.stamp = self.get_clock().now().to_msg()
             goal_msg.header.frame_id = 'base_link'
-            goal_msg.pose.position.x = human_pose['x']
-            goal_msg.pose.position.y = human_pose['y']
+            goal_msg.pose.position.x = float(human_pose['x'])
+            goal_msg.pose.position.y = float(human_pose['y'])
             goal_msg.pose.position.z = 0.0
             
             yaw = math.atan2(human_pose['y'], human_pose['x'])
-            goal_msg.pose.orientation.z = math.sin(yaw / 2)
-            goal_msg.pose.orientation.w = math.cos(yaw / 2)
+            goal_msg.pose.orientation.z = float(math.sin(yaw / 2))
+            goal_msg.pose.orientation.w = float(math.cos(yaw / 2))
             
             self.goal_publisher.publish(goal_msg)
         

@@ -100,7 +100,7 @@ class NewMapUI(QMainWindow):
         try:
             self.mapping_process = subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
-                'source ~/thien_ws/install/setup.bash && ros2 launch view_robot_pkg MAP_GENERATING.launch.py; exec bash'
+                'source ~/zackon_build_up/install/setup.bash && ros2 launch view_robot_pkg MAP_GENERATING.launch.py; exec bash'
             ])
             self.log("Started MAP_GENERATING.launch.py")
             self.log("SLAM mapping is now active")
@@ -131,12 +131,12 @@ class NewMapUI(QMainWindow):
             self.log("Error: Please enter a map name")
             return
         
-        map_path = f"/home/khoaiuh/thien_ws/src/view_robot/maps/{map_name}"
+        map_path = f"/home/khoaiuh/zackon_build_up/src/view_robot/maps/{map_name}"
         self.log(f"Saving map as '{map_name}' to maps folder...")
         try:
             subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
-                f'source ~/thien_ws/install/setup.bash && cd /home/khoaiuh/thien_ws/src/view_robot/maps && ros2 run nav2_map_server map_saver_cli -f {map_name}; exec bash'
+                f'source ~/zackon_build_up/install/setup.bash && cd /home/khoaiuh/zackon_build_up/src/view_robot/maps && ros2 run nav2_map_server map_saver_cli -f {map_name}; exec bash'
             ])
             self.log(f"Map saved to: {map_path}")
         except Exception as e:
@@ -153,7 +153,7 @@ class NewMapUI(QMainWindow):
             except:
                 self.mapping_process.kill()
                 self.log("SLAM process killed")
-        subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def log(self, message):

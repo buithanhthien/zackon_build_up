@@ -23,7 +23,7 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/serial/by-id/YOUR_DEV
 
 ### Terminal 2: Start Human Following Node
 ```bash
-cd ~/thien_ws
+cd ~/zackon_build_up
 source install/setup.bash
 ros2 run human_following human_following_node
 ```

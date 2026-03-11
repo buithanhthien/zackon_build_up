@@ -98,7 +98,7 @@ class TrackingModeUI(QMainWindow):
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(10, 10, 10, 10)
         
-        map_yaml_path = '/home/khoaiuh/thien_ws/src/view_robot/maps/F5.yaml'
+        map_yaml_path = '/home/khoaiuh/zackon_build_up/src/view_robot/maps/F5.yaml'
         map_dir = os.path.dirname(map_yaml_path)
         yaml_data = self.load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])
@@ -168,7 +168,7 @@ class TrackingModeUI(QMainWindow):
         try:
             self.launch_process = subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
-                'source /home/khoaiuh/thien_ws/install/setup.bash && ros2 launch /home/khoaiuh/thien_ws/src/human_following/launch/system.launch.py; exec bash'
+                'source /home/khoaiuh/zackon_build_up/install/setup.bash && ros2 launch /home/khoaiuh/zackon_build_up/src/human_following/launch/system.launch.py; exec bash'
             ])
             self.log("Launched tracking system")
         except Exception as e:
@@ -179,7 +179,7 @@ class TrackingModeUI(QMainWindow):
             subprocess.run(['pkill', '-f', 'system.launch.py'])
             self.launch_process.terminate()
             self.log("Stopped tracking system")
-        subprocess.Popen(['python3', '/home/khoaiuh/thien_ws/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
         
     def log(self, message):

@@ -303,17 +303,19 @@ class RobotUI(QMainWindow):
         self.btn_reestimate = QPushButton("Re-estimate")
         self.btn_new_map = QPushButton("New Map")
         self.btn_load_map = QPushButton("Load Map")
+        self.btn_docking = QPushButton("Docking")
         
-        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate, self.btn_new_map, self.btn_load_map]:
+        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking]:
             btn.setFont(QFont("Fira Sans", 24))
             btn.setMinimumHeight(100)
-            if btn not in [self.btn_reestimate, self.btn_new_map, self.btn_load_map]:
+            if btn not in [self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking]:
                 btn.clicked.connect(lambda checked, b=btn: self.mode_changed(b.text()))
             mode_layout.addWidget(btn)
         
         self.btn_reestimate.clicked.connect(self.start_reestimate)
         self.btn_new_map.clicked.connect(self.start_new_map)
         self.btn_load_map.clicked.connect(self.load_map)
+        self.btn_docking.clicked.connect(self.start_docking)
         
         mode_layout.addStretch()
         
@@ -464,6 +466,10 @@ class RobotUI(QMainWindow):
         self.log("Switching to New Map mode")
         subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
         self.close()
+    
+    def start_docking(self):
+        self.log("Starting docking sequence")
+        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/docking_sequence.py'])
     
     def load_map(self):
         dialog = LoadMapDialog(self)

@@ -55,7 +55,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'map',
             # Get from parent launch
-            default_value=os.path.join(bringup_dir, 'maps', 'X504.yaml'),
+            default_value=os.path.join(bringup_dir, 'maps', 'F5.yaml'),
             description='Full path to map yaml file to load'),
 
         DeclareLaunchArgument(

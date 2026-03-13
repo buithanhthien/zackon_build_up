@@ -12,6 +12,9 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
 from nav2_msgs.action import NavigateToPose
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import SOURCE_PATH
 
 
 class WaypointsNode(Node):
@@ -79,7 +82,7 @@ class WaypointsModeLayout(QMainWindow):
         except:
             pass
         self.ros_node = WaypointsNode()
-        self.waypoints_file = '/home/khoaiuh/zackon_build_up/robot_ui/waypoints.json'
+        self.waypoints_file = f'{SOURCE_PATH}/robot_ui/waypoints.json'
         self.waypoints = self.load_waypoints()
         self.current_mode = None
         self.selected_sequence = []
@@ -145,7 +148,7 @@ class WaypointsModeLayout(QMainWindow):
         map_and_buttons_widget = QWidget()
         map_and_buttons_layout = QVBoxLayout(map_and_buttons_widget)
         
-        map_yaml_path = '/home/khoaiuh/zackon_build_up/src/view_robot/maps/F5.yaml'
+        map_yaml_path = f'{SOURCE_PATH}/src/view_robot/maps/F5.yaml'
         map_dir = os.path.dirname(map_yaml_path)
         yaml_data = self.load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])
@@ -392,7 +395,7 @@ class WaypointsModeLayout(QMainWindow):
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
-        subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def closeEvent(self, event):

@@ -15,6 +15,8 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
 from std_srvs.srv import Empty
 from load_map_dialog import LoadMapDialog
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import SOURCE_PATH
 
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
@@ -416,13 +418,13 @@ class RobotUI(QMainWindow):
     def mode_changed(self, mode):
         self.log(f"Mode changed to {mode}")
         if mode == "Manual":
-            subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/manual_mode_layout.py'])
+            subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/manual_mode_layout.py'])
             self.close()
         elif mode == "Tracking":
-            subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/tracking_mode_layout.py'])
+            subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
             self.close()
         elif mode == "Waypoints":
-            subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/waypoints_mode_layout.py'])
+            subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py'])
             self.close()
         elif mode == "Nav2":
             try:
@@ -460,7 +462,7 @@ class RobotUI(QMainWindow):
     
     def start_new_map(self):
         self.log("Switching to New Map mode")
-        subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/new_map_layout.py'])
+        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
         self.close()
     
     def load_map(self):
@@ -472,10 +474,9 @@ class RobotUI(QMainWindow):
                 self.update_map_files(map_name)
     
     def update_map_files(self, map_name):
-        map_path = f'/home/khoaiuh/zackon_build_up/src/view_robot/maps/{map_name}.yaml'
+        map_path = f'{SOURCE_PATH}/src/view_robot/maps/{map_name}.yaml'
         
-        # 1. Update nav2_params.yaml
-        nav2_params = '/home/khoaiuh/zackon_build_up/src/view_robot/config/nav2_params.yaml'
+        nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
         try:
             with open(nav2_params, 'r') as f:
                 content = f.read()
@@ -493,8 +494,7 @@ class RobotUI(QMainWindow):
             self.log(f"✗ Error updating nav2_params.yaml: {e}")
             return
         
-        # 2. Update zackon_synthesis.launch.py
-        synthesis_launch = '/home/khoaiuh/zackon_build_up/src/view_robot/launch/zackon_synthesis.launch.py'
+        synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_synthesis.launch.py'
         try:
             with open(synthesis_launch, 'r') as f:
                 content = f.read()
@@ -512,8 +512,7 @@ class RobotUI(QMainWindow):
             self.log(f"✗ Error updating zackon_synthesis.launch.py: {e}")
             return
         
-        # 3. Update zackon_localization.launch.py
-        localization_launch = '/home/khoaiuh/zackon_build_up/src/view_robot/launch/zackon_localization.launch.py'
+        localization_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_localization.launch.py'
         try:
             with open(localization_launch, 'r') as f:
                 content = f.read()

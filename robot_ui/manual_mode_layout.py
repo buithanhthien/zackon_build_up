@@ -13,6 +13,9 @@ import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import SOURCE_PATH
 
 class ManualModeUI(QMainWindow):
     def __init__(self):
@@ -99,7 +102,7 @@ class ManualModeUI(QMainWindow):
     
     def go_back(self):
         self.log("Returning to startup layout")
-        subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def log(self, message):

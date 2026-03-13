@@ -4,13 +4,16 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QListWidget, QLabel, QListWidgetItem)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import SOURCE_PATH
 
 
 class LoadMapDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.selected_map = None
-        self.maps_dir = '/home/khoaiuh/zackon_build_up/src/view_robot/maps'
+        self.maps_dir = f'{SOURCE_PATH}/src/view_robot/maps'
         self.init_ui()
         
     def init_ui(self):

@@ -5,6 +5,9 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QPushButton, QTextEdit, QLabel, QLineEdit)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import SOURCE_PATH
 
 
 class NewMapUI(QMainWindow):
@@ -131,12 +134,12 @@ class NewMapUI(QMainWindow):
             self.log("Error: Please enter a map name")
             return
         
-        map_path = f"/home/khoaiuh/zackon_build_up/src/view_robot/maps/{map_name}"
+        map_path = ff"{SOURCE_PATH}/src/view_robot/maps/{map_name}"
         self.log(f"Saving map as '{map_name}' to maps folder...")
         try:
             subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
-                f'source ~/zackon_build_up/install/setup.bash && cd /home/khoaiuh/zackon_build_up/src/view_robot/maps && ros2 run nav2_map_server map_saver_cli -f {map_name}; exec bash'
+                f'source ~/zackon_build_up/install/setup.bash && cd {SOURCE_PATH}/src/view_robot/maps && ros2 run nav2_map_server map_saver_cli -f {map_name}; exec bash'
             ])
             self.log(f"Map saved to: {map_path}")
         except Exception as e:
@@ -153,7 +156,7 @@ class NewMapUI(QMainWindow):
             except:
                 self.mapping_process.kill()
                 self.log("SLAM process killed")
-        subprocess.Popen(['python3', '/home/khoaiuh/zackon_build_up/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def log(self, message):

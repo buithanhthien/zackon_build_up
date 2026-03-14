@@ -13,6 +13,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -25,6 +26,7 @@ setup(
         'console_scripts': [
             'dock_detector = auto_docking.dock_detector_node:main',
             'dock_controller = auto_docking.dock_controller_node:main',
+            'dock_robot = auto_docking.dock_robot:main',
         ],
     },
 )

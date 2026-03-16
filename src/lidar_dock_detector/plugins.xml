@@ -5,7 +5,7 @@
     base_class_type="opennav_docking_core::ChargingDock">
     <description>
       Dock detector using retroreflective intensity
-      from RPLidar A2 LaserScan.
+      from RPLidar S2 LaserScan.
     </description>
   </class>
 </library>

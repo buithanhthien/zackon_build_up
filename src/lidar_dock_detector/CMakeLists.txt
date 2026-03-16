@@ -21,7 +21,10 @@ find_package(angles REQUIRED)
 add_library(${PROJECT_NAME} SHARED
   src/lidar_intensity_dock.cpp
 )
-
+# Debug node
+add_executable(debug_intensity_node
+  src/debug_intensity_node.cpp
+)
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
@@ -40,6 +43,10 @@ ament_target_dependencies(${PROJECT_NAME}
   tf2_geometry_msgs
   angles
 )
+ament_target_dependencies(debug_intensity_node
+  rclcpp
+  sensor_msgs
+)
 
 pluginlib_export_plugin_description_file(
   opennav_docking_core plugins.xml
@@ -51,7 +58,9 @@ install(TARGETS ${PROJECT_NAME}
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-
+install(TARGETS debug_intensity_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 install(DIRECTORY include/
   DESTINATION include
 )

@@ -8,5 +8,6 @@ from config import SOURCE_PATH
 
 subprocess.Popen([
     'gnome-terminal', '--', 'bash', '-c',
-    f'source {SOURCE_PATH}/install/setup.bash && ros2 launch auto_docking auto_docking.launch.py; exec bash'
+    #f'source {SOURCE_PATH}/install/setup.bash && ros2 launch auto_docking auto_docking.launch.py; exec bash'
+    f'source {SOURCE_PATH}/install/setup.bash && ros2 launch lidar_dock_detector docking.launch.py; exec bash'
 ])

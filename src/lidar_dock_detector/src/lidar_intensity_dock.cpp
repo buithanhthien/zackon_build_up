@@ -96,18 +96,11 @@ void LidarIntensityDock::activate()
   auto node = node_.lock();
   if (!node) { return; }
 
-  scan_sub_ = node->create_subscription
-    sensor_msgs::msg::LaserScan>(
-    scan_topic_,
-    rclcpp::SensorDataQoS(),
-    std::bind(
-      &LidarIntensityDock::scanCallback,
-      this,
-      std::placeholders::_1));
+  auto cb = std::bind(&LidarIntensityDock::scanCallback, this, std::placeholders::_1);
 
-  RCLCPP_INFO(node->get_logger(),
-    "[%s] Active - listening to %s",
-    name_.c_str(), scan_topic_.c_str());
+  scan_sub_ = node->create_subscription<sensor_msgs::msg::LaserScan>(scan_topic_, rclcpp::SensorDataQoS(), cb);
+
+  RCLCPP_INFO(node->get_logger(), "[%s] Active - listening to %s", name_.c_str(), scan_topic_.c_str());
 }
 
 void LidarIntensityDock::deactivate()
@@ -143,7 +136,7 @@ LidarIntensityDock::getStagingPose(
 
 bool LidarIntensityDock::getRefinedPose(
   geometry_msgs::msg::PoseStamped & pose,
-  std::string & /*id*/)
+  std::string /*id*/)
 {
   std::lock_guard<std::mutex> lock(pose_mutex_);
   if (!dock_detected_) { return false; }

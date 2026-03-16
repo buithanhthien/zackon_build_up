@@ -13,10 +13,10 @@ def generate_launch_description():
             name='dock_detector_node',
             output='screen',
             parameters=[{
-                'intensity_threshold': 46.0,
+                'intensity_threshold': 48.0,
                 'cluster_distance_threshold': 0.05,
-                'expected_strip_spacing': 0.375,
-                'spacing_tolerance': 0.05
+                'expected_strip_spacing': 0.37,
+                'spacing_tolerance': 0.025
             }]
         ),
         Node(

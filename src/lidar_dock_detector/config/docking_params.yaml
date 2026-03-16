@@ -33,13 +33,14 @@ docking_server:
 
       # Tape geometry (đo thực tế)
       tape_distance:    0.37
-      rubber_width:     0.020
-      reflector_width:  0.010
+      rubber_width:     0.010
+      reflector_width:  0.05
+      use_collision_detection: false
 
       # Intensity (từ bench test)
-      i_peak:              42.0
-      i_valley:            30.0
-      valley_search_range: 12
+      i_peak:              46.0
+      i_valley:            60.0
+      valley_search_range: 15
 
       # Docking
       staging_x_offset:  -0.80

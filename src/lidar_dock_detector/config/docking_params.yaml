@@ -1,0 +1,55 @@
+docking_server:
+  ros__parameters:
+    # ── Server timing ──────────────────────────
+    controller_frequency: 10.0
+    initial_perception_timeout: 10.0
+    wait_charge_timeout: 5.0
+    dock_approach_timeout: 30.0
+    undock_linear_tolerance: 0.05
+    undock_angular_tolerance: 0.1
+    max_retries: 3
+
+    # ── Frames ─────────────────────────────────
+    base_frame: "base_link"
+    fixed_frame: "odom"
+
+    # ── Approach ───────────────────────────────
+    dock_backwards: true
+    dock_prestaging_tolerance: 0.5
+
+    # ── Plugin ─────────────────────────────────
+    dock_plugins: ["lidar_dock"]
+
+    lidar_dock:
+      plugin: "lidar_dock_detector/LidarIntensityDock"
+
+      # Topic
+      scan_topic: "/scan_front_filter"
+      base_frame: "base_link"
+
+      # LiDAR geometry (RPLidar s2)
+      lrf_tilt_alpha_deg: 0.0
+      lrf_forward_offset: 0.30
+
+      # Tape geometry (đo thực tế)
+      tape_distance:    0.37
+      rubber_width:     0.020
+      reflector_width:  0.010
+
+      # Intensity (từ bench test)
+      i_peak:              42.0
+      i_valley:            30.0
+      valley_search_range: 12
+
+      # Docking
+      staging_x_offset:  -0.80
+      docking_threshold:  0.05
+
+    # ── Dock instances ──────────────────────────
+    docks: ["home_dock"]
+
+    home_dock:
+      type:  "lidar_dock"
+      frame: "map"
+      # Pose AMCL thực tế của bạn
+      pose:  [-1.736, -5.823, 3.100]

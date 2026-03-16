@@ -1,0 +1,11 @@
+<library path="lidar_dock_detector">
+  <class
+    name="lidar_dock_detector/LidarIntensityDock"
+    type="lidar_dock_detector::LidarIntensityDock"
+    base_class_type="opennav_docking_core::ChargingDock">
+    <description>
+      Dock detector using retroreflective intensity
+      from RPLidar A2 LaserScan.
+    </description>
+  </class>
+</library>

@@ -11,10 +11,10 @@ class DockDetectorNode(Node):
     def __init__(self):
         super().__init__('dock_detector_node')
         
-        self.declare_parameter('intensity_threshold', 50.0)
+        self.declare_parameter('intensity_threshold', 48.0)
         self.declare_parameter('cluster_distance_threshold', 0.05)
-        self.declare_parameter('expected_strip_spacing', 0.32)
-        self.declare_parameter('spacing_tolerance', 0.05)
+        self.declare_parameter('expected_strip_spacing', 0.37)
+        self.declare_parameter('spacing_tolerance', 0.025)
         
         self.intensity_threshold = self.get_parameter('intensity_threshold').value
         self.cluster_distance = self.get_parameter('cluster_distance_threshold').value

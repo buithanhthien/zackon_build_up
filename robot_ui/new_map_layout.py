@@ -134,7 +134,7 @@ class NewMapUI(QMainWindow):
             self.log("Error: Please enter a map name")
             return
         
-        map_path = ff"{SOURCE_PATH}/src/view_robot/maps/{map_name}"
+        map_path = f"{SOURCE_PATH}/src/view_robot/maps/{map_name}"
         self.log(f"Saving map as '{map_name}' to maps folder...")
         try:
             subprocess.Popen([

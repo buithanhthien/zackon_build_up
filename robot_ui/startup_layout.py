@@ -296,7 +296,6 @@ class RobotUI(QMainWindow):
         mode_widget.setStyleSheet("background-color: #f0f0f0;")
         mode_layout = QVBoxLayout(mode_widget)
         
-        self.btn_manual = QPushButton("Manual")
         self.btn_tracking = QPushButton("Tracking")
         self.btn_waypoints = QPushButton("Waypoints")
         self.btn_nav2 = QPushButton("Nav2")
@@ -305,7 +304,7 @@ class RobotUI(QMainWindow):
         self.btn_load_map = QPushButton("Load Map")
         self.btn_docking = QPushButton("Docking")
         
-        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking]:
+        for btn in [self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking]:
             btn.setFont(QFont("Fira Sans", 24))
             btn.setMinimumHeight(100)
             if btn not in [self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking]:
@@ -419,10 +418,7 @@ class RobotUI(QMainWindow):
     
     def mode_changed(self, mode):
         self.log(f"Mode changed to {mode}")
-        if mode == "Manual":
-            subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/manual_mode_layout.py'])
-            self.close()
-        elif mode == "Tracking":
+        if mode == "Tracking":
             subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
             self.close()
         elif mode == "Waypoints":

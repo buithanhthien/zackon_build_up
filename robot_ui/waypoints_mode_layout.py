@@ -235,7 +235,10 @@ class WaypointsModeLayout(QMainWindow):
             with open(nav2_params, 'r') as f:
                 for line in f:
                     if 'yaml_filename:' in line and '#' not in line:
-                        return line.split(':', 1)[1].strip().strip('"')
+                        path = line.split(':', 1)[1].strip().strip('"')
+                        maps_dir = f'{SOURCE_PATH}/src/view_robot/maps/'
+                        map_file = os.path.basename(path)
+                        return maps_dir + map_file
         except Exception:
             pass
         return f'{SOURCE_PATH}/src/view_robot/maps/F5.yaml'

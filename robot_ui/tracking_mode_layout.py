@@ -101,7 +101,7 @@ class TrackingModeUI(QMainWindow):
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(10, 10, 10, 10)
         
-        map_yaml_path = f'{SOURCE_PATH}/src/view_robot/maps/F5.yaml'
+        map_yaml_path = self.get_current_map_path()
         map_dir = os.path.dirname(map_yaml_path)
         yaml_data = self.load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])
@@ -140,6 +140,18 @@ class TrackingModeUI(QMainWindow):
         
         self.log("Mode changed to tracking")
     
+    def get_current_map_path(self):
+        nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
+        try:
+            with open(nav2_params, 'r') as f:
+                for line in f:
+                    if 'yaml_filename:' in line and '#' not in line:
+                        path = line.split(':', 1)[1].strip().strip('"')
+                        return f'{SOURCE_PATH}/src/view_robot/maps/{os.path.basename(path)}'
+        except Exception:
+            pass
+        return f'{SOURCE_PATH}/src/view_robot/maps/X5_19032026.yaml'
+
     def load_map_yaml(self, yaml_path):
         data = {}
         with open(yaml_path, 'r') as f:
@@ -171,7 +183,7 @@ class TrackingModeUI(QMainWindow):
         try:
             self.launch_process = subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
-                'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/human_following/launch/system.launch.py; exec bash'
+                f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/human_following/launch/system.launch.py; exec bash'
             ])
             self.log("Launched tracking system")
         except Exception as e:

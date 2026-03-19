@@ -559,6 +559,5 @@ if __name__ == '__main__':
     app.setFont(QFont("Fira Sans", 12))
     skip_micro_ros = '--skip-micro-ros' in sys.argv
     window = RobotUI(skip_micro_ros=skip_micro_ros)
-    window.show()
-    window.setWindowState(Qt.WindowState.WindowMaximized)
+    window.showMaximized()
     sys.exit(app.exec())

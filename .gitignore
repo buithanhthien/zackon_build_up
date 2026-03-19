@@ -36,9 +36,5 @@ ui/__pycache__/
 **/.vscode/settings.json
 
 require.txt
-kiro_feedback.txt
 
 robot_ui/waypoints.json
-
-src/uros
-test_bytetrack.py

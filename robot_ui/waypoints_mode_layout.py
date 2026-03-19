@@ -41,10 +41,15 @@ class MapWidget(QWidget):
         self.resolution = yaml_data['resolution']
         self.origin = yaml_data['origin']
         self.robot_pose = None
+        self.waypoints = {}
         self.setMinimumSize(400, 400)
         
     def set_robot_pose(self, pose):
         self.robot_pose = pose
+        self.update()
+
+    def set_waypoints(self, waypoints):
+        self.waypoints = waypoints
         self.update()
         
     def world_to_pixel(self, x, y):
@@ -59,22 +64,43 @@ class MapWidget(QWidget):
         x_offset = (self.width() - scaled_map.width()) // 2
         y_offset = (self.height() - scaled_map.height()) // 2
         painter.drawPixmap(x_offset, y_offset, scaled_map)
-        
+
+        scale_x = scaled_map.width() / self.map_image.width()
+        scale_y = scaled_map.height() / self.map_image.height()
+
+        # Draw waypoint arrows
+        for slot, wp in self.waypoints.items():
+            px, py = self.world_to_pixel(wp['x'], wp['y'])
+            px = int(px * scale_x + x_offset)
+            py = int(py * scale_y + y_offset)
+            self._draw_arrow(painter, px, py, slot)
+
         if self.robot_pose:
-            scale_x = scaled_map.width() / self.map_image.width()
-            scale_y = scaled_map.height() / self.map_image.height()
-            
             px, py = self.world_to_pixel(
                 self.robot_pose.pose.pose.position.x,
                 self.robot_pose.pose.pose.position.y
             )
-            
             px = int(px * scale_x + x_offset)
             py = int(py * scale_y + y_offset)
-            
             painter.setPen(QPen(QColor(255, 0, 0), 3))
             painter.setBrush(QColor(255, 0, 0))
             painter.drawEllipse(px - 5, py - 5, 10, 10)
+
+    def _draw_arrow(self, painter, px, py, label):
+        painter.setPen(QPen(QColor(0, 120, 255), 2))
+        painter.setBrush(QColor(0, 120, 255))
+        # Arrow shaft
+        painter.drawLine(px, py - 20, px, py)
+        # Arrowhead (downward triangle)
+        from PyQt6.QtGui import QPolygon
+        from PyQt6.QtCore import QPoint
+        tip = QPoint(px, py)
+        left = QPoint(px - 6, py - 12)
+        right = QPoint(px + 6, py - 12)
+        painter.drawPolygon(QPolygon([tip, left, right]))
+        # Label
+        painter.setPen(QPen(QColor(0, 0, 0), 1))
+        painter.drawText(px + 8, py - 10, label)
 
 
 class WaypointsModeLayout(QMainWindow):
@@ -155,12 +181,13 @@ class WaypointsModeLayout(QMainWindow):
         map_and_buttons_widget = QWidget()
         map_and_buttons_layout = QVBoxLayout(map_and_buttons_widget)
         
-        map_yaml_path = f'{SOURCE_PATH}/src/view_robot/maps/F5.yaml'
+        map_yaml_path = self.get_current_map_path()
         map_dir = os.path.dirname(map_yaml_path)
         yaml_data = self.load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])
         
         self.map_widget = MapWidget(map_image_path, yaml_data)
+        self.map_widget.set_waypoints(self.waypoints)
         map_and_buttons_layout.addWidget(self.map_widget, 2)
         
         grid_layout = QGridLayout()
@@ -202,6 +229,17 @@ class WaypointsModeLayout(QMainWindow):
             for btn in self.waypoint_btns:
                 btn.setEnabled(False)
     
+    def get_current_map_path(self):
+        nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
+        try:
+            with open(nav2_params, 'r') as f:
+                for line in f:
+                    if 'yaml_filename:' in line and '#' not in line:
+                        return line.split(':', 1)[1].strip().strip('"')
+        except Exception:
+            pass
+        return f'{SOURCE_PATH}/src/view_robot/maps/F5.yaml'
+
     def load_map_yaml(self, yaml_path):
         data = {}
         with open(yaml_path, 'r') as f:
@@ -274,6 +312,7 @@ class WaypointsModeLayout(QMainWindow):
             self.save_waypoints()
             self.log(f'Saved to slot {slot_num}')
             self.update_button_colors()
+            self.map_widget.set_waypoints(self.waypoints)
         else:
             self.log('No pose data available')
             
@@ -283,6 +322,7 @@ class WaypointsModeLayout(QMainWindow):
             self.save_waypoints()
             self.log(f'Cleared slot {slot_num}')
             self.update_button_colors()
+            self.map_widget.set_waypoints(self.waypoints)
         else:
             self.log(f'Slot {slot_num} is already empty')
             

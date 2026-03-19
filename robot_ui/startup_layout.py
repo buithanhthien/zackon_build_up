@@ -298,13 +298,13 @@ class RobotUI(QMainWindow):
         
         self.btn_tracking = QPushButton("Tracking")
         self.btn_waypoints = QPushButton("Waypoints")
-        self.btn_nav2 = QPushButton("Nav2")
         self.btn_reestimate = QPushButton("Re-estimate")
         self.btn_new_map = QPushButton("New Map")
         self.btn_load_map = QPushButton("Load Map")
         self.btn_docking = QPushButton("Docking")
+        self.btn_nav2 = QPushButton("Nav2")
         
-        for btn in [self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking]:
+        for btn in [self.btn_tracking, self.btn_waypoints, self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking, self.btn_nav2]:
             btn.setFont(QFont("Fira Sans", 24))
             btn.setMinimumHeight(100)
             if btn not in [self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking]:

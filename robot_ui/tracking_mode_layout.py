@@ -15,6 +15,67 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
 
+STYLESHEET = """
+    QMainWindow, QWidget {
+        background-color: #0d0f12;
+        color: #e8ecf0;
+        border: none;
+    }
+    QWidget#left-panel {
+        background-color: #141720;
+        border-right: 2px solid #2a3040;
+    }
+    QWidget#header-bar {
+        background-color: #141720;
+        border-bottom: 1px solid #2a3040;
+    }
+    QWidget#log-panel {
+        background-color: #080a0d;
+        border-top: 1px solid #2a3040;
+    }
+    QPushButton#action-btn {
+        background-color: transparent;
+        color: #6b7a99;
+        border: none;
+        border-left: 4px solid transparent;
+        border-radius: 0px;
+        padding: 16px 20px 16px 24px;
+        text-align: left;
+        font-size: 18px;
+    }
+    QPushButton#action-btn:hover {
+        background-color: #1a1f2e;
+        color: #e8ecf0;
+        border-left: 4px solid #3a4460;
+    }
+    QTextEdit#log-text {
+        background-color: #080a0d;
+        color: #e8ecf0;
+        border: none;
+        font-size: 13px;
+    }
+    QLabel#log-title {
+        color: #6b7a99;
+        font-size: 11px;
+        letter-spacing: 2px;
+    }
+    QLabel#clock {
+        color: #6b7a99;
+        font-size: 15px;
+    }
+    QLabel#section-title {
+        color: #6b7a99;
+        font-size: 11px;
+        letter-spacing: 2px;
+        padding: 12px 24px 4px 24px;
+    }
+    QLabel#pos-value {
+        color: #e8ecf0;
+        font-size: 13px;
+        padding: 0px 24px;
+    }
+"""
+
 
 class MapWidget(QWidget):
     def __init__(self, map_path, yaml_data):
@@ -71,60 +132,133 @@ class TrackingModeUI(QMainWindow):
     def init_ui(self):
         self.setWindowTitle("Tracking Mode")
         self.showMaximized()
-        
+        self.setStyleSheet(STYLESHEET)
+
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
-        mode_widget = QWidget()
-        mode_widget.setStyleSheet("background-color: #f0f0f0;")
-        mode_layout = QVBoxLayout(mode_widget)
-        
+        main_layout.setSpacing(0)
+
+        # ── Left panel ────────────────────────────────────────────────────────
+        left_panel = QWidget()
+        left_panel.setObjectName("left-panel")
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+
+        wordmark = QLabel("TRACKING")
+        wordmark.setFont(QFont("JetBrains Mono", 14, QFont.Weight.Bold))
+        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        left_layout.addWidget(wordmark)
+
         self.btn_back = QPushButton("Back")
-        self.btn_back.setFont(QFont("Fira Sans", 24))
-        self.btn_back.setMinimumHeight(100)
+        self.btn_back.setObjectName("action-btn")
+        self.btn_back.setFont(QFont("JetBrains Mono", 18))
+        self.btn_back.setMinimumHeight(72)
         self.btn_back.clicked.connect(self.go_back)
-        mode_layout.addWidget(self.btn_back)
-        
-        pos_title = QLabel("Current Position")
-        pos_title.setFont(QFont("Fira Sans", 18))
-        mode_layout.addWidget(pos_title)
-        
-        self.pos_label = QLabel("x: 0.0\ny: 0.0\nz: 0.0\n\nqx: 0.0\nqy: 0.0\nqz: 0.0\nqw: 1.0")
-        self.pos_label.setFont(QFont("Fira Sans", 14))
-        mode_layout.addWidget(self.pos_label)
-        
-        mode_layout.addStretch()
-        
+        left_layout.addWidget(self.btn_back)
+
+        pos_title = QLabel("POSITION")
+        pos_title.setObjectName("section-title")
+        pos_title.setFont(QFont("DM Sans", 11))
+        left_layout.addWidget(pos_title)
+
+        self.pos_label = QLabel("x: 0.00   y: 0.00   z: 0.00")
+        self.pos_label.setObjectName("pos-value")
+        self.pos_label.setFont(QFont("JetBrains Mono", 13))
+        left_layout.addWidget(self.pos_label)
+
+        orient_title = QLabel("ORIENTATION")
+        orient_title.setObjectName("section-title")
+        orient_title.setFont(QFont("DM Sans", 11))
+        left_layout.addWidget(orient_title)
+
+        self.orient_label = QLabel("qx: 0.00   qy: 0.00\nqz: 0.00   qw: 1.00")
+        self.orient_label.setObjectName("pos-value")
+        self.orient_label.setFont(QFont("JetBrains Mono", 13))
+        left_layout.addWidget(self.orient_label)
+
+        left_layout.addStretch()
+
+        # ── Right area ────────────────────────────────────────────────────────
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(10, 10, 10, 10)
-        
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        # Header bar
+        header = QWidget()
+        header.setObjectName("header-bar")
+        header.setFixedHeight(48)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(20, 0, 20, 0)
+
+        header_title = QLabel("TRACKING MODE")
+        header_title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
+        header_title.setStyleSheet("color: #e8ecf0;")
+
+        self.clock_label = QLabel()
+        self.clock_label.setObjectName("clock")
+        self.clock_label.setFont(QFont("JetBrains Mono", 15))
+
+        header_layout.addWidget(header_title)
+        header_layout.addStretch()
+        header_layout.addWidget(self.clock_label)
+        right_layout.addWidget(header)
+
+        # Map
+        map_container = QWidget()
+        map_container.setStyleSheet("background-color: #0d0f12; padding: 12px;")
+        map_layout = QVBoxLayout(map_container)
+        map_layout.setContentsMargins(12, 12, 12, 12)
+
         map_yaml_path = self.get_current_map_path()
         map_dir = os.path.dirname(map_yaml_path)
         yaml_data = self.load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])
-        
+
         self.map_widget = MapWidget(map_image_path, yaml_data)
-        right_layout.addWidget(self.map_widget, 2)
-        
-        log_widget = QWidget()
-        log_layout = QVBoxLayout(log_widget)
-        
-        log_title = QLabel("System Log")
-        log_title.setFont(QFont("Fira Sans", 20, QFont.Weight.Bold))
-        log_layout.addWidget(log_title)
-        
+        map_layout.addWidget(self.map_widget)
+        right_layout.addWidget(map_container, 2)
+
+        # Log panel
+        log_panel = QWidget()
+        log_panel.setObjectName("log-panel")
+        log_layout = QVBoxLayout(log_panel)
+        log_layout.setContentsMargins(16, 12, 16, 12)
+        log_layout.setSpacing(6)
+
+        log_header = QHBoxLayout()
+        log_title = QLabel("SYSTEM LOG")
+        log_title.setObjectName("log-title")
+        log_title.setFont(QFont("DM Sans", 11))
+        live_badge = QLabel("● LIVE")
+        live_badge.setStyleSheet("color: #00c853; font-size: 11px;")
+        log_header.addWidget(log_title)
+        log_header.addStretch()
+        log_header.addWidget(live_badge)
+        log_layout.addLayout(log_header)
+
         self.log_text = QTextEdit()
+        self.log_text.setObjectName("log-text")
         self.log_text.setReadOnly(True)
-        self.log_text.setFont(QFont("Fira Sans", 14))
+        self.log_text.setFont(QFont("Fira Code", 13))
         log_layout.addWidget(self.log_text)
-        
-        right_layout.addWidget(log_widget, 1)
-        
-        main_layout.addWidget(mode_widget, 1)
-        main_layout.addWidget(right_widget, 3)
+
+        right_layout.addWidget(log_panel, 1)
+
+        main_layout.addWidget(left_panel, 22)
+        main_layout.addWidget(right_widget, 78)
+
+        self.clock_timer = QTimer()
+        self.clock_timer.timeout.connect(self._update_clock)
+        self.clock_timer.start(1000)
+        self._update_clock()
+
+    def _update_clock(self):
+        from datetime import datetime
+        self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
         
     def init_ros(self):
         rclpy.init()
@@ -171,9 +305,8 @@ class TrackingModeUI(QMainWindow):
     def pose_callback(self, msg):
         pos = msg.pose.pose.position
         ori = msg.pose.pose.orientation
-        text = f"x: {pos.x:.2f}\ny: {pos.y:.2f}\nz: {pos.z:.2f}\n\n"
-        text += f"qx: {ori.x:.2f}\nqy: {ori.y:.2f}\nqz: {ori.z:.2f}\nqw: {ori.w:.2f}"
-        self.pos_label.setText(text)
+        self.pos_label.setText(f"x: {pos.x:.2f}   y: {pos.y:.2f}   z: {pos.z:.2f}")
+        self.orient_label.setText(f"qx: {ori.x:.2f}   qy: {ori.y:.2f}\nqz: {ori.z:.2f}   qw: {ori.w:.2f}")
         self.map_widget.set_robot_pose(msg)
         
     def lock_callback(self, msg):
@@ -198,7 +331,19 @@ class TrackingModeUI(QMainWindow):
         self.close()
         
     def log(self, message):
-        self.log_text.append(message)
+        from datetime import datetime
+        ts = datetime.now().strftime("%H:%M:%S")
+        if "[ERROR]" in message:
+            color = "#ff3b3b"
+        elif "[WARN]" in message:
+            color = "#ffb300"
+        elif "✓" in message:
+            color = "#00c853"
+        else:
+            color = "#e8ecf0"
+        self.log_text.append(
+            f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
+        )
     
     def closeEvent(self, event):
         if self.launch_process:

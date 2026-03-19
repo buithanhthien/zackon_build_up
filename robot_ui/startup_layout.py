@@ -7,9 +7,9 @@ import time
 import math
 import re
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QTextEdit, QLabel)
+                             QHBoxLayout, QPushButton, QTextEdit, QLabel, QSizePolicy)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QFontDatabase
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
@@ -284,88 +284,277 @@ class RobotUI(QMainWindow):
         
     def init_ui(self):
         self.setWindowTitle("Robot Control Interface")
-        self.setStyleSheet("background-color: white; color: black;")
-        
+
+        STYLESHEET = """
+            QMainWindow, QWidget {
+                background-color: #0d0f12;
+                color: #e8ecf0;
+                border: none;
+            }
+            QWidget#left-panel {
+                background-color: #141720;
+                border-right: 2px solid #2a3040;
+            }
+            QWidget#header-bar {
+                background-color: #141720;
+                border-bottom: 1px solid #2a3040;
+            }
+            QWidget#status-card {
+                background-color: #1c2030;
+                border: 1px solid #2a3040;
+                border-radius: 4px;
+            }
+            QWidget#log-panel {
+                background-color: #080a0d;
+                border-top: 1px solid #2a3040;
+            }
+            QPushButton#mode-btn {
+                background-color: transparent;
+                color: #6b7a99;
+                border: none;
+                border-left: 4px solid transparent;
+                border-radius: 0px;
+                padding: 20px 20px 20px 24px;
+                text-align: left;
+                font-size: 18px;
+            }
+            QPushButton#mode-btn:hover {
+                background-color: #1a1f2e;
+                color: #e8ecf0;
+                border-left: 4px solid #3a4460;
+            }
+            QPushButton#mode-btn:checked {
+                background-color: #1c2030;
+                color: #00e5ff;
+                border-left: 4px solid #00e5ff;
+            }
+            QPushButton#mode-btn:disabled {
+                color: #3a4460;
+                border-left: 4px solid transparent;
+            }
+            QTextEdit#log-text {
+                background-color: #080a0d;
+                color: #e8ecf0;
+                border: none;
+                font-size: 13px;
+            }
+            QLabel#log-title {
+                color: #6b7a99;
+                font-size: 11px;
+                letter-spacing: 2px;
+            }
+            QLabel#clock {
+                color: #6b7a99;
+                font-size: 15px;
+            }
+            QLabel#mode-title {
+                color: #e8ecf0;
+                font-size: 15px;
+            }
+            QLabel#device-name {
+                color: #6b7a99;
+                font-size: 11px;
+            }
+            QLabel#status-ok {
+                color: #00c853;
+                font-size: 14px;
+            }
+            QLabel#status-error {
+                color: #ff3b3b;
+                font-size: 14px;
+            }
+            QLabel#status-checking {
+                color: #6b7a99;
+                font-size: 14px;
+            }
+        """
+        self.setStyleSheet(STYLESHEET)
+
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Left area - Mode selector (1/4)
-        mode_widget = QWidget()
-        mode_widget.setStyleSheet("background-color: #f0f0f0;")
-        mode_layout = QVBoxLayout(mode_widget)
-        
-        self.btn_tracking = QPushButton("Tracking")
-        self.btn_waypoints = QPushButton("Waypoints")
+        main_layout.setSpacing(0)
+
+        # ── Left panel ────────────────────────────────────────────────────────
+        left_panel = QWidget()
+        left_panel.setObjectName("left-panel")
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+
+        wordmark = QLabel("ZACKON")
+        wordmark.setFont(QFont("JetBrains Mono", 16, QFont.Weight.Bold))
+        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        left_layout.addWidget(wordmark)
+
+        self.btn_tracking   = QPushButton("Tracking")
+        self.btn_waypoints  = QPushButton("Waypoints")
         self.btn_reestimate = QPushButton("Re-estimate")
-        self.btn_new_map = QPushButton("New Map")
-        self.btn_load_map = QPushButton("Load Map")
-        self.btn_docking = QPushButton("Docking")
-        self.btn_nav2 = QPushButton("Nav2")
-        
-        for btn in [self.btn_tracking, self.btn_waypoints, self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking, self.btn_nav2]:
-            btn.setFont(QFont("Fira Sans", 24))
-            btn.setMinimumHeight(100)
-            if btn not in [self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking]:
-                btn.clicked.connect(lambda checked, b=btn: self.mode_changed(b.text()))
-            mode_layout.addWidget(btn)
-        
+        self.btn_new_map    = QPushButton("New Map")
+        self.btn_load_map   = QPushButton("Load Map")
+        self.btn_docking    = QPushButton("Docking")
+        self.btn_nav2       = QPushButton("Nav2")
+
+        mono = QFont("JetBrains Mono", 18)
+        for btn in [self.btn_tracking, self.btn_waypoints, self.btn_reestimate,
+                    self.btn_new_map, self.btn_load_map, self.btn_docking, self.btn_nav2]:
+            btn.setObjectName("mode-btn")
+            btn.setFont(mono)
+            btn.setMinimumHeight(72)
+            btn.setCheckable(True)
+            btn.setAutoExclusive(False)
+            left_layout.addWidget(btn)
+
+        left_layout.addStretch()
+
+        self.btn_tracking.clicked.connect(lambda: self.mode_changed("Tracking"))
+        self.btn_waypoints.clicked.connect(lambda: self.mode_changed("Waypoints"))
         self.btn_reestimate.clicked.connect(self.start_reestimate)
         self.btn_new_map.clicked.connect(self.start_new_map)
         self.btn_load_map.clicked.connect(self.load_map)
         self.btn_docking.clicked.connect(self.start_docking)
-        
-        mode_layout.addStretch()
-        
-        # Right area (3/4) - split into status and logging
+        self.btn_nav2.clicked.connect(lambda: self.mode_changed("Nav2"))
+
+        # ── Right area ────────────────────────────────────────────────────────
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Status area (top half)
-        status_widget = QWidget()
-        status_layout = QVBoxLayout(status_widget)
-        
-        title = QLabel("Robot Status")
-        title.setFont(QFont("Fira Sans", 28, QFont.Weight.Bold))
-        status_layout.addWidget(title)
-        
-        self.stm32_label = QLabel("STM32: Checking...")
-        self.stm32_label.setFont(QFont("Fira Sans", 20))
-        status_layout.addWidget(self.stm32_label)
-        
-        self.lidar_label = QLabel("LiDAR: Checking...")
-        self.lidar_label.setFont(QFont("Fira Sans", 20))
-        status_layout.addWidget(self.lidar_label)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
 
-        status_layout.addStretch()
-        
-        # Logging area (bottom half)
-        log_widget = QWidget()
-        log_layout = QVBoxLayout(log_widget)
-        
-        log_title = QLabel("System Log")
-        log_title.setFont(QFont("Fira Sans", 20, QFont.Weight.Bold))
-        log_layout.addWidget(log_title)
-        
+        # Header bar
+        header = QWidget()
+        header.setObjectName("header-bar")
+        header.setFixedHeight(48)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(20, 0, 20, 0)
+
+        self.mode_label = QLabel("STARTUP")
+        self.mode_label.setObjectName("mode-title")
+        self.mode_label.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
+
+        self.clock_label = QLabel()
+        self.clock_label.setObjectName("clock")
+        self.clock_label.setFont(QFont("JetBrains Mono", 15))
+
+        header_layout.addWidget(self.mode_label)
+        header_layout.addStretch()
+        header_layout.addWidget(self.clock_label)
+        right_layout.addWidget(header)
+
+        # Status cards row
+        cards_widget = QWidget()
+        cards_widget.setStyleSheet("background-color: #0d0f12; padding: 12px;")
+        cards_layout = QHBoxLayout(cards_widget)
+        cards_layout.setContentsMargins(12, 12, 12, 12)
+        cards_layout.setSpacing(12)
+
+        self.stm32_card  = self._make_status_card("STM32")
+        self.lidar_card  = self._make_status_card("LiDAR")
+        cards_layout.addWidget(self.stm32_card["widget"])
+        cards_layout.addWidget(self.lidar_card["widget"])
+        right_layout.addWidget(cards_widget)
+
+        # Log panel
+        log_panel = QWidget()
+        log_panel.setObjectName("log-panel")
+        log_layout = QVBoxLayout(log_panel)
+        log_layout.setContentsMargins(16, 12, 16, 12)
+        log_layout.setSpacing(6)
+
+        log_header = QHBoxLayout()
+        log_title = QLabel("SYSTEM LOG")
+        log_title.setObjectName("log-title")
+        log_title.setFont(QFont("DM Sans", 11))
+        live_badge = QLabel("● LIVE")
+        live_badge.setStyleSheet("color: #00c853; font-size: 11px;")
+        live_badge.setFont(QFont("DM Sans", 11))
+        log_header.addWidget(log_title)
+        log_header.addStretch()
+        log_header.addWidget(live_badge)
+        log_layout.addLayout(log_header)
+
         self.log_text = QTextEdit()
+        self.log_text.setObjectName("log-text")
         self.log_text.setReadOnly(True)
-        self.log_text.setFont(QFont("Fira Sans", 14))
+        self.log_text.setFont(QFont("Fira Code", 13))
         log_layout.addWidget(self.log_text)
-        
-        right_layout.addWidget(status_widget, 1)
-        right_layout.addWidget(log_widget, 1)
-        
-        main_layout.addWidget(mode_widget, 1)
-        main_layout.addWidget(right_widget, 3)
-         
-        # Timer for periodic updates (5 seconds)
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_status)
-        self.timer.start(5000)
-        
+
+        right_layout.addWidget(log_panel, 1)
+
+        main_layout.addWidget(left_panel, 22)
+        main_layout.addWidget(right_widget, 78)
+
+        # Timers
+        self.status_timer = QTimer()
+        self.status_timer.timeout.connect(self.update_status)
+        self.status_timer.start(5000)
+
+        self.clock_timer = QTimer()
+        self.clock_timer.timeout.connect(self._update_clock)
+        self.clock_timer.start(1000)
+        self._update_clock()
+
+        self._reestimate_pulse_timer = QTimer()
+        self._reestimate_pulse_timer.timeout.connect(self._pulse_reestimate)
+        self._pulse_state = False
+
         self.update_status()
+
+    def _make_status_card(self, device_name):
+        card = QWidget()
+        card.setObjectName("status-card")
+        card.setMinimumHeight(100)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(16, 12, 20, 12)
+
+        dot = QLabel("●")
+        dot.setStyleSheet("color: #6b7a99; font-size: 12px;")
+        dot.setFixedWidth(20)
+
+        info = QVBoxLayout()
+        name_lbl = QLabel(device_name.upper())
+        name_lbl.setObjectName("device-name")
+        name_lbl.setFont(QFont("DM Sans", 11))
+
+        state_lbl = QLabel("Checking...")
+        state_lbl.setObjectName("status-checking")
+        state_lbl.setFont(QFont("DM Sans", 14, QFont.Weight.Medium))
+
+        info.addWidget(name_lbl)
+        info.addWidget(state_lbl)
+
+        layout.addWidget(dot)
+        layout.addLayout(info)
+        layout.addStretch()
+
+        return {"widget": card, "dot": dot, "state": state_lbl}
+
+    def _set_card_status(self, card, available):
+        color = "#00c853" if available else "#ff3b3b"
+        text  = "Available" if available else "Unavailable"
+        obj   = "status-ok" if available else "status-error"
+        card["dot"].setStyleSheet(f"color: {color}; font-size: 12px;")
+        card["state"].setText(text)
+        card["state"].setObjectName(obj)
+        card["state"].setStyleSheet(f"color: {color}; font-size: 14px;")
+        border_side = f"border-left: 4px solid {color};"
+        card["widget"].setStyleSheet(
+            f"QWidget#status-card {{ background-color: #1c2030; border: 1px solid #2a3040; border-radius: 4px; {border_side} }}"
+        )
+
+    def _update_clock(self):
+        from datetime import datetime
+        self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
+
+    def _pulse_reestimate(self):
+        self._pulse_state = not self._pulse_state
+        color = "#00e5ff" if self._pulse_state else "#3a4460"
+        self.btn_reestimate.setStyleSheet(
+            f"QPushButton#mode-btn {{ border-left: 4px solid {color}; color: #00e5ff; background-color: #1c2030; }}"
+        )
+
         
     def start_micro_ros(self):
         try:
@@ -378,42 +567,24 @@ class RobotUI(QMainWindow):
             self.log(f"Failed to start micro-ROS agent: {e}")
     
     def update_status(self):
-        # Check STM32 (micro-ROS agent) via topic list
         try:
-            result = subprocess.run(['ros2', 'topic', 'list'], 
-                                  capture_output=True, text=True, timeout=2)
+            result = subprocess.run(['ros2', 'topic', 'list'],
+                                    capture_output=True, text=True, timeout=2)
             stm32_available = '/cmd_vel' in result.stdout or result.returncode == 0
         except:
             stm32_available = False
-            
-        if stm32_available:
-            self.stm32_label.setText("STM32: Available")
-            self.stm32_label.setStyleSheet("color: green;")
-        else:
-            self.stm32_label.setText("STM32: Unavailable")
-            self.stm32_label.setStyleSheet("color: red;")
-        
+
+        self._set_card_status(self.stm32_card, stm32_available)
+
         if self.prev_stm32_status is not None and self.prev_stm32_status != stm32_available:
-            if not stm32_available:
-                self.log("STM32 connection lost")
-            else:
-                self.log("STM32 connection restored")
+            self.log("STM32 connection lost" if not stm32_available else "STM32 connection restored")
         self.prev_stm32_status = stm32_available
-        
-        # Check LiDAR
+
         lidar_available = os.path.exists('/dev/lidar')
-        if lidar_available:
-            self.lidar_label.setText("LiDAR: Available")
-            self.lidar_label.setStyleSheet("color: green;")
-        else:
-            self.lidar_label.setText("LiDAR: Unavailable")
-            self.lidar_label.setStyleSheet("color: red;")
-        
+        self._set_card_status(self.lidar_card, lidar_available)
+
         if self.prev_lidar_status is not None and self.prev_lidar_status != lidar_available:
-            if not lidar_available:
-                self.log("LiDAR connection lost")
-            else:
-                self.log("LiDAR connection restored")
+            self.log("LiDAR connection lost" if not lidar_available else "LiDAR connection restored")
         self.prev_lidar_status = lidar_available
     
     def mode_changed(self, mode):
@@ -438,23 +609,21 @@ class RobotUI(QMainWindow):
         if self.prev_stm32_status == False:
             self.log("Cannot start localization: STM32 not connected")
             return
-            
         if self.localization_thread and self.localization_thread.is_alive():
             self.log("Localization already running")
             return
-            
         self.log("Starting global relocalization")
-        
+        self._reestimate_pulse_timer.start(600)
+
         self.localization_worker = LocalizationWorker()
         self.localization_worker.log_signal.connect(self.log)
         self.localization_worker.finished_signal.connect(self.localization_finished)
-        
-        self.localization_thread = threading.Thread(
-            target=self.localization_worker.run, daemon=True
-        )
+        self.localization_thread = threading.Thread(target=self.localization_worker.run, daemon=True)
         self.localization_thread.start()
-        
+
     def localization_finished(self):
+        self._reestimate_pulse_timer.stop()
+        self.btn_reestimate.setStyleSheet("")
         self.localization_thread = None
         self.localization_worker = None
     
@@ -547,7 +716,19 @@ class RobotUI(QMainWindow):
             self.log(f"✗ Error building workspace: {e}")
     
     def log(self, message):
-        self.log_text.append(message)
+        from datetime import datetime
+        ts = datetime.now().strftime("%H:%M:%S")
+        if "[ERROR]" in message:
+            color = "#ff3b3b"
+        elif "[WARN]" in message:
+            color = "#ffb300"
+        elif "✓" in message or "restored" in message or "complete" in message.lower():
+            color = "#00c853"
+        else:
+            color = "#e8ecf0"
+        self.log_text.append(
+            f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
+        )
     
     def closeEvent(self, event):
         if self.localization_worker:

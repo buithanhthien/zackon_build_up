@@ -4,9 +4,9 @@ import json
 import subprocess
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                              QLabel, QGridLayout, QTextEdit, QApplication, QMainWindow)
+                              QLabel, QGridLayout, QTextEdit, QApplication, QMainWindow, QSizePolicy)
 from PyQt6.QtCore import Qt, QTimer, QPointF
-from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform
+from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform, QFontDatabase
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
@@ -85,19 +85,16 @@ class MapWidget(QWidget):
             painter.drawEllipse(px - 5, py - 5, 10, 10)
 
     def _draw_arrow(self, painter, px, py, label):
-        painter.setPen(QPen(QColor(0, 120, 255), 2))
-        painter.setBrush(QColor(0, 120, 255))
-        # Arrow shaft
+        painter.setPen(QPen(QColor(0, 229, 255), 2))
+        painter.setBrush(QColor(0, 229, 255))
         painter.drawLine(px, py - 20, px, py)
-        # Arrowhead (downward triangle)
         from PyQt6.QtGui import QPolygon
         from PyQt6.QtCore import QPoint
         tip = QPoint(px, py)
         left = QPoint(px - 6, py - 12)
         right = QPoint(px + 6, py - 12)
         painter.drawPolygon(QPolygon([tip, left, right]))
-        # Label
-        painter.setPen(QPen(QColor(0, 0, 0), 1))
+        painter.setPen(QPen(QColor(232, 236, 240), 1))
         painter.drawText(px + 8, py - 10, label)
 
 
@@ -124,104 +121,267 @@ class WaypointsModeLayout(QMainWindow):
     def init_ui(self):
         self.setWindowTitle('Waypoints Mode')
         self.showMaximized()
-        self.setStyleSheet("background-color: white; color: black;")
-        
+
+        STYLESHEET = """
+            QMainWindow, QWidget {
+                background-color: #0d0f12;
+                color: #e8ecf0;
+                border: none;
+            }
+            QWidget#left-panel {
+                background-color: #141720;
+                border-right: 2px solid #2a3040;
+            }
+            QWidget#header-bar {
+                background-color: #141720;
+                border-bottom: 1px solid #2a3040;
+            }
+            QWidget#log-panel {
+                background-color: #080a0d;
+                border-top: 1px solid #2a3040;
+            }
+            QPushButton#action-btn {
+                background-color: transparent;
+                color: #6b7a99;
+                border: none;
+                border-left: 4px solid transparent;
+                border-radius: 0px;
+                padding: 16px 20px 16px 24px;
+                text-align: left;
+                font-size: 18px;
+            }
+            QPushButton#action-btn:hover {
+                background-color: #1a1f2e;
+                color: #e8ecf0;
+                border-left: 4px solid #3a4460;
+            }
+            QPushButton#action-btn:checked {
+                background-color: #1c2030;
+                color: #00e5ff;
+                border-left: 4px solid #00e5ff;
+            }
+            QPushButton#wp-btn {
+                background-color: #1c2030;
+                color: #6b7a99;
+                border: 1px solid #2a3040;
+                border-radius: 4px;
+                font-size: 16px;
+                min-height: 48px;
+            }
+            QPushButton#wp-btn:hover {
+                background-color: #1a1f2e;
+                color: #e8ecf0;
+                border: 1px solid #3a4460;
+            }
+            QPushButton#wp-btn[filled="true"] {
+                color: #00c853;
+                border: 1px solid #00c853;
+            }
+            QPushButton#wp-btn[selected="true"] {
+                color: #00e5ff;
+                border: 1px solid #00e5ff;
+                background-color: #1c2030;
+            }
+            QTextEdit#log-text {
+                background-color: #080a0d;
+                color: #e8ecf0;
+                border: none;
+                font-size: 13px;
+            }
+            QLabel#log-title {
+                color: #6b7a99;
+                font-size: 11px;
+                letter-spacing: 2px;
+            }
+            QLabel#section-title {
+                color: #6b7a99;
+                font-size: 11px;
+                letter-spacing: 2px;
+                padding: 12px 24px 4px 24px;
+            }
+            QLabel#pos-value {
+                color: #e8ecf0;
+                font-size: 13px;
+                padding: 0px 24px;
+            }
+            QLabel#clock {
+                color: #6b7a99;
+                font-size: 15px;
+            }
+            QLabel#header-title {
+                color: #e8ecf0;
+                font-size: 15px;
+            }
+        """
+        self.setStyleSheet(STYLESHEET)
+
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
-        left_widget = QWidget()
-        left_widget.setStyleSheet("background-color: #f0f0f0;")
-        left_layout = QVBoxLayout(left_widget)
-        
-        self.save_btn = QPushButton('Save')
-        self.clear_btn = QPushButton('Clear')
-        self.run_btn = QPushButton('Run')
-        self.reset_btn = QPushButton('Reset')
-        self.stop_btn = QPushButton('Stop')
-        self.back_btn = QPushButton('Back')
-        
-        for btn in [self.save_btn, self.clear_btn, self.run_btn, self.reset_btn, self.stop_btn, self.back_btn]:
-            btn.setFont(QFont('Fira Sans', 24))
-            btn.setMinimumHeight(80)
+        main_layout.setSpacing(0)
+
+        # ── Left panel ────────────────────────────────────────────────────────
+        left_panel = QWidget()
+        left_panel.setObjectName("left-panel")
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+
+        wordmark = QLabel("WAYPOINTS")
+        wordmark.setFont(QFont("JetBrains Mono", 14, QFont.Weight.Bold))
+        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        left_layout.addWidget(wordmark)
+
+        mono = QFont("JetBrains Mono", 18)
+        self.save_btn  = QPushButton("Save")
+        self.clear_btn = QPushButton("Clear")
+        self.run_btn   = QPushButton("Run")
+        self.reset_btn = QPushButton("Reset")
+        self.stop_btn  = QPushButton("Stop")
+        self.back_btn  = QPushButton("Back")
+
+        for btn in [self.save_btn, self.clear_btn, self.run_btn,
+                    self.reset_btn, self.stop_btn, self.back_btn]:
+            btn.setObjectName("action-btn")
+            btn.setFont(mono)
+            btn.setMinimumHeight(64)
+            btn.setCheckable(True)
+            btn.setAutoExclusive(False)
             left_layout.addWidget(btn)
-        
-        pos_title = QLabel('Current Position')
-        pos_title.setFont(QFont('Fira Sans', 18))
+
+        # Position section
+        pos_title = QLabel("POSITION")
+        pos_title.setObjectName("section-title")
+        pos_title.setFont(QFont("DM Sans", 11))
         left_layout.addWidget(pos_title)
-        
-        self.pos_label = QLabel('x: 0.00\ny: 0.00\nz: 0.00')
-        self.pos_label.setFont(QFont('Fira Sans', 14))
+
+        self.pos_label = QLabel("x: 0.00   y: 0.00   z: 0.00")
+        self.pos_label.setObjectName("pos-value")
+        self.pos_label.setFont(QFont("JetBrains Mono", 13))
         left_layout.addWidget(self.pos_label)
-        
-        self.orient_label = QLabel('qx: 0.00\nqy: 0.00\nqz: 0.00\nqw: 1.00')
-        self.orient_label.setFont(QFont('Fira Sans', 14))
+
+        orient_title = QLabel("ORIENTATION")
+        orient_title.setObjectName("section-title")
+        orient_title.setFont(QFont("DM Sans", 11))
+        left_layout.addWidget(orient_title)
+
+        self.orient_label = QLabel("qx: 0.00   qy: 0.00\nqz: 0.00   qw: 1.00")
+        self.orient_label.setObjectName("pos-value")
+        self.orient_label.setFont(QFont("JetBrains Mono", 13))
         left_layout.addWidget(self.orient_label)
-        
+
         left_layout.addStretch()
-        
+
         self.save_btn.clicked.connect(lambda: self.set_mode('save'))
         self.clear_btn.clicked.connect(lambda: self.set_mode('clear'))
         self.run_btn.clicked.connect(self.run_sequence)
         self.reset_btn.clicked.connect(self.reset_sequence)
         self.stop_btn.clicked.connect(self.stop_navigation)
         self.back_btn.clicked.connect(self.go_back)
-        
+
+        # ── Right area ────────────────────────────────────────────────────────
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(10, 10, 10, 10)
-        
-        map_and_buttons_widget = QWidget()
-        map_and_buttons_layout = QVBoxLayout(map_and_buttons_widget)
-        
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        # Header bar
+        header = QWidget()
+        header.setObjectName("header-bar")
+        header.setFixedHeight(48)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(20, 0, 20, 0)
+
+        header_title = QLabel("WAYPOINTS MODE")
+        header_title.setObjectName("header-title")
+        header_title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
+
+        self.clock_label = QLabel()
+        self.clock_label.setObjectName("clock")
+        self.clock_label.setFont(QFont("JetBrains Mono", 15))
+
+        header_layout.addWidget(header_title)
+        header_layout.addStretch()
+        header_layout.addWidget(self.clock_label)
+        right_layout.addWidget(header)
+
+        # Map + waypoint grid
+        map_container = QWidget()
+        map_container.setStyleSheet("background-color: #0d0f12; padding: 12px;")
+        map_layout = QVBoxLayout(map_container)
+        map_layout.setContentsMargins(12, 12, 12, 12)
+        map_layout.setSpacing(8)
+
         map_yaml_path = self.get_current_map_path()
         map_dir = os.path.dirname(map_yaml_path)
         yaml_data = self.load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])
-        
+
         self.map_widget = MapWidget(map_image_path, yaml_data)
         self.map_widget.set_waypoints(self.waypoints)
-        map_and_buttons_layout.addWidget(self.map_widget, 2)
-        
+        map_layout.addWidget(self.map_widget, 2)
+
         grid_layout = QGridLayout()
+        grid_layout.setSpacing(6)
         self.waypoint_btns = []
-        
         for i in range(10):
             btn = QPushButton(str(i + 1))
-            btn.setFont(QFont('Fira Sans', 18))
-            btn.setMinimumHeight(50)
+            btn.setObjectName("wp-btn")
+            btn.setFont(QFont("JetBrains Mono", 16))
+            btn.setMinimumHeight(48)
             btn.clicked.connect(lambda checked, idx=i: self.waypoint_clicked(idx))
             grid_layout.addWidget(btn, i // 5, i % 5)
             self.waypoint_btns.append(btn)
-        
-        map_and_buttons_layout.addLayout(grid_layout)
-        
-        log_widget = QWidget()
-        log_layout = QVBoxLayout(log_widget)
-        
-        log_title = QLabel('Logging')
-        log_title.setFont(QFont('Fira Sans', 18))
-        log_layout.addWidget(log_title)
-        
+        map_layout.addLayout(grid_layout)
+
+        right_layout.addWidget(map_container, 2)
+
+        # Log panel
+        log_panel = QWidget()
+        log_panel.setObjectName("log-panel")
+        log_layout = QVBoxLayout(log_panel)
+        log_layout.setContentsMargins(16, 12, 16, 12)
+        log_layout.setSpacing(6)
+
+        log_header = QHBoxLayout()
+        log_title = QLabel("SYSTEM LOG")
+        log_title.setObjectName("log-title")
+        log_title.setFont(QFont("DM Sans", 11))
+        live_badge = QLabel("● LIVE")
+        live_badge.setStyleSheet("color: #00c853; font-size: 11px;")
+        log_header.addWidget(log_title)
+        log_header.addStretch()
+        log_header.addWidget(live_badge)
+        log_layout.addLayout(log_header)
+
         self.log_text = QTextEdit()
-        self.log_text.setFont(QFont('Fira Sans', 12))
+        self.log_text.setObjectName("log-text")
         self.log_text.setReadOnly(True)
+        self.log_text.setFont(QFont("Fira Code", 13))
         log_layout.addWidget(self.log_text)
-        
-        right_layout.addWidget(map_and_buttons_widget, 2)
-        right_layout.addWidget(log_widget, 1)
-        
-        main_layout.addWidget(left_widget, 1)
-        main_layout.addWidget(right_widget, 3)
-        
+
+        right_layout.addWidget(log_panel, 1)
+
+        main_layout.addWidget(left_panel, 22)
+        main_layout.addWidget(right_widget, 78)
+
+        self.clock_timer = QTimer()
+        self.clock_timer.timeout.connect(self._update_clock)
+        self.clock_timer.start(1000)
+        self._update_clock()
+
         self.update_button_colors()
         self.log("Mode changed to waypoints")
-        
+
         if not self.ros_node.nav_server_available:
-            self.log("WARNING: Nav2 action server not available")
+            self.log("[WARN] Nav2 action server not available")
             for btn in self.waypoint_btns:
                 btn.setEnabled(False)
+
+    def _update_clock(self):
+        from datetime import datetime
+        self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
     
     def get_current_map_path(self):
         nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
@@ -257,8 +417,10 @@ class WaypointsModeLayout(QMainWindow):
         rclpy.spin_once(self.ros_node, timeout_sec=0)
         if self.ros_node.current_pose:
             msg = self.ros_node.current_pose
-            self.pos_label.setText(f"x: {msg.pose.pose.position.x:.2f}\ny: {msg.pose.pose.position.y:.2f}\nz: {msg.pose.pose.position.z:.2f}")
-            self.orient_label.setText(f"qx: {msg.pose.pose.orientation.x:.2f}\nqy: {msg.pose.pose.orientation.y:.2f}\nqz: {msg.pose.pose.orientation.z:.2f}\nqw: {msg.pose.pose.orientation.w:.2f}")
+            p = msg.pose.pose.position
+            o = msg.pose.pose.orientation
+            self.pos_label.setText(f"x: {p.x:.2f}   y: {p.y:.2f}   z: {p.z:.2f}")
+            self.orient_label.setText(f"qx: {o.x:.2f}   qy: {o.y:.2f}\nqz: {o.z:.2f}   qw: {o.w:.2f}")
             self.map_widget.set_robot_pose(msg)
     
     def set_mode(self, mode):
@@ -289,6 +451,7 @@ class WaypointsModeLayout(QMainWindow):
             
             self.selected_sequence.append(slot_num)
             self.log(f'Added slot {slot_num} to sequence: {self.selected_sequence}')
+            self.update_button_colors()
         
     def save_waypoint(self, slot_num):
         if str(slot_num) in self.waypoints:
@@ -413,11 +576,12 @@ class WaypointsModeLayout(QMainWindow):
         
     def update_button_colors(self):
         for i, btn in enumerate(self.waypoint_btns):
-            slot_num = i + 1
-            if str(slot_num) in self.waypoints:
-                btn.setStyleSheet('background-color: lightgreen;')
-            else:
-                btn.setStyleSheet('')
+            filled = str(i + 1) in self.waypoints
+            selected = (i + 1) in self.selected_sequence
+            btn.setProperty("filled", "true" if filled else "false")
+            btn.setProperty("selected", "true" if selected else "false")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
                 
     def load_waypoints(self):
         try:
@@ -434,7 +598,19 @@ class WaypointsModeLayout(QMainWindow):
             json.dump(self.waypoints, f, indent=2)
             
     def log(self, message):
-        self.log_text.append(message)
+        from datetime import datetime
+        ts = datetime.now().strftime("%H:%M:%S")
+        if "[ERROR]" in message:
+            color = "#ff3b3b"
+        elif "[WARN]" in message or "WARNING" in message:
+            color = "#ffb300"
+        elif "✓" in message or "completed" in message.lower():
+            color = "#00c853"
+        else:
+            color = "#e8ecf0"
+        self.log_text.append(
+            f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
+        )
         
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:

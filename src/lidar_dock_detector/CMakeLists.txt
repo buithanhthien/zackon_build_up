@@ -7,70 +7,55 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
-find_package(opennav_docking_core REQUIRED)
-find_package(pluginlib REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
-find_package(angles REQUIRED)
 
-add_library(${PROJECT_NAME} SHARED
-  src/lidar_intensity_dock.cpp
+# ── Standalone docking node ──────────────────────────────────────────────────
+add_executable(docking_node
+  src/docking_node.cpp
 )
-# Debug node
-add_executable(debug_intensity_node
-  src/debug_intensity_node.cpp
-)
-target_include_directories(${PROJECT_NAME} PUBLIC
+target_include_directories(docking_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
-
-ament_target_dependencies(${PROJECT_NAME}
+ament_target_dependencies(docking_node
   rclcpp
-  rclcpp_lifecycle
+  rclcpp_action
   sensor_msgs
   geometry_msgs
+  nav_msgs
   nav2_msgs
-  opennav_docking_core
-  pluginlib
+  std_srvs
   tf2
   tf2_ros
   tf2_geometry_msgs
-  angles
+)
+
+# ── Debug intensity node ─────────────────────────────────────────────────────
+add_executable(debug_intensity_node
+  src/debug_intensity_node.cpp
 )
 ament_target_dependencies(debug_intensity_node
   rclcpp
   sensor_msgs
 )
 
-pluginlib_export_plugin_description_file(
-  opennav_docking_core plugins.xml
-)
-
-install(TARGETS ${PROJECT_NAME}
-  EXPORT export_${PROJECT_NAME}
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-)
-install(TARGETS debug_intensity_node
+install(TARGETS docking_node debug_intensity_node
   DESTINATION lib/${PROJECT_NAME}
 )
 install(DIRECTORY include/
   DESTINATION include
 )
-
 install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
 )
-
-ament_export_include_directories(include)
-ament_export_libraries(${PROJECT_NAME})
-ament_export_targets(export_${PROJECT_NAME})
 
 ament_package()

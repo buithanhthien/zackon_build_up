@@ -1,56 +1,87 @@
+# docking_node:
+#   ros__parameters:
+#     scan_topic:          "/scan_front_filter"
+#     base_frame:          "base_link"
+
+#     # Detection thresholds
+#     i_peak:              46.0    # intensity > this = peak candidate
+#     i_valley:            60.0    # flanking valleys must be < this
+#     valley_search_range: 15      # beams to search each side
+#     max_detect_range:    3.0     # meters
+#     max_fail_count:      5       # consecutive misses before "lost"
+
+#     # Robot / dock geometry
+#     lrf_forward_offset:  0.30    # LiDAR to robot center (m)
+#     tape_distance:       0.37    # tape centerline spacing (m)
+
+#     # Motion
+#     rotate_speed:        0.3     # rad/s for 180° rotation
+#     backup_speed:        0.05    # m/s backward
+#     backup_distance:     0.30    # meters to back into dock
+
+#     # Staging pose (map frame)
+#     staging_pose_x:     -0.420
+#     staging_pose_y:      0.580
+#     staging_pose_yaw:    1.515
+
 docking_server:
   ros__parameters:
-    # ── Server timing ──────────────────────────
     controller_frequency: 10.0
     initial_perception_timeout: 10.0
     wait_charge_timeout: 5.0
-    dock_approach_timeout: 30.0
+    dock_approach_timeout: 60.0
     undock_linear_tolerance: 0.05
     undock_angular_tolerance: 0.1
     max_retries: 3
-
-    # ── Frames ─────────────────────────────────
     base_frame: "base_link"
     fixed_frame: "odom"
-
-    # ── Approach ───────────────────────────────
-    dock_backwards: true
     dock_prestaging_tolerance: 0.5
+    introspection_mode: "disabled"
+    
 
-    # ── Plugin ─────────────────────────────────
-    dock_plugins: ["lidar_dock"]
+    controller:
+      k_phi: 3.0
+      k_delta: 2.0
+      v_linear_min: 0.03
+      v_linear_max: 0.08
+      use_collision_detection: false
+      costmap_topic: "local_costmap/costmap_raw"
+      footprint_topic: "local_costmap/published_footprint"
+      transform_tolerance: 0.1
+      projection_time: 5.0
+      simulation_step: 0.1
+      dock_collision_threshold: 0.8
 
-    lidar_dock:
+    dock_plugins: ["reflective_tape_dock"]
+
+    reflective_tape_dock:
       plugin: "lidar_dock_detector/LidarIntensityDock"
-
-      # Topic
       scan_topic: "/scan_front_filter"
       base_frame: "base_link"
-
-      # LiDAR geometry (RPLidar s2)
       lrf_tilt_alpha_deg: 0.0
       lrf_forward_offset: 0.30
-
-      # Tape geometry (đo thực tế)
-      tape_distance:    0.37
-      rubber_width:     0.010
-      reflector_width:  0.05
-      use_collision_detection: false
-
-      # Intensity (từ bench test)
-      i_peak:              46.0
-      i_valley:            60.0
+      tape_distance: 0.375
+      rubber_width: 0.034
+      reflector_width: 0.05
+      i_peak: 46.0
+      i_valley: 60.0
       valley_search_range: 15
+      max_detect_range: 3.0
+      max_fail_count: 5
 
-      # Docking
-      staging_x_offset:  -0.80
-      docking_threshold:  0.05
+      staging_x_offset: -0.80 
+      staging_yaw_offset: 3.14
 
-    # ── Dock instances ──────────────────────────
+      docking_threshold: 0.05
+      dock_direction: "backward"
+      rotate_to_dock: true
+      use_external_detection_pose: false
+      
+
     docks: ["home_dock"]
 
     home_dock:
-      type:  "lidar_dock"
+      type: "reflective_tape_dock"
       frame: "map"
-      # Pose AMCL thực tế của bạn
-      pose:  [-1.736, -5.823, 3.100]
+      pose: [-0.40155, 1.34912, 1.57]
+

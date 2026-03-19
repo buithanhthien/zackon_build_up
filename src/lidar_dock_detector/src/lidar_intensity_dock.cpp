@@ -44,10 +44,10 @@ void LidarIntensityDock::configure(
   declare("tape_distance",       0.37);
   declare("rubber_width",        0.020);
   declare("reflector_width",     0.010);
-  declare("i_peak",              42.0);
-  declare("i_valley",            30.0);
-  declare("valley_search_range", 12);
-  declare("staging_x_offset",   -0.80);
+  declare("i_peak",              46.0);
+  declare("i_valley",            60.0);
+  declare("valley_search_range", 15);
+  declare("staging_x_offset",   -0.25);
   declare("docking_threshold",   0.05);
 
   // Read parameters

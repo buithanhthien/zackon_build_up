@@ -11,7 +11,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
-from nav2_msgs.action import NavigateToPose
+# from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import NavigateToPose, DockRobot
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
@@ -22,10 +23,12 @@ class WaypointsNode(Node):
         super().__init__('waypoints_node')
         self.subscription = self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
         self.nav_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
+        self.dock_client = ActionClient(self, DockRobot, '/dock_robot')
         self.current_pose = None
         self.current_goal_handle = None
         self.nav_server_available = False
         self.nav_server_available = self.nav_client.wait_for_server(timeout_sec=2.0)
+        self.dock_after_nav = False
         
     def pose_callback(self, msg):
         self.current_pose = msg
@@ -114,8 +117,11 @@ class WaypointsModeLayout(QMainWindow):
         self.reset_btn = QPushButton('Reset')
         self.stop_btn = QPushButton('Stop')
         self.back_btn = QPushButton('Back')
+        self.dock_btn = QPushButton('Dock After Nav')
+        self.dock_btn.setCheckable(True)
         
-        for btn in [self.save_btn, self.clear_btn, self.run_btn, self.reset_btn, self.stop_btn, self.back_btn]:
+        # for btn in [self.save_btn, self.clear_btn, self.run_btn, self.reset_btn, self.stop_btn, self.back_btn]:
+        for btn in [self.save_btn, self.clear_btn, self.run_btn, self.reset_btn, self.stop_btn, self.dock_btn, self.back_btn]:
             btn.setFont(QFont('Fira Sans', 24))
             btn.setMinimumHeight(80)
             left_layout.addWidget(btn)
@@ -140,6 +146,7 @@ class WaypointsModeLayout(QMainWindow):
         self.reset_btn.clicked.connect(self.reset_sequence)
         self.stop_btn.clicked.connect(self.stop_navigation)
         self.back_btn.clicked.connect(self.go_back)
+        self.dock_btn.toggled.connect(self.toggle_dock_after_nav)
         
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
@@ -338,6 +345,22 @@ class WaypointsModeLayout(QMainWindow):
         else:
             self.running_sequence = False
             self.log('Sequence completed')
+            # Auto-dock after last waypoint if enabled
+            if self.ros_node.dock_after_nav:
+                self._send_dock_goal('home_dock')
+
+    def toggle_dock_after_nav(self, checked):
+        self.ros_node.dock_after_nav = checked
+        self.log(f'Dock after nav: {"ON" if checked else "OFF"}')
+        self.dock_btn.setStyleSheet('background-color: lightblue;' if checked else '')
+
+    def _send_dock_goal(self, dock_id):
+        self.log(f'Sending dock goal: {dock_id}')
+        goal = DockRobot.Goal()
+        goal.dock_id = dock_id
+        self.ros_node.dock_client.send_goal_async(goal).add_done_callback(
+            lambda f: self.log('Docking started' if f.result().accepted else 'Dock goal rejected')
+        )
     
     def run_sequence(self):
         if not self.selected_sequence:

@@ -87,7 +87,8 @@ class DockingSequenceNode(Node):
         self.get_logger().info('Navigating to staging pose...')
         result_future = goal_handle.get_result_async()
         rclpy.spin_until_future_complete(self, result_future)
-        self.get_logger().info('Reached staging pose')
+        self.get_logger().info('Reached staging pose — waiting for robot to settle...')
+        time.sleep(1.5)  # let robot fully stop before opennav checks prestaging tolerance
 
         # ── Step 2: send dock goal ────────────────────────────────────────────
         self.get_logger().info(f'Sending DockRobot goal: {DOCK_ID}')

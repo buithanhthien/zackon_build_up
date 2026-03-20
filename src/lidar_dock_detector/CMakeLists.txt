@@ -19,6 +19,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(opennav_docking_core REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(angles REQUIRED)
 
 set(DOCK_DEPS
   rclcpp
@@ -30,6 +31,7 @@ set(DOCK_DEPS
   tf2_geometry_msgs
   opennav_docking_core
   pluginlib
+  angles
 )
 
 add_library(lidar_dock_detector SHARED

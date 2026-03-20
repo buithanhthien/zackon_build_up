@@ -64,9 +64,9 @@ docking_server:
       tape_distance: 0.375
       rubber_width: 0.034
       reflector_width: 0.05
-      i_peak: 60.0
-      i_valley: 46.0
-      valley_search_range: 15
+      i_peak: 43.0
+      i_valley: 29.0
+      valley_search_range: 19
       max_detect_range: 3.0
       max_fail_count: 5
 

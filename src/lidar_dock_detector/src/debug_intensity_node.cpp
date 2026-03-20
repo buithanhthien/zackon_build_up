@@ -10,9 +10,9 @@ public:
   {
     // Parameters
     this->declare_parameter("scan_topic",   "/scan_front_filter");
-    this->declare_parameter("i_peak",       46.0);
-    this->declare_parameter("i_valley",     60.0);
-    this->declare_parameter("search_range", 15);
+    this->declare_parameter("i_peak",       43.0);
+    this->declare_parameter("i_valley",     29.0);
+    this->declare_parameter("search_range", 20);
 
     scan_topic_   = this->get_parameter("scan_topic").as_string();
     i_peak_       = static_cast<float>(

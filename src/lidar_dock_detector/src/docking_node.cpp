@@ -12,19 +12,19 @@ DockingNode::DockingNode(const rclcpp::NodeOptions & opts)
   // Declare & get parameters
   declare_parameter("scan_topic",          "/scan_front_filter");
   declare_parameter("base_frame",          "base_link");
-  declare_parameter("i_peak",              46.0);
-  declare_parameter("i_valley",            60.0);
-  declare_parameter("valley_search_range", 15);
+  declare_parameter("i_peak",              43.0);
+  declare_parameter("i_valley",            29.0);
+  declare_parameter("valley_search_range", 19);
   declare_parameter("max_detect_range",    3.0);
   declare_parameter("max_fail_count",      5);
   declare_parameter("lrf_forward_offset",  0.30);
-  declare_parameter("tape_distance",       0.37);
+  declare_parameter("tape_distance",       0.375);
   declare_parameter("rotate_speed",        0.3);
   declare_parameter("backup_speed",        0.05);
   declare_parameter("backup_distance",     0.30);
   declare_parameter("staging_pose_x",     -0.420);
   declare_parameter("staging_pose_y",      0.580);
-  declare_parameter("staging_pose_yaw",    1.515);
+  declare_parameter("staging_pose_yaw",    1.57);
 
   scan_topic_           = get_parameter("scan_topic").as_string();
   base_frame_           = get_parameter("base_frame").as_string();

@@ -38,16 +38,16 @@ void LidarIntensityDock::configure(
   declare("base_frame",                  std::string("base_link"));
   declare("lrf_tilt_alpha_deg",          0.0);
   declare("lrf_forward_offset",          0.30);
-  declare("tape_distance",               0.37);
-  declare("rubber_width",                0.020);
-  declare("reflector_width",             0.010);
-  declare("i_peak",                      60.0);
-  declare("i_valley",                    46.0);
-  declare("valley_search_range",         15);
+  declare("tape_distance",               0.375);
+  declare("rubber_width",                0.034);
+  declare("reflector_width",             0.05);
+  declare("i_peak",                      43.0);
+  declare("i_valley",                    29.0);
+  declare("valley_search_range",         19);
   declare("max_detect_range",            3.0);
   declare("max_fail_count",              5);
   declare("staging_x_offset",           -0.8);
-  declare("staging_yaw_offset",          0.0);
+  declare("staging_yaw_offset",          3.14);
   declare("docking_threshold",           0.05);
   declare("use_external_detection_pose", false);
 

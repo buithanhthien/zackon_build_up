@@ -23,7 +23,6 @@ public:
   LidarIntensityDock() = default;
   ~LidarIntensityDock() override = default;
 
-  // ── Lifecycle ──────────────────────────────
   void configure(
     const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
     const std::string & name,
@@ -33,7 +32,6 @@ public:
   void activate()   override;
   void deactivate() override;
 
-  // ── ChargingDock interface ─────────────────
   geometry_msgs::msg::PoseStamped getStagingPose(
     const geometry_msgs::msg::Pose & dock_pose,
     const std::string & frame) override;
@@ -48,7 +46,6 @@ public:
   bool hasStoppedCharging() override;
 
 private:
-  // ── Internal types ─────────────────────────
   struct Reflector {
     int    peak_idx;
     int    valley_l_idx;
@@ -61,15 +58,12 @@ private:
     double y;
   };
 
-  // ── Detection helpers ──────────────────────
-  void scanCallback(
-    const sensor_msgs::msg::LaserScan::SharedPtr msg);
+  void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
 
   std::vector<Reflector> detectReflectors(
     const sensor_msgs::msg::LaserScan & scan) const;
 
-  double computeInceptionAngle(
-    double Li, double Lj, double theta_rad) const;
+  double computeInceptionAngle(double Li, double Lj, double theta_rad) const;
 
   bool computeDockPose(
     const Reflector & left_tape,
@@ -78,33 +72,36 @@ private:
     double lrf_offset,
     geometry_msgs::msg::PoseStamped & pose_out) const;
 
-  // ── Parameters ─────────────────────────────
+  // Parameters
   std::string name_;
   std::string scan_topic_;
   std::string base_frame_;
 
   double lrf_tilt_alpha_;
   double lrf_forward_offset_;
-
   double tape_distance_;
   double rubber_width_;
   double reflector_width_;
-
   float  i_peak_;
   float  i_valley_;
   int    valley_search_range_;
-
+  double max_detect_range_;
+  int    max_fail_count_;
   double staging_x_offset_;
+  double staging_yaw_offset_;
   double docking_threshold_;
+  bool   use_external_detection_pose_;
+  // dock_direction / rotate_to_dock reserved for future use
 
-  // ── ROS handles ────────────────────────────
+  // ROS handles
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
 
-  // ── State ──────────────────────────────────
+  // State
   geometry_msgs::msg::PoseStamped last_detected_pose_;
   bool       dock_detected_{false};
+  int        miss_count_{0};
   std::mutex pose_mutex_;
 };
 

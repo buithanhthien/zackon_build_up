@@ -27,86 +27,91 @@ void LidarIntensityDock::configure(
 
   auto node = node_.lock();
   if (!node) {
-    throw std::runtime_error(
-      "[LidarIntensityDock] cannot lock node");
+    throw std::runtime_error("[LidarIntensityDock] cannot lock node");
   }
 
-  // Declare parameters
   auto declare = [&](const std::string & key, auto val) {
-    node->declare_parameter(
-      name_ + "." + key, rclcpp::ParameterValue(val));
+    node->declare_parameter(name_ + "." + key, rclcpp::ParameterValue(val));
   };
 
-  declare("scan_topic",          std::string("/scan_front_filter"));
-  declare("base_frame",          std::string("base_link"));
-  declare("lrf_tilt_alpha_deg",  0.0);
-  declare("lrf_forward_offset",  0.30);
-  declare("tape_distance",       0.37);
-  declare("rubber_width",        0.020);
-  declare("reflector_width",     0.010);
-  declare("i_peak",              46.0);
-  declare("i_valley",            60.0);
-  declare("valley_search_range", 15);
-  declare("staging_x_offset",   -0.25);
-  declare("docking_threshold",   0.05);
+  declare("scan_topic",                  std::string("/scan_front_filter"));
+  declare("base_frame",                  std::string("base_link"));
+  declare("lrf_tilt_alpha_deg",          0.0);
+  declare("lrf_forward_offset",          0.30);
+  declare("tape_distance",               0.37);
+  declare("rubber_width",                0.020);
+  declare("reflector_width",             0.010);
+  declare("i_peak",                      60.0);
+  declare("i_valley",                    46.0);
+  declare("valley_search_range",         15);
+  declare("max_detect_range",            3.0);
+  declare("max_fail_count",              5);
+  declare("staging_x_offset",           -0.8);
+  declare("staging_yaw_offset",          0.0);
+  declare("docking_threshold",           0.05);
+  declare("use_external_detection_pose", false);
 
-  // Read parameters
   auto get_d = [&](const std::string & k) {
     return node->get_parameter(name_ + "." + k).as_double();
   };
+  auto get_i = [&](const std::string & k) {
+    return static_cast<int>(node->get_parameter(name_ + "." + k).as_int());
+  };
+  auto get_b = [&](const std::string & k) {
+    return node->get_parameter(name_ + "." + k).as_bool();
+  };
 
-  scan_topic_ = node->get_parameter(
-    name_ + ".scan_topic").as_string();
-  base_frame_ = node->get_parameter(
-    name_ + ".base_frame").as_string();
+  scan_topic_  = node->get_parameter(name_ + ".scan_topic").as_string();
+  base_frame_  = node->get_parameter(name_ + ".base_frame").as_string();
 
-  lrf_tilt_alpha_     = angles::from_degrees(
-                          get_d("lrf_tilt_alpha_deg"));
-  lrf_forward_offset_ = get_d("lrf_forward_offset");
-  tape_distance_      = get_d("tape_distance");
-  rubber_width_       = get_d("rubber_width");
-  reflector_width_    = get_d("reflector_width");
-  i_peak_             = static_cast<float>(get_d("i_peak"));
-  i_valley_           = static_cast<float>(get_d("i_valley"));
-  valley_search_range_ = static_cast<int>(
-    node->get_parameter(
-      name_ + ".valley_search_range").as_int());
-  staging_x_offset_   = get_d("staging_x_offset");
-  docking_threshold_  = get_d("docking_threshold");
+  lrf_tilt_alpha_            = angles::from_degrees(get_d("lrf_tilt_alpha_deg"));
+  lrf_forward_offset_        = get_d("lrf_forward_offset");
+  tape_distance_             = get_d("tape_distance");
+  rubber_width_              = get_d("rubber_width");
+  reflector_width_           = get_d("reflector_width");
+  i_peak_                    = static_cast<float>(get_d("i_peak"));
+  i_valley_                  = static_cast<float>(get_d("i_valley"));
+  valley_search_range_       = get_i("valley_search_range");
+  max_detect_range_          = get_d("max_detect_range");
+  max_fail_count_            = get_i("max_fail_count");
+  staging_x_offset_          = get_d("staging_x_offset");
+  staging_yaw_offset_        = get_d("staging_yaw_offset");
+  docking_threshold_         = get_d("docking_threshold");
+  use_external_detection_pose_ = get_b("use_external_detection_pose");
 
   RCLCPP_INFO(node->get_logger(),
-    "[%s] Configured!\n"
-    "  scan=%s  base=%s\n"
-    "  dL=%.3fm  d=%.3fm\n"
-    "  i_peak=%.0f  i_valley=%.0f",
-    name_.c_str(),
-    scan_topic_.c_str(), base_frame_.c_str(),
+    "[%s] Configured: scan=%s base=%s lrf_offset=%.3f tape=%.3f "
+    "i_peak=%.0f i_valley=%.0f max_range=%.1f max_fail=%d "
+    "staging_x=%.3f staging_yaw=%.3f use_ext=%s",
+    name_.c_str(), scan_topic_.c_str(), base_frame_.c_str(),
     lrf_forward_offset_, tape_distance_,
-    static_cast<double>(i_peak_),
-    static_cast<double>(i_valley_));
+    static_cast<double>(i_peak_), static_cast<double>(i_valley_),
+    max_detect_range_, max_fail_count_,
+    staging_x_offset_, staging_yaw_offset_,
+    use_external_detection_pose_ ? "true" : "false");
 }
 
-void LidarIntensityDock::cleanup()
-{
-  scan_sub_.reset();
-}
+void LidarIntensityDock::cleanup()  { scan_sub_.reset(); }
 
 void LidarIntensityDock::activate()
 {
   auto node = node_.lock();
   if (!node) { return; }
-
-  auto cb = std::bind(&LidarIntensityDock::scanCallback, this, std::placeholders::_1);
-
-  scan_sub_ = node->create_subscription<sensor_msgs::msg::LaserScan>(scan_topic_, rclcpp::SensorDataQoS(), cb);
-
-  RCLCPP_INFO(node->get_logger(), "[%s] Active - listening to %s", name_.c_str(), scan_topic_.c_str());
+  // Reset state
+  {
+    std::lock_guard<std::mutex> lock(pose_mutex_);
+    dock_detected_ = false;
+    miss_count_    = 0;
+    last_detected_pose_ = geometry_msgs::msg::PoseStamped{};  // stamp.sec == 0 sentinel
+  }
+  scan_sub_ = node->create_subscription<sensor_msgs::msg::LaserScan>(
+    scan_topic_, rclcpp::SensorDataQoS(),
+    std::bind(&LidarIntensityDock::scanCallback, this, std::placeholders::_1));
+  RCLCPP_INFO(node->get_logger(), "[%s] Active - listening to %s",
+    name_.c_str(), scan_topic_.c_str());
 }
 
-void LidarIntensityDock::deactivate()
-{
-  scan_sub_.reset();
-}
+void LidarIntensityDock::deactivate() { scan_sub_.reset(); }
 
 // ─────────────────────────────────────────────
 // ChargingDock interface
@@ -126,10 +131,16 @@ LidarIntensityDock::getStagingPose(
     dock_pose.orientation.z,
     dock_pose.orientation.w);
 
-  staging.pose.position.x +=
-    staging_x_offset_ * std::cos(yaw);
-  staging.pose.position.y +=
-    staging_x_offset_ * std::sin(yaw);
+  // Apply x offset along dock heading
+  staging.pose.position.x += staging_x_offset_ * std::cos(yaw);
+  staging.pose.position.y += staging_x_offset_ * std::sin(yaw);
+
+  // Apply yaw offset to staging orientation
+  double staging_yaw = yaw + staging_yaw_offset_;
+  staging.pose.orientation.x = 0.0;
+  staging.pose.orientation.y = 0.0;
+  staging.pose.orientation.z = std::sin(staging_yaw / 2.0);
+  staging.pose.orientation.w = std::cos(staging_yaw / 2.0);
 
   return staging;
 }
@@ -138,40 +149,76 @@ bool LidarIntensityDock::getRefinedPose(
   geometry_msgs::msg::PoseStamped & pose,
   std::string /*id*/)
 {
+  // If external detection is disabled, return the database dock pose as-is
+  // (pose is already set by the docking server from the dock database)
+  if (!use_external_detection_pose_) {
+    return true;
+  }
+
+  // use_external_detection_pose: true → use LiDAR-detected pose
   std::lock_guard<std::mutex> lock(pose_mutex_);
   if (!dock_detected_) { return false; }
-  pose = last_detected_pose_;
+
+  // Transform detected pose from laser frame → base_frame_
+  try {
+    geometry_msgs::msg::PoseStamped pose_in_base;
+    tf_->transform(last_detected_pose_, pose_in_base, base_frame_,
+                   tf2::durationFromSec(0.1));
+    pose = pose_in_base;
+  } catch (const tf2::TransformException & ex) {
+    auto node = node_.lock();
+    if (node) {
+      RCLCPP_WARN(node->get_logger(),
+        "[%s] TF transform failed: %s", name_.c_str(), ex.what());
+    }
+    return false;
+  }
+
   return true;
 }
 
 bool LidarIntensityDock::isDocked()
 {
+  // When not using external detection (rear/backward docking), the front LiDAR
+  // may lose sight of the reflector during the final backing phase.
+  // In that case, rely on the debounced dock_detected_ latch: once the robot
+  // was close enough and detection is lost, treat it as docked.
+  if (!use_external_detection_pose_) {
+    std::lock_guard<std::mutex> lock(pose_mutex_);
+    // If we never detected the dock at all, not docked.
+    if (last_detected_pose_.header.stamp.sec == 0) { return false; }
+    // If detection is still active, check distance in base_frame_ (no double offset:
+    // computeDockPose already embeds lrf_forward_offset_ into pose.position.x).
+    if (dock_detected_) {
+      try {
+        geometry_msgs::msg::PoseStamped pose_base;
+        tf_->transform(last_detected_pose_, pose_base, base_frame_,
+                       tf2::durationFromSec(0.1));
+        double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y);
+        return dist < docking_threshold_;
+      } catch (const tf2::TransformException &) {}
+    }
+    // Detection lost during final backing phase → consider docked
+    return true;
+  }
+
+  // External detection mode: must have a current detection in base_frame_
   std::lock_guard<std::mutex> lock(pose_mutex_);
   if (!dock_detected_) { return false; }
-
-  double dist = std::hypot(
-    last_detected_pose_.pose.position.x,
-    last_detected_pose_.pose.position.y);
-
-  return dist < docking_threshold_;
+  try {
+    geometry_msgs::msg::PoseStamped pose_base;
+    tf_->transform(last_detected_pose_, pose_base, base_frame_,
+                   tf2::durationFromSec(0.1));
+    double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y);
+    return dist < docking_threshold_;
+  } catch (const tf2::TransformException &) {
+    return false;
+  }
 }
 
-bool LidarIntensityDock::isCharging()
-{
-  // TODO: subscribe battery topic
-  return isDocked();
-}
-
-bool LidarIntensityDock::disableCharging()
-{
-  // TODO: send relay command
-  return true;
-}
-
-bool LidarIntensityDock::hasStoppedCharging()
-{
-  return !isDocked();
-}
+bool LidarIntensityDock::isCharging()         { return isDocked(); }
+bool LidarIntensityDock::disableCharging()    { return true; }
+bool LidarIntensityDock::hasStoppedCharging() { return !isDocked(); }
 
 // ─────────────────────────────────────────────
 // Scan callback
@@ -188,31 +235,31 @@ void LidarIntensityDock::scanCallback(
   bool found = false;
 
   if (reflectors.size() == 2u) {
-    // RPLidar A2:
-    // beam nhỏ = lệch PHẢI
-    // beam lớn = lệch TRÁI
     const Reflector & right =
       (reflectors[0].peak_idx < reflectors[1].peak_idx)
       ? reflectors[0] : reflectors[1];
-
     const Reflector & left =
       (reflectors[0].peak_idx < reflectors[1].peak_idx)
       ? reflectors[1] : reflectors[0];
 
-    found = computeDockPose(
-      left, right,
-      tape_distance_,
-      lrf_forward_offset_,
-      detected);
+    found = computeDockPose(left, right, tape_distance_, lrf_forward_offset_, detected);
   }
 
   std::lock_guard<std::mutex> lock(pose_mutex_);
-  dock_detected_ = found;
-  if (found) { last_detected_pose_ = detected; }
+  if (found) {
+    miss_count_        = 0;
+    dock_detected_     = true;
+    last_detected_pose_ = detected;
+  } else {
+    // Debounce: only clear detection after max_fail_count_ consecutive misses
+    if (++miss_count_ > max_fail_count_) {
+      dock_detected_ = false;
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
-// detectReflectors() - Fig.3 của paper
+// detectReflectors()
 // ─────────────────────────────────────────────
 
 std::vector<LidarIntensityDock::Reflector>
@@ -221,107 +268,63 @@ LidarIntensityDock::detectReflectors(
 {
   std::vector<Reflector> result;
   const size_t N = scan.ranges.size();
-
   if (scan.intensities.size() != N) { return result; }
 
   const double theta = scan.angle_increment;
 
-  // Max detection range từ Eq.(8a)
-  const double max_range =
-    std::min(rubber_width_, reflector_width_) /
-    (2.0 * std::sin(theta / 2.0));
+  // Geometric max range from Eq.(8a), capped by configured max_detect_range_
+  const double max_range_geom =
+    std::min(rubber_width_, reflector_width_) / (2.0 * std::sin(theta / 2.0));
+  const double max_range = std::min(max_range_geom, max_detect_range_);
 
   const int margin = valley_search_range_ + 2;
 
-  for (int i = margin;
-       i < static_cast<int>(N) - margin; ++i)
-  {
+  for (int i = margin; i < static_cast<int>(N) - margin; ++i) {
     const float I_i = scan.intensities[i];
-
-    // Step 1: Peak candidate?
     if (I_i < i_peak_) { continue; }
 
-    // Step 2: Local maximum?
+    // Local maximum check
     bool is_max = true;
-    for (int k = i - 1;
-         k >= std::max(0, i - valley_search_range_); --k) {
-      if (scan.intensities[k] > I_i) {
-        is_max = false; break;
-      }
+    for (int k = i - 1; k >= std::max(0, i - valley_search_range_); --k) {
+      if (scan.intensities[k] > I_i) { is_max = false; break; }
+    }
+    if (!is_max) { continue; }
+    for (int k = i + 1; k <= std::min(static_cast<int>(N) - 1, i + valley_search_range_); ++k) {
+      if (scan.intensities[k] > I_i) { is_max = false; break; }
     }
     if (!is_max) { continue; }
 
-    for (int k = i + 1;
-         k <= std::min(static_cast<int>(N) - 1,
-                       i + valley_search_range_); ++k) {
-      if (scan.intensities[k] > I_i) {
-        is_max = false; break;
-      }
-    }
-    if (!is_max) { continue; }
-
-    // Step 3: Tìm valley trái
+    // Left valley
     int   vl_idx = i - 1;
     float vl_val = scan.intensities[vl_idx];
-    for (int k = i - 2;
-         k >= std::max(0, i - valley_search_range_); --k) {
-      if (scan.intensities[k] < vl_val) {
-        vl_val = scan.intensities[k];
-        vl_idx = k;
-      }
+    for (int k = i - 2; k >= std::max(0, i - valley_search_range_); --k) {
+      if (scan.intensities[k] < vl_val) { vl_val = scan.intensities[k]; vl_idx = k; }
     }
 
-    // Step 4: Tìm valley phải
+    // Right valley
     int   vr_idx = i + 1;
     float vr_val = scan.intensities[vr_idx];
-    for (int k = i + 2;
-         k <= std::min(static_cast<int>(N) - 1,
-                       i + valley_search_range_); ++k) {
-      if (scan.intensities[k] < vr_val) {
-        vr_val = scan.intensities[k];
-        vr_idx = k;
-      }
+    for (int k = i + 2; k <= std::min(static_cast<int>(N) - 1, i + valley_search_range_); ++k) {
+      if (scan.intensities[k] < vr_val) { vr_val = scan.intensities[k]; vr_idx = k; }
     }
 
-    // Step 5: Valley hợp lệ?
-    if (vl_val > i_valley_ || vr_val > i_valley_) {
-      continue;
-    }
+    if (vl_val > i_valley_ || vr_val > i_valley_) { continue; }
 
-    // Step 6: Range hợp lệ? Eq.(8a)
     const float r_i = scan.ranges[i];
-    if (!std::isfinite(r_i) ||
-        r_i < scan.range_min ||
-        r_i > scan.range_max) { continue; }
+    if (!std::isfinite(r_i) || r_i < scan.range_min || r_i > scan.range_max) { continue; }
     if (static_cast<double>(r_i) > max_range) { continue; }
 
-    // Step 7: Inception angle β Eq.(3a)
     const float r_j = scan.ranges[i - 1];
-    if (!std::isfinite(r_j) ||
-        r_j < scan.range_min ||
-        r_j > scan.range_max) { continue; }
+    if (!std::isfinite(r_j) || r_j < scan.range_min || r_j > scan.range_max) { continue; }
 
     double beta = computeInceptionAngle(
-      static_cast<double>(r_i),
-      static_cast<double>(r_j),
-      theta);
-
-    // Remark 2: β quá nhỏ = grazing angle
+      static_cast<double>(r_i), static_cast<double>(r_j), theta);
     if (std::abs(beta) < 0.05) { continue; }
 
-    // Step 8: Tính vị trí Cartesian
-    // RPLidar: 0° = -X = thẳng trước
-    // Convert sang ROS convention
-    double rplidar_angle = scan.angle_min +
-                           i * scan.angle_increment;
+    double rplidar_angle = scan.angle_min + i * scan.angle_increment;
     double ros_angle = M_PI - rplidar_angle;
-
-    // Normalize [-π, π]
     while (ros_angle >  M_PI) ros_angle -= 2 * M_PI;
     while (ros_angle < -M_PI) ros_angle += 2 * M_PI;
-
-    double x = static_cast<double>(r_i) * std::cos(ros_angle);
-    double y = static_cast<double>(r_i) * std::sin(ros_angle);
 
     Reflector ref;
     ref.peak_idx     = i;
@@ -331,12 +334,10 @@ LidarIntensityDock::detectReflectors(
     ref.I_valley     = std::min(vl_val, vr_val);
     ref.L_peak       = static_cast<double>(r_i);
     ref.beta         = beta;
-    ref.x            = x;
-    ref.y            = y;
+    ref.x            = static_cast<double>(r_i) * std::cos(ros_angle);
+    ref.y            = static_cast<double>(r_i) * std::sin(ros_angle);
 
     result.push_back(ref);
-
-    // Skip qua valley phải tránh double-detect
     i = vr_idx;
   }
 
@@ -344,50 +345,45 @@ LidarIntensityDock::detectReflectors(
 }
 
 // ─────────────────────────────────────────────
-// Inception angle - Eq.(3a) của paper
-// β = arctan(Lj×sin(θ) / (Lj×cos(θ) - Li))
+// Inception angle - Eq.(3a)
 // ─────────────────────────────────────────────
 
 double LidarIntensityDock::computeInceptionAngle(
   double Li, double Lj, double theta_rad) const
 {
-  double sin_t = std::sin(theta_rad);
-  double cos_t = std::cos(theta_rad);
-  double denom = Lj * cos_t - Li;
-
+  double denom = Lj * std::cos(theta_rad) - Li;
   if (std::abs(denom) < 1e-6) { return 0.0; }
-
-  return std::atan(Lj * sin_t / denom);
+  return std::atan(Lj * std::sin(theta_rad) / denom);
 }
 
 // ─────────────────────────────────────────────
-// Dock pose - Eq.(9) của paper
-// φm = π/2 - β_L - θ_L
+// Dock pose - Eq.(9)
 // ─────────────────────────────────────────────
 
 bool LidarIntensityDock::computeDockPose(
   const Reflector & left_tape,
   const Reflector & right_tape,
-  double /*tape_dist*/,
+  double tape_dist,
   double lrf_offset,
   geometry_msgs::msg::PoseStamped & pose_out) const
 {
-  // θ_L và θ_R từ vị trí Cartesian
+  // Validate reflector pair spacing against configured tape_distance
+  double measured_dist = std::hypot(
+    left_tape.x - right_tape.x, left_tape.y - right_tape.y);
+  if (std::abs(measured_dist - tape_dist) > tape_dist * 0.4) {
+    return false;  // geometry inconsistent — likely false positive pair
+  }
+
   double theta_L = std::atan2(left_tape.y,  left_tape.x);
   double theta_R = std::atan2(right_tape.y, right_tape.x);
 
-  // φm từ Eq.(9c) - trung bình L và R
   double phi_L = M_PI / 2.0 - left_tape.beta  - theta_L;
   double phi_R = M_PI / 2.0 - right_tape.beta - theta_R;
   double phi_m = (phi_L + phi_R) / 2.0;
 
-  // Tâm dock = midpoint 2 tape + offset LiDAR
-  double x_dock = (left_tape.x + right_tape.x) / 2.0
-                  + lrf_offset;
-  double y_dock = (left_tape.y + right_tape.y) / 2.0;
-
-  pose_out.pose.position.x = x_dock;
-  pose_out.pose.position.y = y_dock;
+  // Midpoint of two tapes + LiDAR forward offset (single compensation point)
+  pose_out.pose.position.x = (left_tape.x + right_tape.x) / 2.0 + lrf_offset;
+  pose_out.pose.position.y = (left_tape.y + right_tape.y) / 2.0;
   pose_out.pose.position.z = 0.0;
 
   pose_out.pose.orientation.x = 0.0;
@@ -400,7 +396,6 @@ bool LidarIntensityDock::computeDockPose(
 
 }  // namespace lidar_dock_detector
 
-// ── pluginlib export ──────────────────────────
 PLUGINLIB_EXPORT_CLASS(
   lidar_dock_detector::LidarIntensityDock,
   opennav_docking_core::ChargingDock)

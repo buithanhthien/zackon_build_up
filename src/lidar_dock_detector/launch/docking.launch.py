@@ -52,6 +52,7 @@ def generate_launch_description():
         parameters=[{
             'autostart': True,
             'node_names': ['docking_server'],
+            'bond_timeout': 0.0,  # disable bond so it doesn't interfere with Nav2 lifecycle managers
         }],
     )
 

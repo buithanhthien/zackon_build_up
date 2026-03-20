@@ -17,11 +17,32 @@ find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(opennav_docking_core REQUIRED)
+find_package(pluginlib REQUIRED)
 
-# ── Standalone docking node ──────────────────────────────────────────────────
-add_executable(docking_node
-  src/docking_node.cpp
+set(DOCK_DEPS
+  rclcpp
+  rclcpp_lifecycle
+  sensor_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  opennav_docking_core
+  pluginlib
 )
+
+add_library(lidar_dock_detector SHARED
+  src/lidar_intensity_dock.cpp
+)
+target_include_directories(lidar_dock_detector PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(lidar_dock_detector ${DOCK_DEPS})
+pluginlib_export_plugin_description_file(opennav_docking_core plugins.xml)
+
+add_executable(docking_node src/docking_node.cpp)
 target_include_directories(docking_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
@@ -39,15 +60,14 @@ ament_target_dependencies(docking_node
   tf2_geometry_msgs
 )
 
-# ── Debug intensity node ─────────────────────────────────────────────────────
-add_executable(debug_intensity_node
-  src/debug_intensity_node.cpp
-)
-ament_target_dependencies(debug_intensity_node
-  rclcpp
-  sensor_msgs
-)
+add_executable(debug_intensity_node src/debug_intensity_node.cpp)
+ament_target_dependencies(debug_intensity_node rclcpp sensor_msgs)
 
+install(TARGETS lidar_dock_detector
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
 install(TARGETS docking_node debug_intensity_node
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -55,6 +75,9 @@ install(DIRECTORY include/
   DESTINATION include
 )
 install(DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
+install(FILES plugins.xml
   DESTINATION share/${PROJECT_NAME}
 )
 

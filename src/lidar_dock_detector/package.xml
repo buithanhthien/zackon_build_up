@@ -23,8 +23,11 @@
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
+  <depend>opennav_docking_core</depend>
+  <depend>pluginlib</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
+    <opennav_docking_core plugin="${prefix}/plugins.xml"/>
   </export>
 </package>

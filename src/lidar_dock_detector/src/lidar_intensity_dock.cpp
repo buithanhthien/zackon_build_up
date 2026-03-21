@@ -49,6 +49,8 @@ void LidarIntensityDock::configure(
   declare("staging_x_offset",           -0.8);
   declare("staging_yaw_offset",          3.14);
   declare("docking_threshold",           0.05);
+  declare("min_detection_angle_deg",    -60.0);
+  declare("max_detection_angle_deg",     60.0);
   declare("use_external_detection_pose", false);
 
   auto get_d = [&](const std::string & k) {
@@ -65,6 +67,8 @@ void LidarIntensityDock::configure(
   base_frame_  = node->get_parameter(name_ + ".base_frame").as_string();
 
   lrf_tilt_alpha_            = angles::from_degrees(get_d("lrf_tilt_alpha_deg"));
+  min_detection_angle_       = angles::from_degrees(get_d("min_detection_angle_deg"));
+  max_detection_angle_       = angles::from_degrees(get_d("max_detection_angle_deg"));
   lrf_forward_offset_        = get_d("lrf_forward_offset");
   tape_distance_             = get_d("tape_distance");
   rubber_width_              = get_d("rubber_width");
@@ -280,6 +284,17 @@ LidarIntensityDock::detectReflectors(
   const int margin = valley_search_range_ + 2;
 
   for (int i = margin; i < static_cast<int>(N) - margin; ++i) {
+    double angle = scan.angle_min + i * scan.angle_increment;
+
+    // Normalize (optional but safe)
+    while (angle >  M_PI) angle -= 2 * M_PI;
+    while (angle < -M_PI) angle += 2 * M_PI;
+
+    // Filter by angle
+    if (angle < min_detection_angle_ || angle > max_detection_angle_) {
+      continue;
+    }
+
     const float I_i = scan.intensities[i];
     if (I_i < i_peak_) { continue; }
 
@@ -370,7 +385,7 @@ bool LidarIntensityDock::computeDockPose(
   // Validate reflector pair spacing against configured tape_distance
   double measured_dist = std::hypot(
     left_tape.x - right_tape.x, left_tape.y - right_tape.y);
-  if (std::abs(measured_dist - tape_dist) > tape_dist * 0.4) {
+  if (std::abs(measured_dist - tape_dist) > tape_dist * 0.2) {
     return false;  // geometry inconsistent — likely false positive pair
   }
 

@@ -91,6 +91,9 @@ private:
   double staging_yaw_offset_;
   double docking_threshold_;
   bool   use_external_detection_pose_;
+
+  double min_detection_angle_;
+  double max_detection_angle_;
   // dock_direction / rotate_to_dock reserved for future use
 
   // ROS handles

@@ -47,24 +47,27 @@ class DockingSequenceNode(Node):
         self._dock_client = ActionClient(self, DockRobot,      '/dock_robot')
 
     def run(self):
-        self.get_logger().info('Waiting for Nav2 action server...')
-        self._nav_client.wait_for_server()
+        log = self.get_logger()
+        log.info(f'[CONFIG] dock_id={DOCK_ID}  dock=({DOCK_X:.4f}, {DOCK_Y:.4f}, yaw={DOCK_YAW:.4f}rad)')
+        log.info(f'[CONFIG] staging_offset={STAGING_OFFSET}  staging=({STAGING_X:.4f}, {STAGING_Y:.4f}, yaw={STAGING_YAW:.4f}rad)')
 
-        # ── Launch docking server in background ───────────────────────────────
-        self.get_logger().info('Launching docking server...')
+        log.info('[NAV] Waiting for Nav2 action server...')
+        self._nav_client.wait_for_server()
+        log.info('[NAV] Nav2 action server ready')
+
+        log.info('[DOCK_SERVER] Launching docking server...')
         dock_launch = subprocess.Popen(
             ['bash', '-c',
              f'source {SOURCE_PATH}/install/setup.bash && '
              f'ros2 launch lidar_dock_detector docking.launch.py'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-        self.get_logger().info('Waiting for docking server to come up...')
-        self._dock_client.wait_for_server()  # blocks until /dock_robot is ready
-        self.get_logger().info(
-            f'Navigating to staging pose ({STAGING_X:.2f}, {STAGING_Y:.2f}, yaw={STAGING_YAW:.2f})'
-        )
+        log.info('[DOCK_SERVER] Waiting for /dock_robot action server...')
+        self._dock_client.wait_for_server()
+        log.info('[DOCK_SERVER] /dock_robot ready')
 
         qx, qy, qz, qw = yaw_to_quaternion(STAGING_YAW)
+        log.info(f'[NAV] Sending goal: pos=({STAGING_X:.4f}, {STAGING_Y:.4f})  quat=({qx:.4f}, {qy:.4f}, {qz:.4f}, {qw:.4f})')
         goal = NavigateToPose.Goal()
         goal.pose = PoseStamped()
         goal.pose.header.frame_id = 'map'
@@ -81,17 +84,16 @@ class DockingSequenceNode(Node):
 
         goal_handle = future.result()
         if not goal_handle.accepted:
-            self.get_logger().error('Navigation goal rejected')
+            log.error('[NAV] Navigation goal rejected')
             return
+        log.info('[NAV] Goal accepted — navigating to staging pose...')
 
-        self.get_logger().info('Navigating to staging pose...')
         result_future = goal_handle.get_result_async()
         rclpy.spin_until_future_complete(self, result_future)
-        self.get_logger().info('Reached staging pose — waiting for robot to settle...')
-        time.sleep(1.5)  # let robot fully stop before opennav checks prestaging tolerance
+        log.info('[NAV] Reached staging pose — settling 1.5s...')
+        time.sleep(1.5)
 
-        # ── Step 2: send dock goal ────────────────────────────────────────────
-        self.get_logger().info(f'Sending DockRobot goal: {DOCK_ID}')
+        log.info(f'[DOCKING] Sending DockRobot goal: dock_id={DOCK_ID}')
         dock_goal = DockRobot.Goal()
         dock_goal.dock_id = DOCK_ID
 
@@ -100,21 +102,20 @@ class DockingSequenceNode(Node):
 
         dock_handle = dock_future.result()
         if not dock_handle.accepted:
-            self.get_logger().error('Dock goal rejected')
+            log.error('[DOCKING] Dock goal rejected')
             return
+        log.info('[DOCKING] Goal accepted — docking in progress...')
 
-        self.get_logger().info('Docking in progress...')
         dock_result_future = dock_handle.get_result_async()
         rclpy.spin_until_future_complete(self, dock_result_future)
         result = dock_result_future.result()
+        log.info(f'[DOCKING] Result: status={result.status}  error_code={result.result.error_code}')
         if result.status == 4:
-            self.get_logger().info('Docking SUCCEEDED')
+            log.info('[DOCKING] SUCCEEDED')
         elif result.status == 6:
-            self.get_logger().error(
-                f'Docking ABORTED — error_code={result.result.error_code}'
-            )
+            log.error(f'[DOCKING] ABORTED — error_code={result.result.error_code}')
         else:
-            self.get_logger().error(f'Docking FAILED — status={result.status}')
+            log.error(f'[DOCKING] FAILED — status={result.status}')
 
 
 def main():

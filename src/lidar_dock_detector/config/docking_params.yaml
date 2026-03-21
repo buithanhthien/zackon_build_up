@@ -35,8 +35,8 @@ docking_server:
       lrf_tilt_alpha_deg: 0.0                           # LiDAR tilt angle correction (degrees); 0.0 = horizontal scan
       lrf_forward_offset: 0.30                          # Distance (m) from LiDAR sensor to robot center along forward axis
       tape_distance: 0.375                              # Expected center-to-center distance (m) between the two reflective tape strips
-      rubber_width: 0.034                               # Width (m) of the non-reflective gap between tape strips
-      reflector_width: 0.05                             # Width (m) of each individual reflective tape strip
+      rubber_width: 0.32                                # Width (m) of the non-reflective gap between tape strips
+      reflector_width: 0.048                             # Width (m) of each individual reflective tape strip
       i_peak: 43.0                                      # Min LiDAR intensity to classify a beam as hitting reflective tape
       i_valley: 29.0                                    # Max intensity allowed in beams flanking a peak; must be < i_peak
       min_detection_angle_deg: -60.0                    # Left boundary (deg) of the angular search window for dock detection

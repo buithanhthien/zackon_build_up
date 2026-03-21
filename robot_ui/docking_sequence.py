@@ -200,7 +200,7 @@ def _compute_dock_pose(left, right):
     pos_x = (left['x'] + right['x']) / 2.0 + LRF_FORWARD_OFFSET  # dock x in laser frame: midpoint of tapes + LiDAR-to-robot offset (m)
     pos_y = (left['y'] + right['y']) / 2.0                       # dock y in laser frame: midpoint of tapes (m)
     qz = math.sin(phi_m / 2.0)                                   # quaternion z component encoding dock heading
-    qw = math.cos(phi_m / 2.0)                                   # quaternion w component encoding dock heading
+    qw = math.cos(phi_m / 2.0)                                   # quaternion w component encoding dock headingg
     print(f"  [computeDockPose] position  x={pos_x:.4f}  y={pos_y:.4f}")
     print(f"  [computeDockPose] orientation  qz={qz:.4f}  qw={qw:.4f}  => ACCEPTED")
 

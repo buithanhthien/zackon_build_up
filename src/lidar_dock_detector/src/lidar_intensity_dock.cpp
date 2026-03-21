@@ -39,7 +39,7 @@ void LidarIntensityDock::configure(
   declare("lrf_tilt_alpha_deg",          0.0);
   declare("lrf_forward_offset",          0.30);
   declare("tape_distance",               0.375);
-  declare("rubber_width",                0.034);
+  declare("rubber_width",                0.32);
   declare("reflector_width",             0.05);
   declare("i_peak",                      43.0);
   declare("i_valley",                    29.0);

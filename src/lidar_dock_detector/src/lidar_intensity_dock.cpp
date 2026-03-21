@@ -362,6 +362,21 @@ LidarIntensityDock::detectReflectors(
 // ─────────────────────────────────────────────
 // Inception angle - Eq.(3a)
 // ─────────────────────────────────────────────
+// Computes beta: the angle of incidence of the LiDAR beam on the reflective tape surface.
+//
+// Geometry: two adjacent beams i and j=(i-1) hit the tape surface.
+//   Li        = range of beam i (the peak beam, hitting tape center)
+//   Lj        = range of beam j = i-1 (the beam just before the peak)
+//   theta_rad = angular step between consecutive beams (scan.angle_increment)
+//
+// Using the law of cosines on the triangle formed by the sensor origin and
+// the two beam endpoints on the tape surface, beta is derived as:
+//
+//   beta = atan( Lj * sin(theta) / (Lj * cos(theta) - Li) )
+//
+// beta represents how obliquely the beam strikes the tape:
+//   - Large |beta| → beam hits tape at a steep angle (good detection)
+//   - |beta| < 0.05 rad → beam nearly parallel to tape surface → rejecte
 
 double LidarIntensityDock::computeInceptionAngle(
   double Li, double Lj, double theta_rad) const

@@ -1,88 +1,56 @@
-# docking_node:
-#   ros__parameters:
-#     scan_topic:          "/scan_front_filter"
-#     base_frame:          "base_link"
-
-#     # Detection thresholds
-#     i_peak:              46.0    # intensity > this = peak candidate
-#     i_valley:            60.0    # flanking valleys must be < this
-#     valley_search_range: 15      # beams to search each side
-#     max_detect_range:    3.0     # meters
-#     max_fail_count:      5       # consecutive misses before "lost"
-
-#     # Robot / dock geometry
-#     lrf_forward_offset:  0.30    # LiDAR to robot center (m)
-#     tape_distance:       0.37    # tape centerline spacing (m)
-
-#     # Motion
-#     rotate_speed:        0.3     # rad/s for 180° rotation
-#     backup_speed:        0.05    # m/s backward
-#     backup_distance:     0.30    # meters to back into dock
-
-#     # Staging pose (map frame)
-#     staging_pose_x:     -0.420
-#     staging_pose_y:      0.580
-#     staging_pose_yaw:    1.515
-
 docking_server:
   ros__parameters:
-    controller_frequency: 10.0
-    initial_perception_timeout: 10.0
-    wait_charge_timeout: 5.0
-    dock_approach_timeout: 60.0
-    undock_linear_tolerance: 0.05
-    undock_angular_tolerance: 0.1
-    max_retries: 3
-    base_frame: "base_link"
-    fixed_frame: "odom"
-    dock_prestaging_tolerance: 0.3
-    introspection_mode: "disabled"
-    
+    controller_frequency: 10.0        # Frequency (Hz) of the vision-control loop during dock approach
+    initial_perception_timeout: 10.0  # Max time (s) to wait for the first dock detection before failing (error 904)
+    wait_charge_timeout: 5.0          # Max time (s) to wait for charging to start after robot is docked (error 906)
+    dock_approach_timeout: 60.0       # Max time (s) for the entire vision-control approach loop (error 905)
+    undock_linear_tolerance: 0.05     # Linear distance tolerance (m) to consider undocking complete at staging pose
+    undock_angular_tolerance: 0.1     # Angular tolerance (rad) to consider undocking complete at staging pose
+    max_retries: 3                    # Max number of full docking retries before returning failure
+    base_frame: "base_link"           # Robot's base TF frame used by the control law
+    fixed_frame: "odom"               # Fixed odometry frame for smooth control (should NOT be map to avoid jumps)
+    dock_prestaging_tolerance: 0.3    # L2 distance (x, y, theta) within which Nav2 navigation to staging is skipped
+    introspection_mode: "disabled"    # Action server introspection (options: disabled, metadata, contents)
 
     controller:
-      k_phi: 2.0
-      k_delta: 1.5
-      v_linear_min: -1.0
-      v_linear_max: 1.0
-      use_collision_detection: false
-      costmap_topic: "local_costmap/costmap_raw"
-      footprint_topic: "local_costmap/published_footprint"
-      transform_tolerance: 0.1
-      projection_time: 5.0
-      simulation_step: 0.1
-      dock_collision_threshold: 0.8
+      k_phi: 3.0                                            # Gain on heading-to-goal angle (phi) — higher = turns faster toward dock
+      k_delta: 2.0                                          # Gain on heading error (delta) — higher = corrects orientation more aggressively
+      v_linear_min: -1.0                                    # Min linear velocity (m/s); negative allows backward motion
+      v_linear_max: 1.0                                     # Max linear velocity (m/s)
+      use_collision_detection: false                        # Disable collision checking during approach
+      costmap_topic: "local_costmap/costmap_raw"            # Costmap topic used for collision detection
+      footprint_topic: "local_costmap/published_footprint"  # Robot footprint topic used for collision detection
+      transform_tolerance: 0.1                              # TF lookup tolerance (s) — max age of a transform before rejection
+      projection_time: 5.0                                  # How far ahead (s) to project the robot path for collision checking
+      simulation_step: 0.1                                  # Time step (s) used in the collision projection simulation
+      dock_collision_threshold: 0.8                         # Distance (m) from dock pose within which collisions are ignored
 
-    dock_plugins: ["reflective_tape_dock"]
+    dock_plugins: ["reflective_tape_dock"]  # List of dock plugin names to load
 
     reflective_tape_dock:
-      plugin: "lidar_dock_detector/LidarIntensityDock"
-      use_external_detection_pose: false
-      scan_topic: "/scan_front_filter"
-      base_frame: "base_link"
-      lrf_tilt_alpha_deg: 0.0
-      lrf_forward_offset: 0.30
-      tape_distance: 0.375
-      rubber_width: 0.034
-      reflector_width: 0.05
-      i_peak: 43.0
-      i_valley: 29.0
-      valley_search_range: 19
-      max_detect_range: 3.0
-      max_fail_count: 5
+      plugin: "lidar_dock_detector/LidarIntensityDock"  # Pluginlib class identifier for the LiDAR-based dock detector
+      use_external_detection_pose: false                # Use pose from external detection topic instead of dock database
+      scan_topic: "/scan_front_filter"                  # LiDAR scan topic for reflective tape detection
+      base_frame: "base_link"                           # Robot base frame (used to transform scan data)
+      lrf_tilt_alpha_deg: 0.0                           # LiDAR tilt angle correction (degrees); 0.0 = horizontal scan
+      lrf_forward_offset: 0.30                          # Distance (m) from LiDAR sensor to robot center along forward axis
+      tape_distance: 0.375                              # Expected center-to-center distance (m) between the two reflective tape strips
+      rubber_width: 0.034                               # Width (m) of the non-reflective gap between tape strips
+      reflector_width: 0.05                             # Width (m) of each individual reflective tape strip
+      i_peak: 43.0                                      # Min LiDAR intensity to classify a beam as hitting reflective tape
+      i_valley: 29.0                                    # Max intensity allowed in beams flanking a peak; must be < i_peak
+      valley_search_range: 19                           # Number of beams to search on each side of a peak candidate
+      max_detect_range: 3.0                             # Maximum range (m) at which the dock can be detected
+      max_fail_count: 5                                 # Consecutive detection failures allowed before dock is considered lost
+      staging_x_offset: -0.80                           # X offset (m) from dock pose to staging pose; negative = stops in front
+      staging_yaw_offset: 3.14                          # Yaw offset (rad) for staging pose; 3.14 = robot faces away from dock
+      docking_threshold: 0.05                           # Distance (m) to dock pose at which isDocked() returns true
+      dock_direction: "backward"                        # Approach direction: "backward" = reverses in, "forward" = drives in
+      rotate_to_dock: true                              # Whether to rotate to face the dock before starting approach
 
-      staging_x_offset: -0.80 
-      staging_yaw_offset: 3.14
-
-      docking_threshold: 0.05
-      dock_direction: "backward"
-      rotate_to_dock: true
-      
-      
-
-    docks: ["home_dock"]
+    docks: ["home_dock"]  # List of dock instance names
 
     home_dock:
-      type: "reflective_tape_dock"
-      frame: "map"
-      pose: [-0.40155, 1.34912, 1.57]
-
+      type: "reflective_tape_dock"        # Plugin type (must match a key in dock_plugins)
+      frame: "map"                        # TF frame in which the pose is expressed
+      pose: [-0.40155, 1.34912, 1.57]     # Dock pose in map frame: [x (m), y (m), yaw (rad)]

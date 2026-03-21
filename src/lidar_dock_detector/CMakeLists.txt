@@ -40,17 +40,12 @@ target_include_directories(lidar_dock_detector PUBLIC
 ament_target_dependencies(lidar_dock_detector ${DOCK_DEPS})
 pluginlib_export_plugin_description_file(opennav_docking_core plugins.xml)
 
-add_executable(debug_intensity_node src/debug_intensity_node.cpp)
-ament_target_dependencies(debug_intensity_node rclcpp sensor_msgs)
-
 install(TARGETS lidar_dock_detector
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(TARGETS debug_intensity_node
-  DESTINATION lib/${PROJECT_NAME}
-)
+
 install(DIRECTORY include/
   DESTINATION include
 )

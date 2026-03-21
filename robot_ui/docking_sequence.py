@@ -227,7 +227,8 @@ class DockingSequenceNode(Node):
     def _scan_cb(self, msg):
         if not self._debug_active:
             return
-        print("\n" + "=" * 70)
+        print("\033[2J\033[H", end="")  # clear terminal, move cursor to top
+        print("=" * 70)
         print(f"[SCAN] angle_min={math.degrees(msg.angle_min):.2f}deg  angle_max={math.degrees(msg.angle_max):.2f}deg  increment={math.degrees(msg.angle_increment):.4f}deg  beams={len(msg.ranges)}")
         print("--- detectReflectors ---")
         reflectors = _detect_reflectors(msg)

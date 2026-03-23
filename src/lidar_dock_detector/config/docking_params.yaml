@@ -21,7 +21,7 @@ docking_server:
 
     reflective_tape_dock:
       plugin: "lidar_dock_detector/LidarIntensityDock"      # your custom LiDAR-based dock detector
-      use_external_detection_pose: false                    # plugin detects internally via LiDAR scan
+      use_external_detection_pose: true                    # plugin detects internally via LiDAR scan
       scan_topic: "/scan_front_filter"
       base_frame: "base_link"
       lrf_tilt_alpha_deg: 0.0

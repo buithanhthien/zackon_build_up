@@ -34,7 +34,7 @@ docking_server:
       max_detect_range: 3.0
       max_fail_count: 5
       staging_x_offset: -0.80
-      staging_yaw_offset: 3.14                              # robot faces away from dock at staging; dock_backwards=true makes server reverse in
+      staging_yaw_offset: 0.0                              # robot faces away from dock at staging; dock_backwards=true makes server reverse in
       docking_threshold: 0.05
       dock_direction: "backward"
       rotate_to_dock: false                                 # not implemented in this custom plugin; dock_backwards=true handles reversal

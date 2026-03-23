@@ -91,7 +91,7 @@ private:
   double staging_yaw_offset_;
   double docking_threshold_;
   bool   use_external_detection_pose_;
-  // dock_direction / rotate_to_dock reserved for future use
+  // dock_direction / rotate_to_dock declared for server; not used in plugin body
 
   // ROS handles
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;

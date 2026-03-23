@@ -34,10 +34,10 @@ docking_server:
       max_detect_range: 3.0
       max_fail_count: 5
       staging_x_offset: -0.80
-      staging_yaw_offset: 0.0                              # robot faces away from dock at staging; dock_backwards=true makes server reverse in
+      staging_yaw_offset: 0.0                              # robot faces dock at staging; front LiDAR detects tapes; dock_direction=backward makes controller reverse in
       docking_threshold: 0.05
       dock_direction: "backward"
-      rotate_to_dock: false                                 # not implemented in this custom plugin; dock_backwards=true handles reversal
+      rotate_to_dock: true                                 # not implemented in this custom plugin; dock_backwards=true handles reversal
 
       # ── SimpleChargingDock (for reference — only usable if detector is a separate node) ──
       # plugin: "opennav_docking::SimpleChargingDock"

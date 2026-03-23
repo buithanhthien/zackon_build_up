@@ -50,6 +50,7 @@ void LidarIntensityDock::configure(
   declare("staging_yaw_offset",          0.0);
   declare("docking_threshold",           0.05);
   declare("use_external_detection_pose", false);
+  declare("fixed_frame",                std::string("odom"));
   declare("dock_direction",             std::string("backward"));
   declare("rotate_to_dock",             false);
 
@@ -65,6 +66,7 @@ void LidarIntensityDock::configure(
 
   scan_topic_  = node->get_parameter(name_ + ".scan_topic").as_string();
   base_frame_  = node->get_parameter(name_ + ".base_frame").as_string();
+  fixed_frame_ = node->get_parameter(name_ + ".fixed_frame").as_string();
 
   lrf_tilt_alpha_            = angles::from_degrees(get_d("lrf_tilt_alpha_deg"));
   lrf_forward_offset_        = get_d("lrf_forward_offset");
@@ -166,12 +168,46 @@ bool LidarIntensityDock::getRefinedPose(
 
   if (dock_detected_) {
     try {
+      // ── Step 1: tape lateral (Y) offset in base_link ──────────────────────
+      // y_lateral = how far robot is off-centre from the two tapes.
       geometry_msgs::msg::PoseStamped pose_in_base;
       tf_->transform(last_detected_pose_, pose_in_base, base_frame_,
                      tf2::durationFromSec(0.1));
-      refined_pose_latched_   = pose_in_base;
+      const double y_lateral = pose_in_base.pose.position.y;
+
+      // ── Step 2: current robot pose in fixed_frame (odom) ──────────────────
+      geometry_msgs::msg::PoseStamped base_origin;
+      base_origin.header.frame_id = base_frame_;
+      base_origin.header.stamp    = rclcpp::Time(0);  // latest available TF
+      base_origin.pose.orientation.w = 1.0;
+      geometry_msgs::msg::PoseStamped robot_in_fixed;
+      tf_->transform(base_origin, robot_in_fixed, fixed_frame_,
+                     tf2::durationFromSec(0.1));
+
+      // ── Step 3: latch the REAL dock pose in odom for isDocked() ───────────
+      geometry_msgs::msg::PoseStamped pose_in_fixed;
+      tf_->transform(last_detected_pose_, pose_in_fixed, fixed_frame_,
+                     tf2::durationFromSec(0.1));
+      refined_pose_latched_   = pose_in_fixed;
       has_refined_pose_latch_ = true;
-      pose = pose_in_base;
+
+      // ── Step 4: constrained target — lateral correction ONLY ──────────────
+      // Project y_lateral into odom using the robot's current heading.
+      // X distance to dock wall is preserved (no forward/back movement).
+      const double robot_yaw = 2.0 * std::atan2(
+        robot_in_fixed.pose.orientation.z,
+        robot_in_fixed.pose.orientation.w);
+
+      geometry_msgs::msg::PoseStamped constrained;
+      constrained.header             = robot_in_fixed.header;
+      constrained.pose.position.x    =
+        robot_in_fixed.pose.position.x + y_lateral * (-std::sin(robot_yaw));
+      constrained.pose.position.y    =
+        robot_in_fixed.pose.position.y + y_lateral * std::cos(robot_yaw);
+      constrained.pose.position.z    = 0.0;
+      constrained.pose.orientation   = robot_in_fixed.pose.orientation;  // keep heading
+
+      pose = constrained;
       return true;
     } catch (const tf2::TransformException & ex) {
       auto node = node_.lock();
@@ -189,6 +225,7 @@ bool LidarIntensityDock::getRefinedPose(
 
   return false;
 }
+
 
 bool LidarIntensityDock::isDocked()
 {
@@ -212,12 +249,17 @@ bool LidarIntensityDock::isDocked()
     return false;
   }
 
-  // External detection mode
+  // External detection mode — use live detection if available, fall back to
+  // latched odom pose when tapes disappear after rotate_to_dock 180° spin.
   std::lock_guard<std::mutex> lock(pose_mutex_);
-  if (!dock_detected_) { return false; }
+  if (!dock_detected_ && !has_refined_pose_latch_) { return false; }
+
+  const geometry_msgs::msg::PoseStamped & ref =
+    dock_detected_ ? last_detected_pose_ : refined_pose_latched_;
+
   try {
     geometry_msgs::msg::PoseStamped pose_base;
-    tf_->transform(last_detected_pose_, pose_base, base_frame_,
+    tf_->transform(ref, pose_base, base_frame_,
                    tf2::durationFromSec(0.1));
     double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y);
     return dist < docking_threshold_;

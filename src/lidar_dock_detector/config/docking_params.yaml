@@ -21,9 +21,10 @@ docking_server:
 
     reflective_tape_dock:
       plugin: "lidar_dock_detector/LidarIntensityDock"      # your custom LiDAR-based dock detector
-      use_external_detection_pose: true                    # plugin detects internally via LiDAR scan
+      use_external_detection_pose: true                    # getRefinedPose() feeds LiDAR-detected pose to controller → robot centers on tape midpoint
       scan_topic: "/scan_front_filter"
       base_frame: "base_link"
+      fixed_frame: "odom"                                  # getRefinedPose() transforms detected pose into this frame for the server controller
       lrf_tilt_alpha_deg: 0.0
       lrf_forward_offset: 0.30
       tape_distance: 0.375
@@ -37,8 +38,8 @@ docking_server:
       staging_x_offset: -0.80
       staging_yaw_offset: 0.0                              # robot faces dock at staging; front LiDAR detects tapes; dock_direction=backward makes controller reverse in
       docking_threshold: 0.05
-      dock_direction: "backward"                              # declared for parameter namespace; processed by SimpleChargingDock only
-      rotate_to_dock: false                                 # SimpleChargingDock-only; not applicable to this custom plugin
+      dock_direction: "backward"                              # approach after rotation is backward
+      rotate_to_dock: true                                  # server rotates robot 180° after centering, then reverses in
 
       # ── SimpleChargingDock (for reference — only usable if detector is a separate node) ──
       # plugin: "opennav_docking::SimpleChargingDock"

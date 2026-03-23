@@ -76,6 +76,7 @@ private:
   std::string name_;
   std::string scan_topic_;
   std::string base_frame_;
+  std::string fixed_frame_;
 
   double lrf_tilt_alpha_;
   double lrf_forward_offset_;

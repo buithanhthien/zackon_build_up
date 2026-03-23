@@ -1,0 +1,95 @@
+docking_server:
+  ros__parameters:
+    controller_frequency: 50.0        # Frequency (Hz) of the vision-control loop during dock approach
+    initial_perception_timeout: 10.0  # Max time (s) to wait for the first dock detection before failing (error 904)
+    wait_charge_timeout: 5.0          # Max time (s) to wait for charging to start after robot is docked (error 906)
+    dock_approach_timeout: 90.0       # Max time (s) for the entire vision-control approach loop (error 905)
+    undock_linear_tolerance: 0.05     # Linear distance tolerance (m) to consider undocking complete at staging pose
+    undock_angular_tolerance: 0.1     # Angular tolerance (rad) to consider undocking complete at staging pose
+    max_retries: 3                    # Max number of full docking retries before returning failure
+    base_frame: "base_link"           # Robot's base TF frame used by the control law
+    fixed_frame: "odom"               # Fixed odometry frame for smooth control (should NOT be map to avoid jumps)
+    odom_topic: "odom"        
+    odom_duration: 0.3 
+    dock_prestaging_tolerance: 0.2    # L2 distance (x, y, theta) within which Nav2 navigation to staging is skipped
+    introspection_mode: "disabled"    # Action server introspection (options: disabled, metadata, contents)
+    dock_backwards: true              # SERVER reads this to flip approach by π → drives robot backward (dock_direction is SimpleChargingDock-only)
+    
+    
+    # Types of docks
+    dock_plugins: ["reflective_tape_dock"]  # List of dock plugin names to load
+
+    reflective_tape_dock:
+      plugin: "lidar_dock_detector/LidarIntensityDock"      # your custom LiDAR-based dock detector
+      use_external_detection_pose: true                    # getRefinedPose() feeds LiDAR-detected pose to controller → robot centers on tape midpoint
+      scan_topic: "/scan_front_filter"
+      base_frame: "base_link"
+      fixed_frame: "odom"                                  # getRefinedPose() transforms detected pose into this frame for the server controller
+      lrf_tilt_alpha_deg: 0.0
+      lrf_forward_offset: 0.30
+      tape_distance: 0.375
+      rubber_width: 0.32
+      reflector_width: 0.048
+      i_peak: 43.0
+      i_valley: 29.0
+      valley_search_range: 19
+      max_detect_range: 3.0
+      max_fail_count: 5
+      staging_x_offset: -0.80
+      staging_yaw_offset: 0.0                              # robot faces dock at staging; front LiDAR detects tapes; dock_direction=backward makes controller reverse in
+      docking_threshold: 0.05
+      dock_direction: "backward"                              # approach after rotation is backward
+      rotate_to_dock: true                                  # server rotates robot 180° after centering, then reverses in
+
+      # ── SimpleChargingDock (for reference — only usable if detector is a separate node) ──
+      # plugin: "opennav_docking::SimpleChargingDock"
+      # use_battery_status: false
+      # use_external_detection_pose: true                   # requires separate node publishing /detected_dock_pose
+      # external_detection_timeout: 1.0
+      # external_detection_translation_x: 0.0
+      # external_detection_translation_y: 0.0
+      # external_detection_rotation_yaw: 0.0
+      # external_detection_rotation_pitch: 0.0
+      # external_detection_rotation_roll: 0.0
+      # filter_coef: 0.1
+      # staging_yaw_offset: 0.0
+      # dock_direction: "backward"
+      # rotate_to_dock: true
+
+    # ── LiDAR detector parameters (used by docking_sequence.py and debug tools) ──
+    lidar_detector:
+      scan_topic: "/scan_front_filter"
+      lrf_forward_offset: 0.30
+      tape_distance: 0.375
+      rubber_width: 0.32
+      reflector_width: 0.048
+      i_peak: 43.0
+      i_valley: 29.0
+      valley_search_range: 19
+      max_detect_range: 3.0
+
+
+    # Dock instances
+    docks: ["home_dock"]  # List of dock instance names
+
+    home_dock:
+      type: "reflective_tape_dock"        # Plugin type (must match a key in dock_plugins)
+      frame: "map"                        # TF frame in which the pose is expressed
+      pose: [-0.40155, 1.34912, 1.57]     # Dock pose in map frame: [x (m), y (m), yaw (rad)]
+
+    controller:
+      k_phi: 3.0                                            # Gain on heading-to-goal angle (phi) — higher = turns faster toward dock
+      k_delta: 2.0                                          # Gain on heading error (delta) — higher = corrects orientation more aggressively
+      v_linear_min: -0.15                                    # Min linear velocity (m/s)
+      v_linear_max: 0.15                                    # Max linear velocity (m/s)
+      v_angular_max: 0.75                                   # Max angular velocity (rad/s)
+      slowdown_radius: 0.25                                 # Radius (m) to dock pose to begin slowing down
+      rotate_to_heading_angular_vel: 1.0                    # Angular velocity (rad/s) used when rotating to dock heading
+      rotate_to_heading_max_angular_accel: 3.2              # Max angular acceleration (rad/s^2) when rotating to dock heading
+      use_collision_detection: false                        # Disable collision checking during approach
+      costmap_topic: "local_costmap/costmap_raw"            # Costmap topic used for collision detection
+      footprint_topic: "local_costmap/published_footprint"  # Robot footprint topic used for collision detection
+      transform_tolerance: 0.1                              # TF lookup tolerance (s) — max age of a transform before rejection
+      projection_time: 5.0                                  # How far ahead (s) to project the robot path for collision checking
+      simulation_time_step: 0.1                             # Time step (s) used in the collision projection simulation
+      dock_collision_threshold: 0.3                         # Distance (m) from dock pose within which collisions are ignored

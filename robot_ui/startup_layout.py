@@ -296,24 +296,25 @@ class RobotUI(QMainWindow):
         mode_widget.setStyleSheet("background-color: #f0f0f0;")
         mode_layout = QVBoxLayout(mode_widget)
         
-        self.btn_manual = QPushButton("Manual")
         self.btn_tracking = QPushButton("Tracking")
         self.btn_waypoints = QPushButton("Waypoints")
-        self.btn_nav2 = QPushButton("Nav2")
         self.btn_reestimate = QPushButton("Re-estimate")
         self.btn_new_map = QPushButton("New Map")
         self.btn_load_map = QPushButton("Load Map")
+        self.btn_docking = QPushButton("Docking")
+        self.btn_nav2 = QPushButton("Nav2")
         
-        for btn in [self.btn_manual, self.btn_tracking, self.btn_waypoints, self.btn_nav2, self.btn_reestimate, self.btn_new_map, self.btn_load_map]:
+        for btn in [self.btn_tracking, self.btn_waypoints, self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking, self.btn_nav2]:
             btn.setFont(QFont("Fira Sans", 24))
             btn.setMinimumHeight(100)
-            if btn not in [self.btn_reestimate, self.btn_new_map, self.btn_load_map]:
+            if btn not in [self.btn_reestimate, self.btn_new_map, self.btn_load_map, self.btn_docking]:
                 btn.clicked.connect(lambda checked, b=btn: self.mode_changed(b.text()))
             mode_layout.addWidget(btn)
         
         self.btn_reestimate.clicked.connect(self.start_reestimate)
         self.btn_new_map.clicked.connect(self.start_new_map)
         self.btn_load_map.clicked.connect(self.load_map)
+        self.btn_docking.clicked.connect(self.start_docking)
         
         mode_layout.addStretch()
         
@@ -337,7 +338,7 @@ class RobotUI(QMainWindow):
         self.lidar_label = QLabel("LiDAR: Checking...")
         self.lidar_label.setFont(QFont("Fira Sans", 20))
         status_layout.addWidget(self.lidar_label)
-        
+
         status_layout.addStretch()
         
         # Logging area (bottom half)
@@ -381,46 +382,43 @@ class RobotUI(QMainWindow):
         try:
             result = subprocess.run(['ros2', 'topic', 'list'], 
                                   capture_output=True, text=True, timeout=2)
-            stm32_ok = '/cmd_vel' in result.stdout or result.returncode == 0
+            stm32_available = '/cmd_vel' in result.stdout or result.returncode == 0
         except:
-            stm32_ok = False
+            stm32_available = False
             
-        if stm32_ok:
-            self.stm32_label.setText("STM32: OK")
+        if stm32_available:
+            self.stm32_label.setText("STM32: Available")
             self.stm32_label.setStyleSheet("color: green;")
         else:
-            self.stm32_label.setText("STM32: ERROR")
+            self.stm32_label.setText("STM32: Unavailable")
             self.stm32_label.setStyleSheet("color: red;")
         
-        if self.prev_stm32_status is not None and self.prev_stm32_status != stm32_ok:
-            if not stm32_ok:
+        if self.prev_stm32_status is not None and self.prev_stm32_status != stm32_available:
+            if not stm32_available:
                 self.log("STM32 connection lost")
             else:
                 self.log("STM32 connection restored")
-        self.prev_stm32_status = stm32_ok
+        self.prev_stm32_status = stm32_available
         
         # Check LiDAR
-        lidar_ok = os.path.exists('/dev/lidar')
-        if lidar_ok:
-            self.lidar_label.setText("LiDAR: OK")
+        lidar_available = os.path.exists('/dev/lidar')
+        if lidar_available:
+            self.lidar_label.setText("LiDAR: Available")
             self.lidar_label.setStyleSheet("color: green;")
         else:
-            self.lidar_label.setText("LiDAR: ERROR")
+            self.lidar_label.setText("LiDAR: Unavailable")
             self.lidar_label.setStyleSheet("color: red;")
         
-        if self.prev_lidar_status is not None and self.prev_lidar_status != lidar_ok:
-            if not lidar_ok:
+        if self.prev_lidar_status is not None and self.prev_lidar_status != lidar_available:
+            if not lidar_available:
                 self.log("LiDAR connection lost")
             else:
                 self.log("LiDAR connection restored")
-        self.prev_lidar_status = lidar_ok
+        self.prev_lidar_status = lidar_available
     
     def mode_changed(self, mode):
         self.log(f"Mode changed to {mode}")
-        if mode == "Manual":
-            subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/manual_mode_layout.py'])
-            self.close()
-        elif mode == "Tracking":
+        if mode == "Tracking":
             subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
             self.close()
         elif mode == "Waypoints":
@@ -464,6 +462,13 @@ class RobotUI(QMainWindow):
         self.log("Switching to New Map mode")
         subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
         self.close()
+    
+    def start_docking(self):
+        self.log("Starting docking sequence")
+        subprocess.Popen([
+            'gnome-terminal', '--', 'bash', '-c',
+            f'source {SOURCE_PATH}/install/setup.bash && python3 {SOURCE_PATH}/robot_ui/docking_sequence.py; exec bash'
+        ])
     
     def load_map(self):
         dialog = LoadMapDialog(self)
@@ -554,6 +559,5 @@ if __name__ == '__main__':
     app.setFont(QFont("Fira Sans", 12))
     skip_micro_ros = '--skip-micro-ros' in sys.argv
     window = RobotUI(skip_micro_ros=skip_micro_ros)
-    window.show()
-    window.setWindowState(Qt.WindowState.WindowMaximized)
+    window.showMaximized()
     sys.exit(app.exec())

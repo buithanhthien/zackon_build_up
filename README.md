@@ -1,104 +1,3 @@
-# Hướng dẫn Khởi chạy micro-ROS và Joystick
-
-Tài liệu này hướng dẫn các bước để khởi chạy hệ thống điều khiển robot. Quy trình này yêu cầu mở **4 cửa sổ terminal riêng biệt** để chạy song song các tiến trình sau:
-
-1.  **micro-ROS Agent:** Cầu nối giữa robot (ESP32) và ROS 2
-2.  **Joy Node:** Trình điều khiển (driver) đọc dữ liệu từ tay cầm
-3.  **Teleop Node:** Node của bạn (`my_joy_teleop`) để chuyển đổi dữ liệu tay cầm thành lệnh
-4.  **Debug:** Một terminal để kiểm tra kết quả
-
-## 1. Chuẩn bị
-
-Một số điều cần chuẩn bị trước khi bắt đầu:
-* Gắn ESP32 có chứa code điều khiển
-* Cắm joystick (tay cầm) vào mini pc
-* Tạo thư mục workspace trong home
-> cd ~
-> mkdir workspace
-* Clone repo trên github vào workspace vừa tạo
-> cd ~/workspace
-> git clone -b feat/update-files https://github.com/khoihoanglsr/MangoMobileRobot.git
-* Biên dịch (build) thành công MangoMobileRobot/src (chứa `my_joy_teleop`).
-> cd ~/workspace/MangoMobileRobot 
-> colcon build
----
-
-## 2. Các bước thực thi
-
-### Terminal 1: Khởi chạy micro-ROS Agent
-
-Terminal này chịu trách nhiệm kết nối với robot
-
-**1. Tìm cổng serial của robot:**
-Chạy lệnh sau để tìm đường dẫn chính xác đến phần cứng:
-
-> ls /dev/serial/by-id/*
-
-Bạn sẽ thấy một kết quả, ví dụ: 
-> /dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0
-
-2. Sao chép đường dẫn và khởi chạy agent:
-
-THAY THẾ --dev /dev/serial/by-id/... bằng đường dẫn bạn vừa tìm thấy
-    > ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0
-
-Lưu ý: Hãy để terminal này chạy. Nếu nó kết nối thành công, bạn sẽ thấy thông báo "Session established".
-
-### Terminal 2: Khởi chạy Trình điều khiển Joystick
-Terminal này đọc tín hiệu thô từ tay cầm.
-
-1. Kiểm tra xem joystick đã kết nối chưa
-> ls /dev/input/js*
-
-Nếu xuất hiện /dev/input/js0 hoặc tương tự thì là đã kết nối thành công
-
-2. Cấp quyền cho joystick: Lệnh này chỉ cần chạy một lần sau khi cắm tay cầm.
-> sudo chmod a+r /dev/input/js0
-
-3. Chạy node joy_linux:
-> ros2 run joy_linux joy_linux_node
-
-Lưu ý: Hãy để terminal này chạy. Nó đang liên tục phát (publish) dữ liệu tay cầm lên topic /joy.
-
-### Terminal 3: Khởi chạy Node Teleop
-Terminal này chạy code my_joy_teleop để chuyển đổi topic /joy thành topic /cmd_vel.
-ros2 run my_joy_teleop my_teleop_node 
-1. Source workspace:
-Đảm bảo ở đúng thư mục workspace
-> cd ~/workspace/MangoMobileRobot 
-> source install/setup.zsh
-
-2. Chạy node:
-> ros2 run my_joy_teleop my_teleop_node
-
-Lưu ý: Hãy để terminal này chạy. Đây là bộ não chuyển đổi lệnh điều khiển.
-
-### Terminal 4: Kiểm tra (Debug)
-Terminal này dùng để nghe topic /cmd_vel và /odom/unfiltered xác nhận rằng mọi thứ đang hoạt động.
-
-1. Source workspace:
-Đảm bảo ở đúng thư mục workspace
-> cd ~/workspace/MangoMobileRobot 
-> source install/setup.zsh
-
-2. Echo /cmd_vel:
-> ros2 topic echo /cmd_vel
-
-3. Mở bảng quan sát trực tiếp odometry
-ros2 run rqt_gui rqt_gui
-
-Bây giờ, hãy giữ nút an toàn (deadman button) trên tay cầm và di chuyển cần analog. Nếu mọi thứ thành công, bạn sẽ thấy các giá trị linear.x và angular.z xuất hiện trong terminal này.
-
-
-# Robot UI – Hướng dẫn chạy giao diện hiển thị Map & Robot Pose (ROS 2)
-
-Tài liệu này hướng dẫn **từng bước** để chạy giao diện UI (PyQt6) hiển thị:
-- Map (`/map`)
-- Robot pose (AMCL)
-- Cập nhật realtime trong ROS 2
-
----
-
 ## 1. Yêu cầu hệ thống
 
 - Ubuntu 22.04
@@ -108,6 +7,99 @@ Tài liệu này hướng dẫn **từng bước** để chạy giao diện UI (
 - nav2_map_server
 - nav2_amcl
 - LiDAR driver (vd: sllidar, rplidar)
+
+---
+
+## 2. Chức năng Docking (Tự động cập cảng)
+
+### 2.1. Cách hoạt động
+
+Khi nhấn nút **Docking** trên giao diện UI, robot sẽ thực hiện các bước sau:
+
+1. **Khởi động docking server** (`opennav_docking`)
+2. **Di chuyển đến vị trí staging** (cách dock 0.8m) bằng Nav2
+3. **Phát hiện dock** bằng LiDAR - tìm 2 băng phản quang (reflective tape)
+4. **Tiếp cận dock** - lùi về phía dock
+5. **Hoàn thành** - robot đã vào dock
+
+### 2.2. Cấu hình quan trọng
+
+File cấu hình: `src/lidar_dock_detector/config/docking_params.yaml`
+
+**Thông số phát hiện LiDAR:**
+- `i_peak: 43.0` - Ngưỡng cường độ phản xạ của băng phản quang
+- `i_valley: 29.0` - Ngưỡng cường độ vùng xung quanh (phải thấp hơn)
+- `valley_search_range: 19` - Số beam LiDAR tìm kiếm xung quanh
+- `max_detect_range: 3.0` - Khoảng cách phát hiện tối đa (mét)
+
+**Vị trí dock (trong map frame):**
+- `home_dock.pose: [-0.40155, 1.34912, 1.57]` - Tọa độ (x, y, yaw) của dock
+
+**Khoảng cách staging:**
+- `staging_x_offset: -0.80` - Robot dừng cách dock 0.8m trước khi phát hiện
+
+### 2.3. Debug và Calibration
+
+Nếu robot không phát hiện được dock, sử dụng công cụ debug:
+
+```bash
+# Chạy node debug để xem cường độ LiDAR realtime
+ros2 run lidar_dock_detector debug_intensity_node
+```
+
+Hoặc sử dụng tool Python:
+```bash
+python3 tool/get_intensities_of_lidar.py
+```
+
+Công cụ này sẽ hiển thị:
+- Vị trí các peak (băng phản quang)
+- Giá trị intensity thực tế
+- Giá trị valley xung quanh
+- Khoảng cách giữa 2 băng
+
+Dựa vào kết quả, điều chỉnh `i_peak` và `i_valley` trong `docking_params.yaml`.
+
+### 2.4. Mã lỗi Docking (Error Codes)
+
+Khi docking thất bại, hệ thống sẽ trả về mã lỗi:
+
+| Mã lỗi | Tên | Nguyên nhân | Cách khắc phục |
+|--------|-----|-------------|----------------|
+| 0 | `NONE` | Không có lỗi (thành công) | - |
+| 901 | `DOCK_NOT_IN_DB` | Không tìm thấy `dock_id` trong config | Kiểm tra tên dock trong `docking_params.yaml` |
+| 902 | `DOCK_NOT_VALID` | Vị trí dock không hợp lệ | Kiểm tra tọa độ `home_dock.pose` |
+| 903 | `FAILED_TO_STAGE` | Nav2 không thể đến vị trí staging | Kiểm tra map, đảm bảo đường đi không bị chặn |
+| 904 | `FAILED_TO_DETECT_DOCK` | Không phát hiện được băng phản quang sau 10s | Chạy `debug_intensity_node` để điều chỉnh `i_peak`/`i_valley` |
+| 905 | `FAILED_TO_CONTROL` | Controller không thể tiếp cận dock (timeout 60s) | Kiểm tra chướng ngại vật, tăng timeout nếu cần |
+| 906 | `FAILED_TO_CHARGE` | Không phát hiện sạc sau 5s | Không áp dụng (hệ thống không kiểm tra sạc) |
+| 999 | `UNKNOWN` | Lỗi nội bộ không xác định | Kiểm tra log chi tiết |
+
+**Lỗi phổ biến nhất:**
+- **904**: Thông số `i_peak`/`i_valley` chưa chính xác → Dùng tool debug để calibrate
+- **903**: Đường đi bị chặn hoặc vị trí staging không hợp lệ → Kiểm tra map
+
+### 2.5. Cấu trúc file liên quan
+
+```
+src/lidar_dock_detector/
+├── src/
+│   ├── lidar_intensity_dock.cpp      # Plugin phát hiện dock (ĐANG DÙNG)
+│   └── debug_intensity_node.cpp      # Tool debug LiDAR
+├── include/lidar_dock_detector/
+│   └── lidar_intensity_dock.hpp
+├── config/
+│   └── docking_params.yaml           # Cấu hình chính
+├── launch/
+│   └── docking.launch.py             # Launch opennav_docking server
+└── plugins.xml                       # Đăng ký plugin với pluginlib
+
+robot_ui/
+└── docking_sequence.py               # Script điều khiển docking (được gọi từ UI)
+
+tool/
+└── get_intensities_of_lidar.py       # Tool calibrate intensity thresholds
+```
 
 ---
 

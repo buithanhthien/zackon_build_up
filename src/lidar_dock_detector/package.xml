@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>lidar_dock_detector</name>
+  <version>0.2.0</version>
+  <description>
+    Standalone ROS2 Jazzy autonomous docking node using LiDAR intensity
+    to detect retroreflective tape strips on a charging station wall.
+  </description>
+  <maintainer email="khoaiuh@example.com">Khoa_AIot</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>opennav_docking_core</depend>
+  <depend>pluginlib</depend>
+  <depend>angles</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <opennav_docking_core plugin="${prefix}/plugins.xml"/>
+  </export>
+</package>

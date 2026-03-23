@@ -117,11 +117,12 @@ class DockingSequenceNode(Node):
                 break
 
             # Project the lateral correction into the map frame.
-            # The robot faces STAGING_YAW toward the dock.
-            # Lateral direction (perpendicular, 90° CCW from robot heading):
-            #   unit vector = (-sin(yaw), cos(yaw))
-            dx = y_lateral * (-math.sin(STAGING_YAW))
-            dy = y_lateral *   math.cos(STAGING_YAW)
+            # y_lateral tells WHERE the dock center is in the laser frame.
+            # To move the robot TOWARD the dock center, the sign is negated:
+            #   dock center to the LEFT (y > 0) → robot is to the RIGHT → move LEFT (−)
+            #   dock center to the RIGHT (y < 0) → robot is to the LEFT  → move RIGHT (+)
+            dx = -y_lateral * (-math.sin(STAGING_YAW))
+            dy = -y_lateral *   math.cos(STAGING_YAW)
             current_x += dx
             current_y += dy
 

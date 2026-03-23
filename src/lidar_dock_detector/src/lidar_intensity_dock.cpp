@@ -200,10 +200,12 @@ bool LidarIntensityDock::getRefinedPose(
 
       geometry_msgs::msg::PoseStamped constrained;
       constrained.header             = robot_in_fixed.header;
+      // Negate y_lateral: pose.position.y tells WHERE the dock IS, not which
+      // way to move. Moving TOWARD the dock center requires the opposite sign.
       constrained.pose.position.x    =
-        robot_in_fixed.pose.position.x + y_lateral * (-std::sin(robot_yaw));
+        robot_in_fixed.pose.position.x - y_lateral * (-std::sin(robot_yaw));
       constrained.pose.position.y    =
-        robot_in_fixed.pose.position.y + y_lateral * std::cos(robot_yaw);
+        robot_in_fixed.pose.position.y - y_lateral * std::cos(robot_yaw);
       constrained.pose.position.z    = 0.0;
       constrained.pose.orientation   = robot_in_fixed.pose.orientation;  // keep heading
 

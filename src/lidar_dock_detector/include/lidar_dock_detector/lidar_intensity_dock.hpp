@@ -91,19 +91,19 @@ private:
   double staging_yaw_offset_;
   double docking_threshold_;
   bool   use_external_detection_pose_;
-
-  double min_detection_angle_;
-  double max_detection_angle_;
   // dock_direction / rotate_to_dock reserved for future use
 
   // ROS handles
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr detected_pose_pub_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
 
   // State
   geometry_msgs::msg::PoseStamped last_detected_pose_;
+  geometry_msgs::msg::PoseStamped refined_pose_latched_;
   bool       dock_detected_{false};
+  bool       has_refined_pose_latch_{false};
   int        miss_count_{0};
   std::mutex pose_mutex_;
 };

@@ -11,7 +11,7 @@ from config import SOURCE_PATH
 
 _PARAMS_FILE = os.path.join(SOURCE_PATH, 'src/lidar_dock_detector/config/docking_params.yaml')
 with open(_PARAMS_FILE) as _f:
-    _rp = yaml.safe_load(_f)['docking_server']['ros__parameters']['reflective_tape_dock']
+    _rp = yaml.safe_load(_f)['docking_server']['ros__parameters']['lidar_detector']
 
 SCAN_TOPIC          = _rp['scan_topic']
 I_PEAK              = float(_rp['i_peak'])              # Min intensity to classify a beam as hitting reflective tape
@@ -22,8 +22,6 @@ RUBBER_WIDTH        = float(_rp['rubber_width'])        # Width (m) of the non-r
 REFLECTOR_WIDTH     = float(_rp['reflector_width'])     # Width (m) of each reflective tape strip
 TAPE_DISTANCE       = float(_rp['tape_distance'])       # Expected center-to-center distance (m) between the two tape strips
 LRF_FORWARD_OFFSET  = float(_rp['lrf_forward_offset'])  # Distance (m) from LiDAR to robot center along forward axis
-MIN_ANGLE_DEG       = float(_rp['min_detection_angle_deg'])  # Left boundary (deg) of the angular search window
-MAX_ANGLE_DEG       = float(_rp['max_detection_angle_deg'])  # Right boundary (deg) of the angular search window
 
 
 def _inception_angle(Li, Lj, theta):
@@ -51,13 +49,10 @@ def _detect_reflectors(scan):
     theta = scan.angle_increment                                                          # angular step between beams (rad)
     max_range_geom = min(RUBBER_WIDTH, REFLECTOR_WIDTH) / (2.0 * math.sin(theta / 2.0)) # Eq.(8a): geometric max detectable range based on tape/gap width and beam spacing
     max_range = min(max_range_geom, MAX_DETECT_RANGE)                                    # effective max range: tighter of geometric limit and configured limit
-    min_angle = math.radians(MIN_ANGLE_DEG)                                              # left boundary of search window (rad)
-    max_angle = math.radians(MAX_ANGLE_DEG)                                              # right boundary of search window (rad)
     margin = VALLEY_SEARCH_RANGE + 2                                                     # index margin to avoid out-of-bounds when searching valleys
 
     print(f"  [detectReflectors] N={N}  theta={math.degrees(theta):.4f}deg  margin={margin}")
     print(f"  [detectReflectors] max_range_geom={max_range_geom:.4f}  max_range={max_range:.4f}")
-    print(f"  [detectReflectors] angle_window=[{MIN_ANGLE_DEG}, {MAX_ANGLE_DEG}]deg")
 
     reflectors = []
     i = margin
@@ -66,7 +61,7 @@ def _detect_reflectors(scan):
         while angle >  math.pi: angle -= 2 * math.pi
         while angle < -math.pi: angle += 2 * math.pi
 
-        if angle < min_angle or angle > max_angle:
+        if scan.ranges[i] >= scan.range_max:
             i += 1
             continue
 

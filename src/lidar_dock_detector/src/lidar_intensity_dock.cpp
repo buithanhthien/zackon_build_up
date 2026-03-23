@@ -49,8 +49,6 @@ void LidarIntensityDock::configure(
   declare("staging_x_offset",           -0.8);
   declare("staging_yaw_offset",          3.14);
   declare("docking_threshold",           0.05);
-  declare("min_detection_angle_deg",    -60.0);
-  declare("max_detection_angle_deg",     60.0);
   declare("use_external_detection_pose", false);
 
   auto get_d = [&](const std::string & k) {
@@ -67,8 +65,6 @@ void LidarIntensityDock::configure(
   base_frame_  = node->get_parameter(name_ + ".base_frame").as_string();
 
   lrf_tilt_alpha_            = angles::from_degrees(get_d("lrf_tilt_alpha_deg"));
-  min_detection_angle_       = angles::from_degrees(get_d("min_detection_angle_deg"));
-  max_detection_angle_       = angles::from_degrees(get_d("max_detection_angle_deg"));
   lrf_forward_offset_        = get_d("lrf_forward_offset");
   tape_distance_             = get_d("tape_distance");
   rubber_width_              = get_d("rubber_width");
@@ -107,15 +103,19 @@ void LidarIntensityDock::activate()
     dock_detected_ = false;
     miss_count_    = 0;
     last_detected_pose_ = geometry_msgs::msg::PoseStamped{};  // stamp.sec == 0 sentinel
+    refined_pose_latched_ = geometry_msgs::msg::PoseStamped{};
+    has_refined_pose_latch_ = false;
   }
   scan_sub_ = node->create_subscription<sensor_msgs::msg::LaserScan>(
     scan_topic_, rclcpp::SensorDataQoS(),
     std::bind(&LidarIntensityDock::scanCallback, this, std::placeholders::_1));
+  detected_pose_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>(
+    "/detected_dock_pose", rclcpp::SystemDefaultsQoS());
   RCLCPP_INFO(node->get_logger(), "[%s] Active - listening to %s",
     name_.c_str(), scan_topic_.c_str());
 }
 
-void LidarIntensityDock::deactivate() { scan_sub_.reset(); }
+void LidarIntensityDock::deactivate() { scan_sub_.reset(); detected_pose_pub_.reset(); }
 
 // ─────────────────────────────────────────────
 // ChargingDock interface
@@ -153,60 +153,63 @@ bool LidarIntensityDock::getRefinedPose(
   geometry_msgs::msg::PoseStamped & pose,
   std::string /*id*/)
 {
-  // If external detection is disabled, return the database dock pose as-is
-  // (pose is already set by the docking server from the dock database)
   if (!use_external_detection_pose_) {
+    // The docking server already transforms dock_pose into fixed_frame (odom)
+    // before calling this. Just return true to accept the pose as-is.
     return true;
   }
 
-  // use_external_detection_pose: true → use LiDAR-detected pose
   std::lock_guard<std::mutex> lock(pose_mutex_);
-  if (!dock_detected_) { return false; }
 
-  // Transform detected pose from laser frame → base_frame_
-  try {
-    geometry_msgs::msg::PoseStamped pose_in_base;
-    tf_->transform(last_detected_pose_, pose_in_base, base_frame_,
-                   tf2::durationFromSec(0.1));
-    pose = pose_in_base;
-  } catch (const tf2::TransformException & ex) {
-    auto node = node_.lock();
-    if (node) {
-      RCLCPP_WARN(node->get_logger(),
-        "[%s] TF transform failed: %s", name_.c_str(), ex.what());
+  if (dock_detected_) {
+    try {
+      geometry_msgs::msg::PoseStamped pose_in_base;
+      tf_->transform(last_detected_pose_, pose_in_base, base_frame_,
+                     tf2::durationFromSec(0.1));
+      refined_pose_latched_   = pose_in_base;
+      has_refined_pose_latch_ = true;
+      pose = pose_in_base;
+      return true;
+    } catch (const tf2::TransformException & ex) {
+      auto node = node_.lock();
+      if (node) {
+        RCLCPP_WARN(node->get_logger(),
+          "[%s] TF transform failed: %s", name_.c_str(), ex.what());
+      }
     }
-    return false;
   }
 
-  return true;
+  if (has_refined_pose_latch_) {
+    pose = refined_pose_latched_;
+    return true;
+  }
+
+  return false;
 }
 
 bool LidarIntensityDock::isDocked()
 {
-  // When not using external detection (rear/backward docking), the front LiDAR
-  // may lose sight of the reflector during the final backing phase.
-  // In that case, rely on the debounced dock_detected_ latch: once the robot
-  // was close enough and detection is lost, treat it as docked.
   if (!use_external_detection_pose_) {
     std::lock_guard<std::mutex> lock(pose_mutex_);
-    // If we never detected the dock at all, not docked.
+    // Never detected anything yet
     if (last_detected_pose_.header.stamp.sec == 0) { return false; }
-    // If detection is still active, check distance in base_frame_ (no double offset:
-    // computeDockPose already embeds lrf_forward_offset_ into pose.position.x).
-    if (dock_detected_) {
-      try {
-        geometry_msgs::msg::PoseStamped pose_base;
-        tf_->transform(last_detected_pose_, pose_base, base_frame_,
-                       tf2::durationFromSec(0.1));
-        double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y);
-        return dist < docking_threshold_;
-      } catch (const tf2::TransformException &) {}
-    }
-    // Detection lost during final backing phase → consider docked
-    return true;
+
+    // Use the most recent known pose (live or latched) to check distance
+    const geometry_msgs::msg::PoseStamped & ref =
+      dock_detected_ ? last_detected_pose_ : refined_pose_latched_;
+
+    if (!dock_detected_ && !has_refined_pose_latch_) { return false; }
+
+    try {
+      geometry_msgs::msg::PoseStamped pose_base;
+      tf_->transform(ref, pose_base, base_frame_, tf2::durationFromSec(0.1));
+      double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y);
+      return dist < docking_threshold_;
+    } catch (const tf2::TransformException &) {}
+    return false;
   }
 
-  // External detection mode: must have a current detection in base_frame_
+  // External detection mode
   std::lock_guard<std::mutex> lock(pose_mutex_);
   if (!dock_detected_) { return false; }
   try {
@@ -254,6 +257,7 @@ void LidarIntensityDock::scanCallback(
     miss_count_        = 0;
     dock_detected_     = true;
     last_detected_pose_ = detected;
+    detected_pose_pub_->publish(detected);
   } else {
     // Debounce: only clear detection after max_fail_count_ consecutive misses
     if (++miss_count_ > max_fail_count_) {
@@ -284,21 +288,12 @@ LidarIntensityDock::detectReflectors(
   const int margin = valley_search_range_ + 2;
 
   for (int i = margin; i < static_cast<int>(N) - margin; ++i) {
-    double angle = scan.angle_min + i * scan.angle_increment;
-
-    // Normalize (optional but safe)
-    while (angle >  M_PI) angle -= 2 * M_PI;
-    while (angle < -M_PI) angle += 2 * M_PI;
-
-    // Filter by angle
-    if (angle < min_detection_angle_ || angle > max_detection_angle_) {
-      continue;
-    }
+    // Skip beams filtered out by scan_front_filter (set to range_max)
+    if (scan.ranges[i] >= scan.range_max) { continue; }
 
     const float I_i = scan.intensities[i];
     if (I_i < i_peak_) { continue; }
 
-    // Local maximum check
     bool is_max = true;
     for (int k = i - 1; k >= std::max(0, i - valley_search_range_); --k) {
       if (scan.intensities[k] > I_i) { is_max = false; break; }

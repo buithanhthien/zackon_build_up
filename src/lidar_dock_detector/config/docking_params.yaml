@@ -3,7 +3,7 @@ docking_server:
     controller_frequency: 50.0        # Frequency (Hz) of the vision-control loop during dock approach
     initial_perception_timeout: 10.0  # Max time (s) to wait for the first dock detection before failing (error 904)
     wait_charge_timeout: 5.0          # Max time (s) to wait for charging to start after robot is docked (error 906)
-    dock_approach_timeout: 30.0       # Max time (s) for the entire vision-control approach loop (error 905)
+    dock_approach_timeout: 90.0       # Max time (s) for the entire vision-control approach loop (error 905)
     undock_linear_tolerance: 0.05     # Linear distance tolerance (m) to consider undocking complete at staging pose
     undock_angular_tolerance: 0.1     # Angular tolerance (rad) to consider undocking complete at staging pose
     max_retries: 3                    # Max number of full docking retries before returning failure

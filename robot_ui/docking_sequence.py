@@ -10,6 +10,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose, DockRobot
+from action_msgs.msg import GoalStatus
 
 import yaml
 
@@ -25,8 +26,7 @@ DOCK_X, DOCK_Y, DOCK_YAW = _p[DOCK_ID]['pose']
 STAGING_OFFSET = _p['reflective_tape_dock']['staging_x_offset']
 STAGING_X      = DOCK_X + STAGING_OFFSET * math.cos(DOCK_YAW)
 STAGING_Y      = DOCK_Y + STAGING_OFFSET * math.sin(DOCK_YAW)
-# STAGING_YAW    = DOCK_YAW + _p['reflective_tape_dock']['staging_yaw_offset']
-STAGING_YAW    = DOCK_YAW 
+STAGING_YAW    = DOCK_YAW + _p['reflective_tape_dock']['staging_yaw_offset']
 
 def yaw_to_quaternion(yaw):
     return (0.0, 0.0, math.sin(yaw / 2), math.cos(yaw / 2))
@@ -99,9 +99,9 @@ class DockingSequenceNode(Node):
         rclpy.spin_until_future_complete(self, dock_result_future)
 
         result = dock_result_future.result()
-        if result.status == 4:
+        if result.status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info('Docking SUCCEEDED')
-        elif result.status == 6:
+        elif result.status == GoalStatus.STATUS_ABORTED:
             self.get_logger().error(f'Docking ABORTED — error_code={result.result.error_code}')
         else:
             self.get_logger().error(f'Docking FAILED — status={result.status}')

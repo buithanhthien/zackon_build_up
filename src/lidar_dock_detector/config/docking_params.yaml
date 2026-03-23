@@ -13,6 +13,7 @@ docking_server:
     odom_duration: 0.3 
     dock_prestaging_tolerance: 0.2    # L2 distance (x, y, theta) within which Nav2 navigation to staging is skipped
     introspection_mode: "disabled"    # Action server introspection (options: disabled, metadata, contents)
+    dock_backwards: true              # SERVER reads this to flip approach by π → drives robot backward (dock_direction is SimpleChargingDock-only)
     
     
     # Types of docks
@@ -36,8 +37,8 @@ docking_server:
       staging_x_offset: -0.80
       staging_yaw_offset: 0.0                              # robot faces dock at staging; front LiDAR detects tapes; dock_direction=backward makes controller reverse in
       docking_threshold: 0.05
-      dock_direction: "backward"
-      rotate_to_dock: true                                 # not implemented in this custom plugin; dock_backwards=true handles reversal
+      dock_direction: "backward"                              # declared for parameter namespace; processed by SimpleChargingDock only
+      rotate_to_dock: false                                 # SimpleChargingDock-only; not applicable to this custom plugin
 
       # ── SimpleChargingDock (for reference — only usable if detector is a separate node) ──
       # plugin: "opennav_docking::SimpleChargingDock"

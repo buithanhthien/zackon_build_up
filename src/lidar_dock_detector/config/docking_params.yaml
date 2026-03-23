@@ -1,6 +1,6 @@
 docking_server:
   ros__parameters:
-    controller_frequency: 10.0        # Frequency (Hz) of the vision-control loop during dock approach
+    controller_frequency: 50.0        # Frequency (Hz) of the vision-control loop during dock approach
     initial_perception_timeout: 10.0  # Max time (s) to wait for the first dock detection before failing (error 904)
     wait_charge_timeout: 5.0          # Max time (s) to wait for charging to start after robot is docked (error 906)
     dock_approach_timeout: 30.0       # Max time (s) for the entire vision-control approach loop (error 905)
@@ -13,7 +13,6 @@ docking_server:
     odom_duration: 0.3 
     dock_prestaging_tolerance: 0.2    # L2 distance (x, y, theta) within which Nav2 navigation to staging is skipped
     introspection_mode: "disabled"    # Action server introspection (options: disabled, metadata, contents)
-    dock_backwards: true              # server flips target pose +π so controller drives robot backward into dock
     
     
     # Types of docks

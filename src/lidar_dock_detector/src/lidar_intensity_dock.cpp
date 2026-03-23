@@ -128,7 +128,8 @@ LidarIntensityDock::getStagingPose(
 {
   geometry_msgs::msg::PoseStamped staging;
   staging.header.frame_id = frame;
-  staging.header.stamp    = rclcpp::Clock().now();
+  auto node = node_.lock();
+  staging.header.stamp    = node ? node->now() : rclcpp::Clock().now();
   staging.pose            = dock_pose;
 
   double yaw = 2.0 * std::atan2(

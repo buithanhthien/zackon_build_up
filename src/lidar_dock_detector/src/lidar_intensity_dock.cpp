@@ -190,6 +190,39 @@ bool LidarIntensityDock::getRefinedPose(
   return false;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// isDocked()
+// ─────────────────────────────────────────────────────────────────────────────
+// Called repeatedly by the Nav2 docking server after the approach phase
+// completes, to decide whether the robot has successfully reached the dock.
+//
+// Returns true  → docking server advances to the "wait for charging" phase.
+// Returns false → server keeps retrying / eventually times out with error 905.
+//
+// Logic (two modes depending on use_external_detection_pose_):
+//
+//  ── Internal LiDAR mode (use_external_detection_pose_ = false) ──
+//   1. If last_detected_pose_ has never been set (stamp.sec == 0), return false.
+//   2. Pick the best available reference pose:
+//        • dock_detected_ == true  → use live last_detected_pose_
+//        • dock_detected_ == false, 
+//          but has_refined_pose_latch_ == true → use refined_pose_latched_ (last good pose
+//                                                before the LiDAR lost the reflectors at
+//                                                very short range)
+//        • Neither available → return false
+//   3. Transform that pose into base_frame_ ("base_link") via TF.
+//   4. Compute 2-D Euclidean distance from the LRF origin to the dock pose:
+//        dist = hypot(x_dock_in_base, y_dock_in_base)
+//   5. Return (dist < docking_threshold_).
+//      Default threshold: 0.05 m (5 cm).
+//
+//  ── External detection mode (use_external_detection_pose_ = true) ──
+//   1. Require dock_detected_ == true (live external source must be active).
+//   2. Same TF-transform + distance check as above.
+//
+// Note: isCharging()         delegates to isDocked()  (no real charger feedback).
+//       hasStoppedCharging() delegates to !isDocked() (mirrors docked state).
+// ─────────────────────────────────────────────────────────────────────────────
 bool LidarIntensityDock::isDocked()
 {
   if (!use_external_detection_pose_) {
@@ -206,8 +239,8 @@ bool LidarIntensityDock::isDocked()
     try {
       geometry_msgs::msg::PoseStamped pose_base;
       tf_->transform(ref, pose_base, base_frame_, tf2::durationFromSec(0.1));
-      double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y);
-      return dist < docking_threshold_;
+      double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y); // sqrt(posx^2 + posy^2)
+      return dist < docking_threshold_; // if current position < threshold → docked
     } catch (const tf2::TransformException &) {}
     return false;
   }

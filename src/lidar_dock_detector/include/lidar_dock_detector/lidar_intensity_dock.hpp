@@ -73,24 +73,24 @@ private:
     geometry_msgs::msg::PoseStamped & pose_out) const;
 
   // Parameters
-  std::string name_;
-  std::string scan_topic_;
-  std::string base_frame_;
+  std::string name_;                   // Plugin instance name (set by the docking server on configure)
+  std::string scan_topic_;             // LaserScan topic to subscribe to (e.g. "/scan_front_filter")
+  std::string base_frame_;             // Robot base TF frame (e.g. "base_link")
 
-  double lrf_tilt_alpha_;
-  double lrf_forward_offset_;
-  double tape_distance_;
-  double rubber_width_;
-  double reflector_width_;
-  float  i_peak_;
-  float  i_valley_;
-  int    valley_search_range_;
-  double max_detect_range_;
-  int    max_fail_count_;
-  double staging_x_offset_;
-  double staging_yaw_offset_;
-  double docking_threshold_;
-  bool   use_external_detection_pose_;
+  double lrf_tilt_alpha_;              // LRF tilt angle (rad) — corrects range if the sensor is mounted at a tilt
+  double lrf_forward_offset_;          // Forward offset (m) from base_link origin to the LRF optical centre
+  double tape_distance_;               // Expected centre-to-centre distance (m) between the two reflective tapes
+  double rubber_width_;                // Width (m) of the rubber/backing strip that holds each tape (used for pose geometry)
+  double reflector_width_;             // Width (m) of a single reflective tape strip (used for inception-angle correction)
+  float  i_peak_;                      // Minimum intensity threshold to classify a beam as a reflector peak
+  float  i_valley_;                    // Maximum intensity threshold to classify a beam as a valley (non-reflective) neighbour
+  int    valley_search_range_;         // Number of beams to scan left/right from a peak candidate when looking for valleys
+  double max_detect_range_;            // Maximum range (m) beyond which a detected reflector is discarded
+  int    max_fail_count_;              // Consecutive scan failures allowed before dock_detected_ is cleared
+  double staging_x_offset_;            // Longitudinal offset (m) from dock pose to the staging pose (negative = behind dock)
+  double staging_yaw_offset_;          // Yaw offset (rad) added to staging pose orientation (0 = face the dock)
+  double docking_threshold_;           // Distance (m) from dock pose at which isDocked() returns true
+  bool   use_external_detection_pose_; // If true, skip LiDAR detection and accept pose from an external node
   // dock_direction / rotate_to_dock declared for server; not used in plugin body
 
   // ROS handles

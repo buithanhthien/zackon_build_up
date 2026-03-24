@@ -36,7 +36,7 @@ docking_server:
       max_fail_count: 5
       staging_x_offset: -0.80
       staging_yaw_offset: 0.0                              # robot faces dock at staging; front LiDAR detects tapes; dock_direction=backward makes controller reverse in
-      docking_threshold: 0.05
+      docking_threshold: 0.45                                # Distance to consider robot isDocked() into Dock 
       dock_direction: "backward"                              # declared for parameter namespace; processed by SimpleChargingDock only
       rotate_to_dock: false                                 # SimpleChargingDock-only; not applicable to this custom plugin
 

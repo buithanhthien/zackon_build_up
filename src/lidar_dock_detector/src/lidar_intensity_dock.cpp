@@ -48,7 +48,7 @@ void LidarIntensityDock::configure(
   declare("max_fail_count",              5);
   declare("staging_x_offset",           -0.8);
   declare("staging_yaw_offset",          0.0);
-  declare("docking_threshold",           0.05);
+  declare("docking_threshold",           0.45);
   declare("use_external_detection_pose", false);
   declare("dock_direction",             std::string("backward"));
   declare("rotate_to_dock",             false);

@@ -8,4 +8,14 @@
       from RPLidar S2 LaserScan.
     </description>
   </class>
+  <class
+    name="lidar_dock_detector/GuessingDock"
+    type="lidar_dock_detector::GuessingDock"
+    base_class_type="opennav_docking_core::ChargingDock">
+    <description>
+      Sensor-free docking plugin. Navigates to staging pose,
+      rotates ~80 degrees in place, then drives backward to
+      the pre-mapped dock pose using dead reckoning.
+    </description>
+  </class>
 </library>

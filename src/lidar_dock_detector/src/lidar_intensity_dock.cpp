@@ -113,11 +113,16 @@ void LidarIntensityDock::activate()
     std::bind(&LidarIntensityDock::scanCallback, this, std::placeholders::_1));
   detected_pose_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>(
     "/detected_dock_pose", rclcpp::SystemDefaultsQoS());
+  dock_pose_odom_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>(
+    "/dock_pose_in_odom", rclcpp::SystemDefaultsQoS());
+  dock_distance_pub_ = node->create_publisher<std_msgs::msg::Float32>(
+    "/dock_distance", rclcpp::SystemDefaultsQoS());
+
   RCLCPP_INFO(node->get_logger(), "[%s] Active - listening to %s",
     name_.c_str(), scan_topic_.c_str());
 }
 
-void LidarIntensityDock::deactivate() { scan_sub_.reset(); detected_pose_pub_.reset(); }
+void LidarIntensityDock::deactivate() { scan_sub_.reset(); detected_pose_pub_.reset(); dock_pose_odom_pub_.reset(); dock_distance_pub_.reset();}
 
 // ─────────────────────────────────────────────
 // ChargingDock interface
@@ -240,6 +245,16 @@ bool LidarIntensityDock::isDocked()
       geometry_msgs::msg::PoseStamped pose_base;
       tf_->transform(ref, pose_base, base_frame_, tf2::durationFromSec(0.1));
       double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y); // sqrt(posx^2 + posy^2)
+
+      std_msgs::msg::Float32 dist_msg;
+      dist_msg.data = static_cast<float>(dist);
+      dock_distance_pub_->publish(dist_msg);
+
+      geometry_msgs::msg::PoseStamped odom_msg = ref;
+      auto node = node_.lock();
+      odom_msg.header.stamp = node->now();
+      dock_pose_odom_pub_->publish(odom_msg);
+
       return dist < docking_threshold_; // if current position < threshold → docked
     } catch (const tf2::TransformException &) {}
     return false;

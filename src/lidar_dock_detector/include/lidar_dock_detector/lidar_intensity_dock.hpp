@@ -13,6 +13,7 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 #include "opennav_docking_core/charging_dock.hpp"
+#include "std_msgs/msg/float32.hpp"
 
 namespace lidar_dock_detector
 {
@@ -97,6 +98,8 @@ private:
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr detected_pose_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr dock_pose_odom_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr dock_distance_pub_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
 
   // State

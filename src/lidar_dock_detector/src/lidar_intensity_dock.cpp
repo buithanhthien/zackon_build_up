@@ -8,6 +8,8 @@
 #include "angles/angles.h"
 #include "pluginlib/class_list_macros.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "std_msgs/msg/float32.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
 
 namespace lidar_dock_detector
 {
@@ -50,8 +52,6 @@ void LidarIntensityDock::configure(
   declare("staging_yaw_offset",          0.0);
   declare("docking_threshold",           0.45);
   declare("use_external_detection_pose", false);
-  declare("dock_direction",             std::string("backward"));
-  declare("rotate_to_dock",             false);
 
   auto get_d = [&](const std::string & k) {
     return node->get_parameter(name_ + "." + k).as_double();
@@ -171,8 +171,10 @@ bool LidarIntensityDock::getRefinedPose(
 
   if (dock_detected_) {
     try {
+      geometry_msgs::msg::PoseStamped last_copy = last_detected_pose_;
+      last_copy.header.stamp = rclcpp::Time(0);
       geometry_msgs::msg::PoseStamped pose_in_base;
-      tf_->transform(last_detected_pose_, pose_in_base, base_frame_,
+      tf_->transform(last_copy, pose_in_base, base_frame_,
                      tf2::durationFromSec(0.1));
       refined_pose_latched_   = pose_in_base;
       has_refined_pose_latch_ = true;
@@ -232,32 +234,53 @@ bool LidarIntensityDock::isDocked()
 {
   if (!use_external_detection_pose_) {
     std::lock_guard<std::mutex> lock(pose_mutex_);
-    // Never detected anything yet
+
     if (last_detected_pose_.header.stamp.sec == 0) { return false; }
 
-    // Use the most recent known pose (live or latched) to check distance
-    const geometry_msgs::msg::PoseStamped & ref =
-      dock_detected_ ? last_detected_pose_ : refined_pose_latched_;
-
-    if (!dock_detected_ && !has_refined_pose_latch_) { return false; }
+    geometry_msgs::msg::PoseStamped ref;
+    if (dock_detected_) {
+      ref = last_detected_pose_;
+    } else if (has_refined_pose_latch_) {
+      ref = refined_pose_latched_;
+    } else {
+      return false;
+    }
 
     try {
-      geometry_msgs::msg::PoseStamped pose_base;
-      tf_->transform(ref, pose_base, base_frame_, tf2::durationFromSec(0.1));
-      double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y); // sqrt(posx^2 + posy^2)
+      // Transform dock pose (lidar_link) → odom using latest available TF
+      ref.header.stamp = rclcpp::Time(0);
+      geometry_msgs::msg::PoseStamped dock_in_odom;
+      tf_->transform(ref, dock_in_odom, "odom", tf2::durationFromSec(0.1));
 
-      std_msgs::msg::Float32 dist_msg;
-      dist_msg.data = static_cast<float>(dist);
-      dock_distance_pub_->publish(dist_msg);
+      // Get robot current pose (base_link) in odom
+      geometry_msgs::msg::TransformStamped robot_tf =
+        tf_->lookupTransform("odom", base_frame_, tf2::TimePointZero);
 
-      geometry_msgs::msg::PoseStamped odom_msg = ref;
+      // Compute distance between robot and dock in odom frame
+      double dx = dock_in_odom.pose.position.x - robot_tf.transform.translation.x;
+      double dy = dock_in_odom.pose.position.y - robot_tf.transform.translation.y;
+      double dist = std::hypot(dx, dy);
+
       auto node = node_.lock();
-      odom_msg.header.stamp = node->now();
-      dock_pose_odom_pub_->publish(odom_msg);
+      if (node && dock_distance_pub_) {
+        std_msgs::msg::Float32 dist_msg;
+        dist_msg.data = static_cast<float>(dist);
+        dock_distance_pub_->publish(dist_msg);
+      }
+      if (node && dock_pose_odom_pub_) {
+        dock_pose_odom_pub_->publish(dock_in_odom);
+      }
 
-      return dist < docking_threshold_; // if current position < threshold → docked
-    } catch (const tf2::TransformException &) {}
-    return false;
+      return dist < docking_threshold_;
+
+    } catch (const tf2::TransformException & ex) {
+      auto node = node_.lock();
+      if (node) {
+        RCLCPP_WARN(node->get_logger(),
+          "[%s] isDocked() TF failed: %s", name_.c_str(), ex.what());
+      }
+      return false;
+    }
   }
 
   // External detection mode
@@ -269,7 +292,12 @@ bool LidarIntensityDock::isDocked()
                    tf2::durationFromSec(0.1));
     double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y);
     return dist < docking_threshold_;
-  } catch (const tf2::TransformException &) {
+  } catch (const tf2::TransformException & ex) {
+    auto node = node_.lock();
+    if (node) {
+      RCLCPP_WARN(node->get_logger(),
+        "[%s] isDocked() external TF failed: %s", name_.c_str(), ex.what());
+    }
     return false;
   }
 }

@@ -13,8 +13,7 @@ docking_server:
     odom_duration: 0.3                # Time window (s) over which odometry is averaged for smoother velocity estimates
     dock_prestaging_tolerance: 0.15   # L2 distance (x, y, theta) within which Nav2 navigation to staging is skipped
     introspection_mode: "disabled"    # Action server introspection (options: disabled, metadata, contents)
-    dock_backwards: true              # SERVER reads this to flip approach by π → drives robot backward (dock_direction is SimpleChargingDock-only)
-    
+    #dock_backwards: true              # SERVER reads this to flip approach by π → drives robot backward (dock_direction is SimpleChargingDock-only)
     
     # Types of docks
     dock_plugins: ["reflective_tape_dock"]  # List of dock plugin names to load
@@ -36,7 +35,7 @@ docking_server:
       max_fail_count: 5                                     # Consecutive scan failures before dock_detected_ is cleared (debounce guard)
       staging_x_offset: -0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
       staging_yaw_offset: 0.0                               # Yaw offset (rad) added to staging orientation; 0 = face the dock; front LiDAR detects tapes; dock_backwards makes controller reverse in
-      docking_threshold: 0.45                               # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
+      docking_threshold: 0.5                                # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
       dock_direction: "backward"                            # Declared for parameter namespace; processed by SimpleChargingDock only (not used by this plugin)
       rotate_to_dock: false                                 # SimpleChargingDock-only; not applicable to this custom plugin
 
@@ -90,5 +89,5 @@ docking_server:
       footprint_topic: "local_costmap/published_footprint"  # Robot footprint topic used for collision detection
       transform_tolerance: 0.1                              # TF lookup tolerance (s) — max age of a transform before rejection
       projection_time: 5.0                                  # How far ahead (s) to project the robot path for collision checking
-      simulation_time_step: 0.1                             # Time step (s) used in the collision projection simulation
+      simulation_step: 0.1                             # Time step (s) used in the collision projection simulation
       dock_collision_threshold: 0.3                         # Distance (m) from dock pose within which collisions are ignored

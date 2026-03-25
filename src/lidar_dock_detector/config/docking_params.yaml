@@ -111,7 +111,7 @@ docking_server:
       footprint_topic: "local_costmap/published_footprint"  # Robot footprint topic used for collision detection
       transform_tolerance: 0.1                              # TF lookup tolerance (s) — max age of a transform before rejection
       projection_time: 5.0                                  # How far ahead (s) to project the robot path for collision checking
-      simulation_time_step: 0.1                             # Time step (s) used in the collision projection simulation
+      # simulation_time_step: 0.1                             # Time step (s) used in the collision projection simulation
       use_collision_detection: false                        # Disable collision checking during approach
       simulation_step: 0.1                             # Time step (s) used in the collision projection simulation
       dock_collision_threshold: 0.3                         # Distance (m) from dock pose within which collisions are ignored

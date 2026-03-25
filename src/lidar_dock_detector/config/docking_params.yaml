@@ -2,16 +2,16 @@ docking_server:
   ros__parameters:
     controller_frequency: 50.0        # Frequency (Hz) of the vision-control loop during dock approach
     initial_perception_timeout: 10.0  # Max time (s) to wait for the first dock detection before failing (error 904)
-    wait_charge_timeout: 5.0          # Max time (s) to wait for charging to start after robot is docked (error 906)
     dock_approach_timeout: 90.0       # Max time (s) for the entire vision-control approach loop (error 905)
+    wait_charge_timeout: 5.0          # Max time (s) to wait for charging to start after robot is docked (error 906)
     undock_linear_tolerance: 0.05     # Linear distance tolerance (m) to consider undocking complete at staging pose
-    undock_angular_tolerance: 0.1     # Angular tolerance (rad) to consider undocking complete at staging pose
+    undock_angular_tolerance: 0.15    # Angular tolerance (rad) to consider undocking complete at staging pose
     max_retries: 3                    # Max number of full docking retries before returning failure
     base_frame: "base_link"           # Robot's base TF frame used by the control law
     fixed_frame: "odom"               # Fixed odometry frame for smooth control (should NOT be map to avoid jumps)
-    odom_topic: "odom"        
-    odom_duration: 0.3 
-    dock_prestaging_tolerance: 0.2    # L2 distance (x, y, theta) within which Nav2 navigation to staging is skipped
+    odom_topic: "odom"                # Odometry topic used by the control law for velocity feedback
+    odom_duration: 0.3                # Time window (s) over which odometry is averaged for smoother velocity estimates
+    dock_prestaging_tolerance: 0.15   # L2 distance (x, y, theta) within which Nav2 navigation to staging is skipped
     introspection_mode: "disabled"    # Action server introspection (options: disabled, metadata, contents)
     dock_backwards: true              # SERVER reads this to flip approach by π → drives robot backward (dock_direction is SimpleChargingDock-only)
     
@@ -21,23 +21,23 @@ docking_server:
 
     reflective_tape_dock:
       plugin: "lidar_dock_detector/LidarIntensityDock"      # your custom LiDAR-based dock detector
-      use_external_detection_pose: false                    # plugin detects internally via LiDAR scan
-      scan_topic: "/scan_front_filter"
-      base_frame: "base_link"
-      lrf_tilt_alpha_deg: 0.0
-      lrf_forward_offset: 0.30
-      tape_distance: 0.375
-      rubber_width: 0.32
-      reflector_width: 0.048
-      i_peak: 43.0
-      i_valley: 29.0
-      valley_search_range: 19
-      max_detect_range: 3.0
-      max_fail_count: 5
-      staging_x_offset: -0.80
-      staging_yaw_offset: 0.0                              # robot faces dock at staging; front LiDAR detects tapes; dock_direction=backward makes controller reverse in
-      docking_threshold: 0.45                                # Distance to consider robot isDocked() into Dock 
-      dock_direction: "backward"                              # declared for parameter namespace; processed by SimpleChargingDock only
+      use_external_detection_pose: false                    # plugin detects internally via LiDAR scan; set true to accept pose from external node
+      scan_topic: "/scan_front_filter"                      # LaserScan topic the plugin subscribes to for reflector detection
+      base_frame: "base_link"                               # Robot base TF frame used for range/distance calculations
+      lrf_tilt_alpha_deg: 0.0                               # LRF tilt angle (deg) — compensates range if sensor is mounted at an angle; 0.0 = flat
+      lrf_forward_offset: 0.30                              # Forward offset (m) from base_link origin to the LRF optical centre; added to dock midpoint X
+      tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes on the dock
+      rubber_width: 0.32                                    # Width (m) of the rubber/backing strip; used to compute the geometric max detection range
+      reflector_width: 0.048                                # Width (m) of a single reflective tape strip; used in inception-angle computation
+      i_peak: 43.0                                          # Minimum intensity value to classify a beam as a reflector peak candidate
+      i_valley: 29.0                                        # Maximum intensity value allowed for the neighbouring valley beams around a peak
+      valley_search_range: 19                               # Number of beams to scan left/right from a peak candidate when searching for valley neighbours
+      max_detect_range: 3.0                                 # Maximum range (m) beyond which a detected reflector is discarded as too far
+      max_fail_count: 5                                     # Consecutive scan failures before dock_detected_ is cleared (debounce guard)
+      staging_x_offset: -0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
+      staging_yaw_offset: 0.0                               # Yaw offset (rad) added to staging orientation; 0 = face the dock; front LiDAR detects tapes; dock_backwards makes controller reverse in
+      docking_threshold: 0.45                               # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
+      dock_direction: "backward"                            # Declared for parameter namespace; processed by SimpleChargingDock only (not used by this plugin)
       rotate_to_dock: false                                 # SimpleChargingDock-only; not applicable to this custom plugin
 
       # ── SimpleChargingDock (for reference — only usable if detector is a separate node) ──
@@ -56,16 +56,16 @@ docking_server:
       # rotate_to_dock: true
 
     # ── LiDAR detector parameters (used by docking_sequence.py and debug tools) ──
-    lidar_detector:
-      scan_topic: "/scan_front_filter"
-      lrf_forward_offset: 0.30
-      tape_distance: 0.375
-      rubber_width: 0.32
-      reflector_width: 0.048
-      i_peak: 43.0
-      i_valley: 29.0
-      valley_search_range: 19
-      max_detect_range: 3.0
+    lidar_detector:                                         # Standalone detector params — mirrored by docking_sequence.py and debug tools (not loaded by the plugin itself)
+      scan_topic: "/scan_front_filter"                      # LaserScan topic to subscribe to for reflector detection
+      lrf_forward_offset: 0.30                              # Forward offset (m) from base_link to LRF optical centre; matches reflective_tape_dock value
+      tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes
+      rubber_width: 0.32                                    # Width (m) of the rubber backing strip; used for geometric max-range calculation
+      reflector_width: 0.048                                # Width (m) of a single reflective tape; used in inception-angle computation
+      i_peak: 43.0                                          # Minimum intensity threshold to classify a beam as a reflector peak
+      i_valley: 29.0                                        # Maximum intensity allowed for valley (non-reflective) neighbour beams
+      valley_search_range: 19                               # Number of beams to scan each side of a peak when looking for valley neighbours
+      max_detect_range: 3.0                                 # Maximum detection range (m); reflectors beyond this are ignored
 
 
     # Dock instances
@@ -79,7 +79,7 @@ docking_server:
     controller:
       k_phi: 3.0                                            # Gain on heading-to-goal angle (phi) — higher = turns faster toward dock
       k_delta: 2.0                                          # Gain on heading error (delta) — higher = corrects orientation more aggressively
-      v_linear_min: -0.15                                    # Min linear velocity (m/s)
+      v_linear_min: -0.15                                   # Min linear velocity (m/s)
       v_linear_max: 0.15                                    # Max linear velocity (m/s)
       v_angular_max: 0.75                                   # Max angular velocity (rad/s)
       slowdown_radius: 0.25                                 # Radius (m) to dock pose to begin slowing down

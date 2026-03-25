@@ -18,15 +18,15 @@ from config import SOURCE_PATH
 
 _PARAMS_FILE = os.path.join(SOURCE_PATH, 'src/lidar_dock_detector/config/docking_params.yaml')
 with open(_PARAMS_FILE) as _f:
-    _p = yaml.safe_load(_f)['docking_server']['ros__parameters']
+    _p = yaml.safe_load(_f)['docking_server']['ros__parameters']  # load docking_server namespace from YAML
 
-DOCK_ID        = _p['docks'][0]
-DOCK_X, DOCK_Y, DOCK_YAW = _p[DOCK_ID]['pose']
-STAGING_OFFSET = _p['reflective_tape_dock']['staging_x_offset']
-STAGING_X      = DOCK_X + STAGING_OFFSET * math.cos(DOCK_YAW)
-STAGING_Y      = DOCK_Y + STAGING_OFFSET * math.sin(DOCK_YAW)
-# STAGING_YAW    = DOCK_YAW + _p['reflective_tape_dock']['staging_yaw_offset']
-STAGING_YAW    = DOCK_YAW 
+DOCK_ID        = _p['docks'][0]                                    # first (and only) dock instance name, e.g. "home_dock"
+DOCK_X, DOCK_Y, DOCK_YAW = _p[DOCK_ID]['pose']                    # dock pose in map frame: [x (m), y (m), yaw (rad)]
+STAGING_OFFSET = _p['reflective_tape_dock']['staging_x_offset']    # negative offset (m) — staging pose is behind the dock
+STAGING_X      = DOCK_X + STAGING_OFFSET * math.cos(DOCK_YAW)     # project offset along dock heading to get staging X in map
+STAGING_Y      = DOCK_Y + STAGING_OFFSET * math.sin(DOCK_YAW)     # project offset along dock heading to get staging Y in map
+# STAGING_YAW    = DOCK_YAW + _p['reflective_tape_dock']['staging_yaw_offset']  # disabled: yaw offset kept at 0 so robot faces dock
+STAGING_YAW    = DOCK_YAW                                          # robot faces the dock direction at staging; front LiDAR can see the reflective tapes
 
 def yaw_to_quaternion(yaw):
     return (0.0, 0.0, math.sin(yaw / 2), math.cos(yaw / 2))

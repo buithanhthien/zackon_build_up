@@ -50,8 +50,8 @@ void LidarIntensityDock::configure(
   declare("staging_yaw_offset",          0.0);
   declare("docking_threshold",           0.45);
   declare("use_external_detection_pose", false);
-  declare("dock_direction",             std::string("backward"));
-  declare("rotate_to_dock",             false);
+  declare("dock_direction",              std::string("backward"));
+  declare("rotate_to_dock",              false);
 
   auto get_d = [&](const std::string & k) {
     return node->get_parameter(name_ + "." + k).as_double();
@@ -66,19 +66,19 @@ void LidarIntensityDock::configure(
   scan_topic_  = node->get_parameter(name_ + ".scan_topic").as_string();
   base_frame_  = node->get_parameter(name_ + ".base_frame").as_string();
 
-  lrf_tilt_alpha_            = angles::from_degrees(get_d("lrf_tilt_alpha_deg"));
-  lrf_forward_offset_        = get_d("lrf_forward_offset");
-  tape_distance_             = get_d("tape_distance");
-  rubber_width_              = get_d("rubber_width");
-  reflector_width_           = get_d("reflector_width");
-  i_peak_                    = static_cast<float>(get_d("i_peak"));
-  i_valley_                  = static_cast<float>(get_d("i_valley"));
-  valley_search_range_       = get_i("valley_search_range");
-  max_detect_range_          = get_d("max_detect_range");
-  max_fail_count_            = get_i("max_fail_count");
-  staging_x_offset_          = get_d("staging_x_offset");
-  staging_yaw_offset_        = get_d("staging_yaw_offset");
-  docking_threshold_         = get_d("docking_threshold");
+  lrf_tilt_alpha_              = angles::from_degrees(get_d("lrf_tilt_alpha_deg"));
+  lrf_forward_offset_          = get_d("lrf_forward_offset");
+  tape_distance_               = get_d("tape_distance");
+  rubber_width_                = get_d("rubber_width");
+  reflector_width_             = get_d("reflector_width");
+  i_peak_                      = static_cast<float>(get_d("i_peak"));
+  i_valley_                    = static_cast<float>(get_d("i_valley"));
+  valley_search_range_         = get_i("valley_search_range");
+  max_detect_range_            = get_d("max_detect_range");
+  max_fail_count_              = get_i("max_fail_count");
+  staging_x_offset_            = get_d("staging_x_offset");
+  staging_yaw_offset_          = get_d("staging_yaw_offset");
+  docking_threshold_           = get_d("docking_threshold");
   use_external_detection_pose_ = get_b("use_external_detection_pose");
 
   RCLCPP_INFO(node->get_logger(),
@@ -172,8 +172,7 @@ bool LidarIntensityDock::getRefinedPose(
   if (dock_detected_) {
     try {
       geometry_msgs::msg::PoseStamped pose_in_base;
-      tf_->transform(last_detected_pose_, pose_in_base, base_frame_,
-                     tf2::durationFromSec(0.1));
+      tf_->transform(last_detected_pose_, pose_in_base, base_frame_, tf2::durationFromSec(0.1));
       refined_pose_latched_   = pose_in_base;
       has_refined_pose_latch_ = true;
       pose = pose_in_base;
@@ -332,8 +331,7 @@ LidarIntensityDock::detectReflectors(
   const double theta = scan.angle_increment;
 
   // Geometric max range from Eq.(8a), capped by configured max_detect_range_
-  const double max_range_geom =
-    std::min(rubber_width_, reflector_width_) / (2.0 * std::sin(theta / 2.0));
+  const double max_range_geom = std::min(rubber_width_, reflector_width_) / (2.0 * std::sin(theta / 2.0));
   const double max_range = std::min(max_range_geom, max_detect_range_);
 
   const int margin = valley_search_range_ + 2;

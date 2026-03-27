@@ -18,8 +18,13 @@ EDGE_TTS_VOICE = "vi-VN-HoaiMyNeural"
 
 # ── Wake word ─────────────────────────────────────────────────────────────────
 # Aliases cover common Google STT transcriptions of "Ê mày".
-WAKE_WORD = "ê mày"
-WAKE_ALIASES = ["e mày", "ê mày ơi", "e may", "a may", "ê máy"]
+WAKE_WORD = "sủa tao nghe"
+WAKE_ALIASES = [WAKE_WORD, "sửa tao nghe", 
+                "sủa tào nghe", 
+                "sủa ta nghe", 
+                "sủa tao nghen", 
+                "ủa tao nghe"]
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 

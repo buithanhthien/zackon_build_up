@@ -793,8 +793,7 @@ class RobotUI(QMainWindow):
 
         # Add welcome message
         self._add_chat_bubble(
-            "Hello! I'm ZACKON, your robot assistant. Ask me about robot status, "
-            "localization, navigation, or anything else.",
+            "Nghe này, em yêu",
             "assistant"
         )
 

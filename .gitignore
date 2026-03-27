@@ -37,4 +37,5 @@ ui/__pycache__/
 
 require.txt
 
-robot_ui/waypoints.json
+robot_ui/waypoints.json.env
+.env

@@ -14,6 +14,8 @@
         "/home/khoaiuh/zackon_ws/install/micro_ros_msgs/include/**",
         "/home/khoaiuh/zackon_ws/install/drive_base_msgs/include/**",
         "/opt/ros/jazzy/include/**",
+        "/home/khoaiuh/zackon_build_up/src/**",
+        "/home/khoaiuh/zackon_build_up/install/**",
         "/usr/include/**"
       ],
       "name": "ros2",

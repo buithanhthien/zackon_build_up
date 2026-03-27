@@ -1,0 +1,5 @@
+docks:
+  home_dock:
+    type: "simple_dock"
+    frame: "map"
+    pose: [-1.736452305440518, -5.823076834288289, 3.100]

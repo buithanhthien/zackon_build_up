@@ -22,7 +22,7 @@ def generate_launch_description():
     # File Config & Map
     nav2_params_file = PathJoinSubstitution([pkg_dir, 'config', 'nav2_params.yaml'])
     slam_params_file = PathJoinSubstitution([pkg_dir, 'config', 'mapper_params_online_async.yaml'])
-    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'X504.yaml'])
+    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'F5.yaml'])
 
     # Hardware Params
     lidar_frame_arg = DeclareLaunchArgument('lidar_frame', default_value='lidar_link')

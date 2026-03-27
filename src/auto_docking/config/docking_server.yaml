@@ -1,0 +1,16 @@
+docking_server:
+  ros__parameters:
+    controller_frequency: 50.0
+    fixed_frame: odom
+    dock_plugins: ['simple_dock']
+    simple_dock:
+      plugin: "opennav_docking::SimpleChargingDock"
+      docking_threshold: 0.05
+      staging_x_offset: -0.7
+      rotate_to_heading_angular_vel: 0.3
+      max_angular_accel: 1.0
+      approach_linear_velocity: 0.15
+      max_retries: 3
+      use_external_detection_pose: false
+      use_battery_status: false
+      use_stall_detection: false

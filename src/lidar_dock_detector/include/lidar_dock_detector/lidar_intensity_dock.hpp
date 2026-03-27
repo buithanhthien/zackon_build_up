@@ -92,7 +92,7 @@ private:
   double staging_yaw_offset_;          // Yaw offset (rad) added to staging pose orientation (0 = face the dock)
   double docking_threshold_;           // Distance (m) from dock pose at which isDocked() returns true
   bool   use_external_detection_pose_; // If true, skip LiDAR detection and accept pose from an external node
-  // dock_direction / rotate_to_dock declared for server; not used in plugin body
+  bool   rotate_to_dock_;              // If true, staging faces away from dock for forward approach; robot rotates and backs in (requires dock_direction: backward)
 
   // ROS handles
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;

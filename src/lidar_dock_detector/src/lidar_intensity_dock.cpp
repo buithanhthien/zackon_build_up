@@ -42,7 +42,7 @@ void LidarIntensityDock::configure(
   declare("lrf_forward_offset",          0.30);
   declare("tape_distance",               0.375);
   declare("rubber_width",                0.32);
-  declare("reflector_width",             0.05);
+  declare("reflector_width",             0.048);
   declare("i_peak",                      43.0);
   declare("i_valley",                    29.0);
   declare("valley_search_range",         19);
@@ -52,6 +52,7 @@ void LidarIntensityDock::configure(
   declare("staging_yaw_offset",          0.0);
   declare("docking_threshold",           0.5);
   declare("use_external_detection_pose", false);
+  declare("rotate_to_dock",             false);
 
   auto get_d = [&](const std::string & k) {
     return node->get_parameter(name_ + "." + k).as_double();
@@ -80,6 +81,7 @@ void LidarIntensityDock::configure(
   staging_yaw_offset_          = get_d("staging_yaw_offset");
   docking_threshold_           = get_d("docking_threshold");
   use_external_detection_pose_ = get_b("use_external_detection_pose");
+  rotate_to_dock_              = get_b("rotate_to_dock");
 
   RCLCPP_INFO(node->get_logger(),
     "[%s] Configured: scan=%s base=%s lrf_offset=%.3f tape=%.3f "

@@ -32,6 +32,7 @@ set(DOCK_DEPS
 
 add_library(lidar_dock_detector SHARED
   src/lidar_intensity_dock.cpp
+  src/blind_docking.cpp
 )
 target_include_directories(lidar_dock_detector PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

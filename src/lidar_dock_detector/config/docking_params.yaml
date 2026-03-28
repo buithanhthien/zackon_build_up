@@ -80,8 +80,8 @@ docking_server:
     docks: ["home_dock"]  # List of dock instance names
 
     home_dock:
-      # type: "reflective_tape_dock"        # Plugin type (must match a key in dock_plugins)
-      type: "blind_docking" 
+      type: "reflective_tape_dock"        # Plugin type (must match a key in dock_plugins)
+      # type: "blind_docking" 
       frame: "map"                        # TF frame in which the pose is expressed
       pose: [-0.40155, 1.34912, 1.57]     # Dock pose in map frame: [x (m), y (m), yaw (rad)]
 

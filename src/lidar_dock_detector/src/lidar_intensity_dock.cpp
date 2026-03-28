@@ -39,7 +39,7 @@ void LidarIntensityDock::configure(
   declare("scan_topic",                  std::string("/scan_front_filter"));
   declare("base_frame",                  std::string("base_link"));
   declare("lrf_tilt_alpha_deg",          0.0);
-  declare("lrf_forward_offset",          0.30);
+  declare("lrf_forward_offset",          0.35);
   declare("tape_distance",               0.375);
   declare("rubber_width",                0.32);
   declare("reflector_width",             0.048);
@@ -50,7 +50,7 @@ void LidarIntensityDock::configure(
   declare("max_fail_count",              5);
   declare("staging_x_offset",           -0.8);
   declare("staging_yaw_offset",          0.0);
-  declare("docking_threshold",           0.5);
+  declare("docking_threshold",           0.32);
   declare("use_external_detection_pose", false);
   declare("rotate_to_dock",             false);
 

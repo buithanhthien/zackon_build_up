@@ -23,7 +23,7 @@ docking_server:
       base_frame: "base_link"
       staging_x_offset: -0.80                     # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
       staging_yaw_offset: 0.0                      # Extra yaw offset (rad) on top of the 180° flip
-      docking_threshold: 0.5                       # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
+      docking_threshold: 0.32                       # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
       dock_direction: "backward"                   # Robot reverses into dock
       rotate_to_dock: false                        # Declared for parameter namespace compatibility
 
@@ -33,7 +33,7 @@ docking_server:
       scan_topic: "/scan_front_filter"                      # LaserScan topic the plugin subscribes to for reflector detection
       base_frame: "base_link"                               # Robot base TF frame used for range/distance calculations
       lrf_tilt_alpha_deg: 0.0                               # LRF tilt angle (deg) — compensates range if sensor is mounted at an angle; 0.0 = flat
-      lrf_forward_offset: 0.30                              # Forward offset (m) from base_link origin to the LRF optical centre; added to dock midpoint X
+      lrf_forward_offset: 0.35                              # Forward offset (m) from base_link origin to the LRF optical centre; added to dock midpoint X
       tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes on the dock
       rubber_width: 0.32                                    # Width (m) of the rubber/backing strip; used to compute the geometric max detection range
       reflector_width: 0.048                                # Width (m) of a single reflective tape strip; used in inception-angle computation
@@ -44,7 +44,7 @@ docking_server:
       max_fail_count: 5                                     # Consecutive scan failures before dock_detected_ is cleared (debounce guard)
       staging_x_offset: -0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
       staging_yaw_offset: 0.0                               # Yaw offset (rad) added to staging orientation; 0 = face the dock; front LiDAR detects tapes; dock_backwards makes controller reverse in
-      docking_threshold: 0.5                                # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
+      docking_threshold: 0.32                                # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
       dock_direction: "backward"                            # Declared for parameter namespace; processed by SimpleChargingDock only (not used by this plugin)
       rotate_to_dock: true                                 # SimpleChargingDock-only; not applicable to this custom plugin
 
@@ -66,7 +66,7 @@ docking_server:
     # ── LiDAR detector parameters (used by docking_sequence.py and debug tools) ──
     lidar_detector:                                         # Standalone detector params — mirrored by docking_sequence.py and debug tools (not loaded by the plugin itself)
       scan_topic: "/scan_front_filter"                      # LaserScan topic to subscribe to for reflector detection
-      lrf_forward_offset: 0.30                              # Forward offset (m) from base_link to LRF optical centre; matches reflective_tape_dock value
+      lrf_forward_offset: 0.35                              # Forward offset (m) from base_link to LRF optical centre; matches reflective_tape_dock value
       tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes
       rubber_width: 0.32                                    # Width (m) of the rubber backing strip; used for geometric max-range calculation
       reflector_width: 0.048                                # Width (m) of a single reflective tape; used in inception-angle computation

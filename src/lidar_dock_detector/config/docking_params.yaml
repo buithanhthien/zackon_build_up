@@ -100,4 +100,4 @@ docking_server:
       projection_time: 1.0                                  # How far ahead (s) to project the robot path for collision checking
       simulation_time_step: 0.1                             # Time step (s) used in the collision projection simulation
       use_collision_detection: false                        # Disable collision checking during approach
-      dock_collision_threshold: 0.3                         # Distance (m) from dock pose within which collisions are ignored
+      dock_collision_threshold: 0.1                         # Distance (m) from dock pose within which collisions are ignored

@@ -16,6 +16,7 @@ from nav2_msgs.action import NavigateToPose
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
+from voice_engine import VoiceEngine
 
 
 class WaypointsNode(Node):
@@ -113,6 +114,12 @@ class WaypointsModeLayout(QMainWindow):
         self.running_sequence = False
         self.current_sequence_index = 0
         self.init_ui()
+
+        # ── Voice engine ───────────────────────────────────────────────────
+        self._voice = VoiceEngine()
+        self._voice.waypoint_command.connect(self.voice_navigate_to_waypoint)
+        self._voice.start()
+        self.log("[Voice] Listening — say \"Đi tới <số>\" to navigate")
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.spin_and_update)
@@ -612,6 +619,17 @@ class WaypointsModeLayout(QMainWindow):
             f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
         )
         
+    def voice_navigate_to_waypoint(self, slot: str):
+        """Called when the VoiceEngine emits waypoint_command(slot)."""
+        self.log(f'[Voice] Command received: Đi tới {slot}')
+        if slot not in self.waypoints:
+            msg = f'Vị trí {slot} chưa được lưu'
+            self.log(f'[Voice] {msg}')
+            self._voice.speak(msg)
+            return
+        self._voice.speak(f'Đang đi tới vị trí {slot}')
+        self.navigate_to_waypoint(int(slot))
+
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
@@ -619,6 +637,7 @@ class WaypointsModeLayout(QMainWindow):
         self.close()
     
     def closeEvent(self, event):
+        self._voice.stop()
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
         if self.ros_node:

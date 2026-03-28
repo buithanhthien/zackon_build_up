@@ -44,9 +44,25 @@ class VoiceState:
     SPEAKING  = "🔊 SPEAKING"
 
 
+# ── Waypoint voice command ────────────────────────────────────────────────────
+# Patterns recognised as "Đi tới <slot>".
+# Vietnamese STT may transcribe the number as a digit or a written-out word.
+WAYPOINT_PREFIXES = ["đi tới", "đi tới số", "di tới", "di tới số",
+                     "đi đến", "đi đến số", "di đến", "di đến số",
+                     "đi tới vị trí", "đi đến vị trí", "di tới vị trí", "di đến vị trí",
+                     "tới số", "tới vị trí", "đến số", "đến vị trí"]
+# Vietnamese number words 1-10 → digit
+VI_DIGITS = {
+    "một": "1", "hai": "2", "ba": "3", "bốn": "4", "năm": "5",
+    "sáu": "6", "bảy": "7", "tám": "8", "chín": "9", "mười": "10",
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 class VoiceEngine(QObject):
     state_changed    = pyqtSignal(str)   # emits VoiceState constants
     transcript_ready = pyqtSignal(str)   # emits transcribed user text
+    waypoint_command = pyqtSignal(str)   # emits slot number str, e.g. "1"
 
     def __init__(self, wake_word: str = WAKE_WORD,
                  edge_voice: str | None = EDGE_TTS_VOICE):
@@ -174,9 +190,16 @@ class VoiceEngine(QObject):
                         text = self.recognizer.recognize_google(
                             audio, language='vi-VN').lower()
                         print(f"[VoiceEngine] Heard: '{text}'")
-                        all_wake = [self.wake_word] + WAKE_ALIASES
-                        if any(w in text for w in all_wake):
-                            self._handle_wake_word(source)
+                        # ── Waypoint shortcut (no wake word needed) ──────────
+                        slot = self._check_waypoint_command(text)
+                        if slot is not None:
+                            print(f"[VoiceEngine] Waypoint command → slot {slot}")
+                            self.waypoint_command.emit(slot)
+                        else:
+                            # ── Wake word → AI chat ──────────────────────────
+                            all_wake = [self.wake_word] + WAKE_ALIASES
+                            if any(w in text for w in all_wake):
+                                self._handle_wake_word(source)
                     except sr.UnknownValueError:
                         pass
                     except sr.RequestError as e:
@@ -196,9 +219,38 @@ class VoiceEngine(QObject):
                 source, timeout=4.0, phrase_time_limit=10.0)
             self._set_state(VoiceState.THINKING)
             text = self.recognizer.recognize_google(audio, language='vi-VN')
-            self.transcript_ready.emit(text)
+            # Waypoint commands take priority over AI chat even after wake word
+            slot = self._check_waypoint_command(text.lower())
+            if slot is not None:
+                print(f"[VoiceEngine] Waypoint command (post-wake) → slot {slot}")
+                self.waypoint_command.emit(slot)
+                self._set_state(VoiceState.IDLE)
+            else:
+                self.transcript_ready.emit(text)
         except (sr.WaitTimeoutError, sr.UnknownValueError):
             self._set_state(VoiceState.IDLE)
         except Exception as e:
             print(f"[VoiceEngine] Command STT error: {e}")
             self._set_state(VoiceState.IDLE)
+
+
+    # ── Waypoint command parser ────────────────────────────────────────────────
+
+    def _check_waypoint_command(self, text: str) -> str | None:
+        """Return slot number string if text matches a waypoint command, else None.
+
+        Recognises phrases like:
+          "đi tới 1", "đi đến số 3", "di tới năm", …
+        Returns the digit string (e.g. "1") or None.
+        """
+        text = text.strip()
+        for prefix in WAYPOINT_PREFIXES:
+            if text.startswith(prefix):
+                remainder = text[len(prefix):].strip()
+                # Direct digit(s)
+                if remainder.isdigit():
+                    return remainder
+                # Vietnamese word number
+                if remainder in VI_DIGITS:
+                    return VI_DIGITS[remainder]
+        return None

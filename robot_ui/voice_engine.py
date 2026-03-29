@@ -5,6 +5,7 @@ import os
 import asyncio
 import subprocess
 import tempfile
+import queue
 from contextlib import contextmanager
 import speech_recognition as sr
 import edge_tts
@@ -19,7 +20,7 @@ EDGE_TTS_VOICE = "vi-VN-HoaiMyNeural"
 # ── Wake word ─────────────────────────────────────────────────────────────────
 # Aliases cover common Google STT transcriptions of "Ê mày".
 WAKE_WORD = "ê mày"
-WAKE_ALIASES = ["e mày", "ê mày ơi", "e may", "a may", "ê máy"]
+WAKE_ALIASES = ["e mày", "ê mày ơi", "e may", "a may", "ê máy", "ê"]
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -38,10 +39,10 @@ def suppress_stderr():
 
 
 class VoiceState:
-    IDLE      = "🔴 IDLE"
-    LISTENING = "🟢 LISTENING"
-    THINKING  = "⏳ THINKING"
-    SPEAKING  = "🔊 SPEAKING"
+    IDLE      = "[--] IDLE"
+    LISTENING = "[>>] LISTENING"
+    THINKING  = "[..] THINKING"
+    SPEAKING  = "[<<] SPEAKING"
 
 
 # ── Waypoint voice command ────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ class VoiceEngine(QObject):
         self.recognizer = sr.Recognizer()
         self.recognizer.dynamic_energy_threshold = True
         self.recognizer.energy_threshold = 400
-        self.recognizer.pause_threshold  = 0.8
+        self.recognizer.pause_threshold  = 1.5
 
         print(f"[VoiceEngine] Active voice: "
               f"{self._edge_voice or 'espeak-ng/' + self._espeak_lang}")
@@ -84,6 +85,10 @@ class VoiceEngine(QObject):
         self._listening_thread = None
         self._state_lock       = threading.Lock()
         self._current_state    = VoiceState.IDLE
+
+        self._tts_queue  = queue.Queue()
+        self._tts_thread = threading.Thread(target=self._tts_worker, daemon=True)
+        self._tts_thread.start()
 
         with suppress_stderr():
             self._microphone = sr.Microphone()
@@ -112,13 +117,18 @@ class VoiceEngine(QObject):
             self._set_state(VoiceState.IDLE)
 
     def speak(self, text: str):
-        """Speak AI response text (strips action tags, runs async)."""
+        """Queue text for TTS — spoken only after previous speech completes."""
         clean = re.sub(r'<[^>]+>', '', text).strip()
-        if not clean:
-            return
-        self._set_state(VoiceState.SPEAKING)
-        threading.Thread(target=self._speak_blocking,
-                         args=(clean,), daemon=True).start()
+        if clean:
+            self._tts_queue.put(clean)
+
+    def _tts_worker(self):
+        """Single worker thread that drains the TTS queue sequentially."""
+        while True:
+            text = self._tts_queue.get()
+            self._set_state(VoiceState.SPEAKING)
+            self._speak_blocking(text)
+            self._tts_queue.task_done()
 
     # ── TTS ───────────────────────────────────────────────────────────────────
 
@@ -185,7 +195,7 @@ class VoiceEngine(QObject):
                     continue
                 try:
                     audio = self.recognizer.listen(
-                        source, timeout=2.0, phrase_time_limit=3.0)
+                        source, timeout=2.0, phrase_time_limit=1.5)
                     try:
                         text = self.recognizer.recognize_google(
                             audio, language='vi-VN').lower()

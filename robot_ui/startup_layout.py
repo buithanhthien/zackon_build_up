@@ -6,9 +6,6 @@ import threading
 import time
 import math
 import re
-import json
-import urllib.request
-import urllib.error
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QTextEdit, QLabel,
                              QSizePolicy, QLineEdit, QScrollArea, QFrame)
@@ -19,7 +16,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
 from std_srvs.srv import Empty
 from load_map_dialog import LoadMapDialog
-from voice_engine import VoiceEngine, VoiceState
+from chat_panel_widget import ChatPanel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
 
@@ -38,143 +35,6 @@ MAX_RETRIES          = 2
 SPIN_TICK            = 0.05
 COV_LOCK_TIMEOUT     = 15.0
 # ─────────────────────────────────────────────────────────────────────────────
-
-# ── Groq API config ───────────────────────────────────────────────────────────
-def _load_env():
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    k, v = line.split('=', 1)
-                    os.environ.setdefault(k.strip(), v.strip())
-
-_load_env()
-GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL    = "llama-3.1-8b-instant"
-SYSTEM_PROMPT = (
-    "Bạn là ZACKON, AI đồng hành được tích hợp trực tiếp vào robot ROS 2 tự hành. "
-    "Bạn LUÔN trả lời bằng tiếng Việt, ngắn gọn và rõ ràng. "
-
-    "Bạn hỗ trợ các chức năng chính của robot gồm: "
-    "điều hướng (Nav2), định vị (AMCL), docking sạc, kiểm tra trạng thái, và hỗ trợ vận hành. "
-
-    "Khi người vận hành hỏi, hãy ưu tiên: "
-    "1. Hiểu ý định điều khiển robot "
-    "2. Đưa ra phản hồi ngắn gọn, thực tế "
-    "3. Gợi ý hành động nếu cần "
-
-    "Bạn có thể trò chuyện tự nhiên, nhưng luôn ưu tiên hỗ trợ vận hành robot. "
-
-    "Nếu robot có dấu hiệu lỗi hoặc bất thường, hãy chủ động đề xuất giải pháp. "
-    "Ví dụ: mất định vị, kẹt đường, không tìm thấy dock, lỗi navigation. "
-
-    "Bạn có thể thêm một thẻ hành động ở cuối phản hồi khi phù hợp: "
-    "<STATUS_CHECK> kiểm tra trạng thái robot "
-    "<HELP> trợ giúp "
-    "<NAVIGATE> điều hướng "
-    "<DOCK> về dock sạc "
-    "<LOCALIZE> định vị lại "
-
-    "Chỉ thêm thẻ khi cần thực thi hành động. "
-    "Không thêm nếu chỉ trò chuyện. "
-
-    "Ví dụ: "
-    "'Robot có vẻ mất định vị. Bạn muốn tôi định vị lại không? <LOCALIZE>' "
-    "'Pin thấp, nên quay về trạm sạc. <DOCK>'"
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  AI Chat Worker  (runs Groq API call in background thread)
-# ══════════════════════════════════════════════════════════════════════════════
-
-class AIChatWorker(QObject):
-    response_ready  = pyqtSignal(str)   # emits the reply text
-    error_occurred  = pyqtSignal(str)   # emits error message
-    finished        = pyqtSignal()
-
-    def __init__(self, history: list):
-        super().__init__()
-        self.history = history          # full conversation history (list of dicts)
-
-    def run(self):
-        try:
-            payload = json.dumps({
-                "model": GROQ_MODEL,
-                "messages": self.history,
-                "max_tokens": 512,
-                "temperature": 0.7,
-            }).encode("utf-8")
-
-            req = urllib.request.Request(
-                "https://api.groq.com/openai/v1/chat/completions",
-                data=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-                },
-                method="POST",
-            )
-
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                reply = data["choices"][0]["message"]["content"].strip()
-                self.response_ready.emit(reply)
-
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            self.error_occurred.emit(f"HTTP {e.code}: {body[:200]}")
-        except Exception as exc:
-            self.error_occurred.emit(str(exc))
-        finally:
-            self.finished.emit()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  Chat bubble widget
-# ══════════════════════════════════════════════════════════════════════════════
-
-class ChatBubble(QWidget):
-    """A single chat message bubble — user (right) or assistant (left)."""
-
-    def __init__(self, text: str, role: str, parent=None):
-        super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-
-        label = QLabel(text)
-        label.setWordWrap(True)
-        label.setFont(QFont("Fira Code", 12))
-        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
-        label.setMaximumWidth(560)
-
-        if role == "user":
-            label.setStyleSheet("""
-                background-color: #00e5ff18;
-                color: #e8ecf0;
-                border: 1px solid #00e5ff44;
-                border-radius: 8px;
-                padding: 10px 14px;
-            """)
-            layout.addStretch()
-            layout.addWidget(label)
-        else:
-            label.setStyleSheet("""
-                background-color: #1c2030;
-                color: #b0c4d8;
-                border: 1px solid #2a3040;
-                border-radius: 8px;
-                padding: 10px 14px;
-            """)
-            layout.addWidget(label)
-            layout.addStretch()
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  Localization Worker  (unchanged from original)
@@ -362,30 +222,9 @@ class RobotUI(QMainWindow):
         self.localization_worker  = None
         self.localization_thread  = None
 
-        # ── AI chat state ─────────────────────────────────────────────────────
-        self._chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
-        self._ai_thread    = None
-        self._ai_worker    = None
-
-        # ── Silence / proactive re-engagement timer ───────────────────────────
-        # Fires 20 s after the last AI response if the user hasn't typed anything
-        self._silence_timer = QTimer()
-        self._silence_timer.setSingleShot(True)
-        self._silence_timer.timeout.connect(self._on_silence_timeout)
-
-        # ── Voice Engine ──────────────────────────────────────────────────────
-        self._voice_engine = VoiceEngine()
-        # Connect voice engine signals
-        self._voice_engine.state_changed.connect(self._on_voice_state_changed)
-        self._voice_engine.transcript_ready.connect(self._on_voice_transcript)
-        # Auto‑start will be performed after UI is built
-
         self.init_ui()
-        # After UI is ready, enable and start the voice engine automatically
-        self._voice_enabled = True
-        self.voice_btn.setChecked(True)
-        self.voice_status_label.show()
-        self._voice_engine.start()
+        self.chat_panel.voice_btn.setChecked(True)
+        self.chat_panel._toggle_voice()
         if not skip_micro_ros:
             self.start_micro_ros()
 
@@ -718,85 +557,9 @@ class RobotUI(QMainWindow):
         self.log_text.setFont(QFont("Fira Code", 13))
         log_layout.addWidget(self.log_text)
 
-        # ── AI CHAT panel ─────────────────────────────────────────────────────
-        self.chat_panel = QWidget()
-        self.chat_panel.setObjectName("chat-panel")
+        self.chat_panel = ChatPanel()
         self.chat_panel.hide()
-        chat_layout = QVBoxLayout(self.chat_panel)
-        chat_layout.setContentsMargins(0, 0, 0, 0)
-        chat_layout.setSpacing(0)
-
-        # Scrollable message area
-        self.chat_scroll = QScrollArea()
-        self.chat_scroll.setWidgetResizable(True)
-        self.chat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        self.chat_messages_widget = QWidget()
-        self.chat_messages_widget.setStyleSheet("background-color: #080a0d;")
-        self.chat_messages_layout = QVBoxLayout(self.chat_messages_widget)
-        self.chat_messages_layout.setContentsMargins(16, 16, 16, 16)
-        self.chat_messages_layout.setSpacing(8)
-        self.chat_messages_layout.addStretch()   # pushes messages to bottom
-
-        self.chat_scroll.setWidget(self.chat_messages_widget)
-        chat_layout.addWidget(self.chat_scroll, 1)
-
-        # Typing indicator label
-        self.typing_label = QLabel("ZACKON is thinking...")
-        self.typing_label.setFont(QFont("Fira Code", 11))
-        self.typing_label.setStyleSheet("color: #3a4460; padding: 4px 20px; background-color: #080a0d;")
-        self.typing_label.hide()
-        chat_layout.addWidget(self.typing_label)
-
-        # Voice status indicator (e.g. 🔴 LISTENING)
-        self.voice_status_label = QLabel(VoiceState.IDLE)
-        self.voice_status_label.setFont(QFont("Fira Code", 11, QFont.Weight.Bold))
-        self.voice_status_label.setStyleSheet("color: #6b7a99; padding: 0 20px; background-color: #080a0d;")
-        self.voice_status_label.hide()
-        chat_layout.addWidget(self.voice_status_label)
-
-        # Input row
-        input_row = QWidget()
-        input_row.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
-        input_layout = QHBoxLayout(input_row)
-        input_layout.setContentsMargins(16, 10, 16, 10)
-        input_layout.setSpacing(10)
-
-        self.chat_input = QLineEdit()
-        self.chat_input.setObjectName("chat-input")
-        self.chat_input.setFont(QFont("Fira Code", 13))
-        self.chat_input.setPlaceholderText("Ask ZACKON anything about the robot...")
-        self.chat_input.returnPressed.connect(self.send_chat_message)
-
-        self.voice_btn = QPushButton("🎤")
-        self.voice_btn.setObjectName("voice-btn")
-        self.voice_btn.setCheckable(True)
-        self.voice_btn.setFixedSize(44, 44)
-        self.voice_btn.clicked.connect(self._toggle_voice)
-
-        self.send_btn = QPushButton("SEND")
-        self.send_btn.setObjectName("send-btn")
-        self.send_btn.setFont(QFont("JetBrains Mono", 12, QFont.Weight.Bold))
-        self.send_btn.setFixedWidth(80)
-        self.send_btn.clicked.connect(self.send_chat_message)
-
-        self.clear_btn = QPushButton("CLEAR")
-        self.clear_btn.setObjectName("clear-btn")
-        self.clear_btn.setFont(QFont("JetBrains Mono", 11))
-        self.clear_btn.clicked.connect(self.clear_chat)
-
-        input_layout.addWidget(self.voice_btn)
-        input_layout.addWidget(self.chat_input)
-        input_layout.addWidget(self.send_btn)
-        input_layout.addWidget(self.clear_btn)
-        chat_layout.addWidget(input_row)
-
-        # Add welcome message
-        self._add_chat_bubble(
-            "Hello! I'm ZACKON, your robot assistant. Ask me about robot status, "
-            "localization, navigation, or anything else.",
-            "assistant"
-        )
+        self.chat_panel.action_tag.connect(lambda tag: self.log(f"[AI-ACTION] {tag}"))
 
         right_layout.addWidget(self.log_panel, 1)
         right_layout.addWidget(self.chat_panel, 1)
@@ -818,14 +581,7 @@ class RobotUI(QMainWindow):
         self._reestimate_pulse_timer.timeout.connect(self._pulse_reestimate)
         self._pulse_state = False
 
-        # Typing animation timer
-        self._typing_dots  = 0
-        self._typing_timer = QTimer()
-        self._typing_timer.timeout.connect(self._animate_typing)
-
-        self.update_status()
-
-    # ══════════════════════════════════════════════════════════════════════════
+        self.update_status()    # ══════════════════════════════════════════════════════════════════════════
     #  Panel switching
     # ══════════════════════════════════════════════════════════════════════════
 
@@ -838,175 +594,7 @@ class RobotUI(QMainWindow):
         self.log_panel.hide()
         self.chat_panel.show()
         self.live_badge.hide()
-        self.chat_input.setFocus()
-        QTimer.singleShot(50, self._scroll_chat_to_bottom)
-
-    # ══════════════════════════════════════════════════════════════════════════
-    #  AI Chat logic
-    # ══════════════════════════════════════════════════════════════════════════
-
-    def _add_chat_bubble(self, text: str, role: str):
-        """Insert a chat bubble into the scroll area."""
-        bubble = ChatBubble(text, role)
-        # Insert before the trailing stretch (last item)
-        count = self.chat_messages_layout.count()
-        self.chat_messages_layout.insertWidget(count - 1, bubble)
-        QTimer.singleShot(30, self._scroll_chat_to_bottom)
-
-    def _scroll_chat_to_bottom(self):
-        sb = self.chat_scroll.verticalScrollBar()
-        sb.setValue(sb.maximum())
-
-    def _animate_typing(self):
-        dots = "." * (self._typing_dots % 4)
-        self.typing_label.setText(f"ZACKON is thinking{dots}")
-        self._typing_dots += 1
-
-    def send_chat_message(self):
-        text = self.chat_input.text().strip()
-        if not text:
-            return
-        if self._ai_thread and self._ai_thread.isRunning():
-            return   # already waiting for a response
-
-        # Reset silence timer whenever the user sends a message
-        self._silence_timer.stop()
-
-        self.chat_input.clear()
-        self._add_chat_bubble(text, "user")
-        self._chat_history.append({"role": "user", "content": text})
-
-        # Show typing indicator
-        self.typing_label.show()
-        self._typing_dots = 0
-        self._typing_timer.start(400)
-        self.send_btn.setEnabled(False)
-        self.chat_input.setEnabled(False)
-
-        # Spin up background worker
-        self._ai_worker = AIChatWorker(list(self._chat_history))
-        self._ai_thread = QThread()
-        self._ai_worker.moveToThread(self._ai_thread)
-
-        self._ai_thread.started.connect(self._ai_worker.run)
-        self._ai_worker.response_ready.connect(self._on_ai_response)
-        self._ai_worker.error_occurred.connect(self._on_ai_error)
-        self._ai_worker.finished.connect(self._ai_thread.quit)
-        self._ai_worker.finished.connect(self._on_ai_done)
-
-        self._ai_thread.start()
-
-    # ── Action tag parsing ────────────────────────────────────────────────────
-    @staticmethod
-    def _parse_and_strip_tags(reply: str):
-        """Strip <TAG> action tags from LLM reply.
-
-        Returns (clean_text, list_of_tag_names).  Tags are recognised anywhere
-        in the response but are most meaningful at the end.
-        """
-        pattern = r'<(STATUS_CHECK|HELP|NAVIGATE|DOCK|LOCALIZE)>'
-        tags    = re.findall(pattern, reply)
-        clean   = re.sub(pattern, '', reply).strip()
-        return clean, tags
-
-    def _on_ai_response(self, reply: str):
-        clean, tags = self._parse_and_strip_tags(reply)
-        self._chat_history.append({"role": "assistant", "content": clean})
-        self._add_chat_bubble(clean, "assistant")
-        
-        # Output speech if voice is enabled
-        if self._voice_enabled:
-            self._voice_engine.speak(clean)
-            
-        # Log any action tags to the system log for future ROS hooks
-        for tag in tags:
-            self.log(f"[AI-ACTION] {tag}")
-
-    def _on_ai_error(self, error: str):
-        self._add_chat_bubble(f"[ERROR] {error}", "assistant")
-
-    def _on_ai_done(self):
-        self.typing_label.hide()
-        self._typing_timer.stop()
-        self.send_btn.setEnabled(True)
-        self.chat_input.setEnabled(True)
-        self.chat_input.setFocus()
-        # Start 20-second silence countdown after every AI reply
-        self._silence_timer.start(20_000)
-
-    # ── Voice Engine Slots ────────────────────────────────────────────────────
-    
-    def _toggle_voice(self):
-        self._voice_enabled = self.voice_btn.isChecked()
-        if self._voice_enabled:
-            self.voice_status_label.show()
-            self._voice_engine.start()
-        else:
-            self.voice_status_label.hide()
-            self._voice_engine.stop()
-
-    def _on_voice_state_changed(self, state: str):
-        self.voice_status_label.setText(state)
-        if "LISTENING" in state:
-            self.voice_status_label.setStyleSheet("color: #00e5ff; padding: 0 20px; background-color: #080a0d;")
-        elif "SPEAKING" in state:
-            self.voice_status_label.setStyleSheet("color: #00c853; padding: 0 20px; background-color: #080a0d;")
-        else:
-            self.voice_status_label.setStyleSheet("color: #6b7a99; padding: 0 20px; background-color: #080a0d;")
-
-    def _on_voice_transcript(self, text: str):
-        # Programmatically paste the transcribed text and send it
-        text = text.strip()
-        if not text:
-            return
-        
-        # Add 'Hey Zackon' context purely for visual, if desired, 
-        # or just send the text directly since the engine triggers on the wake word.
-        # Capitalize first letter:
-        text = text[0].upper() + text[1:]
-        
-        self.chat_input.setText(text)
-        self.send_chat_message()
-
-    def _on_silence_timeout(self):
-        """Proactively re-engage the operator after 20 s of idle time."""
-        if not self.chat_panel.isVisible():
-            return
-        if self._ai_thread and self._ai_thread.isRunning():
-            return
-
-        # Ask the LLM to generate a context-aware follow-up question
-        probe_history = list(self._chat_history) + [{
-            "role": "user",
-            "content": (
-                "[SYSTEM: The operator has been idle for 20 seconds. "
-                "Ask a single short follow-up question related to the last topic "
-                "discussed. Do not explain why you are asking.]"
-            )
-        }]
-        self._ai_worker = AIChatWorker(probe_history)
-        self._ai_thread = QThread()
-        self._ai_worker.moveToThread(self._ai_thread)
-        self._ai_thread.started.connect(self._ai_worker.run)
-        self._ai_worker.response_ready.connect(self._on_ai_response)
-        self._ai_worker.error_occurred.connect(self._on_ai_error)
-        self._ai_worker.finished.connect(self._ai_thread.quit)
-        self._ai_worker.finished.connect(self._on_ai_done)
-        self._ai_thread.start()
-
-    def clear_chat(self):
-        """Remove all bubbles and reset history."""
-        self._silence_timer.stop()
-        # Remove all widgets except the trailing stretch
-        while self.chat_messages_layout.count() > 1:
-            item = self.chat_messages_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        self._chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
-        self._add_chat_bubble(
-            "Chat cleared. How can I help you?",
-            "assistant"
-        )
+        self.chat_panel.focus_input()
 
     # ══════════════════════════════════════════════════════════════════════════
     #  Existing UI helpers (unchanged)
@@ -1239,9 +827,7 @@ class RobotUI(QMainWindow):
     def closeEvent(self, event):
         if self.localization_worker:
             self.localization_worker.stop()
-        if self._ai_thread and self._ai_thread.isRunning():
-            self._ai_thread.quit()
-            self._ai_thread.wait(2000)
+        self.chat_panel.cleanup()
         event.accept()
 
 

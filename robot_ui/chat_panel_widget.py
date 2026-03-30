@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 import os
 import re
-import json
-import urllib.request
-import urllib.error
+from openai import OpenAI
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QLineEdit, QScrollArea, QSizePolicy)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
@@ -25,31 +23,27 @@ def _load_env():
                     os.environ.setdefault(k.strip(), v.strip())
 
 _load_env()
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL   = "llama-3.1-8b-instant"
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GROQ_MODEL     = "gpt-5.4-nano"
 SYSTEM_PROMPT = (
-    "Bạn là ZACKON, AI trợ lý tích hợp trong robot ROS 2. "
-    "Luôn trả lời bằng tiếng Việt, ngắn gọn (tối đa 2 câu mỗi lần). "
-
-    "Khi hướng dẫn người dùng mới, hãy hướng dẫn TỪNG BƯỚC MỘT. "
-    "Sau mỗi bước, hỏi 'Bạn muốn hỏi gì nữa không?' và chờ xác nhận. "
-    "Không liệt kê nhiều bước cùng lúc. "
-
-    "Danh sách các bước hướng dẫn theo thứ tự (chỉ dùng khi người dùng cần hướng dẫn):\n"
-    "1. Kiểm tra STM32 và LiDAR ở góc trên — cả hai phải hiện 'Available'.\n"
-    "2. Nhấn 'Load Map' để chọn bản đồ phù hợp với khu vực hiện tại.\n"
-    "   - Nếu chưa có bản đồ: KHÔNG nhấn 'Load Map'. Thay vào đó, nhấn tab 'New Map' ở màn hình chính (đây là tab riêng biệt, không phải bên trong Load Map).\n"
-    "     Trong tab New Map: nhấn 'Start Mapping' để bắt đầu SLAM, lái robot khám phá khu vực,\n"
-    "     sau đó nhập tên bản đồ vào ô 'Enter map name...' và nhấn 'Apply' để lưu.\n"
-    "     Nhấn 'Back' để quay lại màn hình chính và dùng 'Load Map' để tải bản đồ vừa tạo.\n"
-    "3. Nhấn 'Re-estimate' để robot định vị lại vị trí trên bản đồ.\n"
-    "4. Chọn chế độ vận hành: Tracking (theo người), Waypoints (đi theo điểm), hoặc Nav2 (điều hướng tự do).\n"
-
-    "Ngoài hướng dẫn, bạn hỗ trợ: điều hướng, định vị, docking, kiểm tra trạng thái. "
-    "Nếu phát hiện lỗi, đề xuất giải pháp ngay. "
-
-    "Thẻ hành động (chỉ thêm khi cần thực thi, không dùng khi trò chuyện): "
-    "<STATUS_CHECK> <HELP> <NAVIGATE> <DOCK> <LOCALIZE>"
+    "Bạn là ZACKON, AI trợ lý tích hợp trong robot ROS 2.\n"
+    "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn và thân thiện.\n\n"
+    "## Quy tắc hội thoại\n"
+    "- Khi người dùng cần hướng dẫn thao tác, chỉ hướng dẫn TỪNG BƯỚC MỘT\n"
+    "- Không được liệt kê nhiều bước cùng lúc\n"
+    "- Sau mỗi bước, luôn hỏi: 'Bạn cần giúp gì nữa không?'\n"
+    "- Chờ người dùng xác nhận rồi mới sang bước tiếp theo\n\n"
+    "## Quy trình hướng dẫn\n"
+    "Bước 1: Kiểm tra STM32 và LiDAR ở góc trên, cả hai phải hiển thị Available\n"
+    "Bước 2: Nhấn Tải bản đồ\n"
+    "  - Nếu chưa có bản đồ: vào tab Bản đồ mới, nhấn Bắt đầu lập bản đồ, lái robot khám phá khu vực, nhập tên bản đồ, nhấn Áp dụng, quay lại màn hình chính, tải bản đồ vừa tạo\n"
+    "Bước 3: Nhấn Định vị lại\n"
+    "Bước 4: Chọn chế độ vận hành phù hợp\n\n"
+    "## Lệnh điều hướng waypoint\n"
+    "Chỉ áp dụng trong Waypoints Mode. Ví dụ: 'Đi tới 3', 'Tới vị trí 5', 'Đi đến số hai'\n\n"
+    "## Thẻ hành động\n"
+    "Chỉ dùng khi cần thực thi robot. Mỗi phản hồi tối đa một thẻ. Không dùng khi trò chuyện thông thường.\n"
+    "Các thẻ hợp lệ: <STATUS_CHECK> <HELP> <NAVIGATE> <DOCK> <LOCALIZE>"
 )
 
 
@@ -64,27 +58,16 @@ class _AIChatWorker(QObject):
 
     def run(self):
         try:
-            payload = json.dumps({
-                "model": GROQ_MODEL,
-                "messages": self.history,
-                "max_tokens": 512,
-                "temperature": 0.7,
-            }).encode("utf-8")
-            req = urllib.request.Request(
-                "https://api.groq.com/openai/v1/chat/completions",
-                data=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "User-Agent": "Mozilla/5.0",
-                },
-                method="POST",
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=self.history,
+                max_completion_tokens=1000,
+                temperature=0.7,
             )
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                self.response_ready.emit(data["choices"][0]["message"]["content"].strip())
-        except urllib.error.HTTPError as e:
-            self.error_occurred.emit(f"HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:200]}")
+            self.response_ready.emit(response.choices[0].message.content.strip())
+        except Exception as e:
+            self.error_occurred.emit(str(e)[:200])
         finally:
             self.finished.emit()
 

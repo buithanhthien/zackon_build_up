@@ -446,12 +446,12 @@ class RobotUI(QMainWindow):
         wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
-        self.btn_tracking   = QPushButton("Tracking")
-        self.btn_waypoints  = QPushButton("Waypoints")
-        self.btn_reestimate = QPushButton("Re-estimate")
-        self.btn_new_map    = QPushButton("New Map")
-        self.btn_load_map   = QPushButton("Load Map")
-        self.btn_docking    = QPushButton("Docking")
+        self.btn_tracking   = QPushButton("Theo dõi")
+        self.btn_waypoints  = QPushButton("Điểm đến")
+        self.btn_reestimate = QPushButton("Định vị lại")
+        self.btn_new_map    = QPushButton("Bản đồ mới")
+        self.btn_load_map   = QPushButton("Tải bản đồ")
+        self.btn_docking    = QPushButton("Về trạm sạc")
         self.btn_nav2       = QPushButton("Nav2")
 
         mono = QFont("JetBrains Mono", 18)

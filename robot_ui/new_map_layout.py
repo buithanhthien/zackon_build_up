@@ -146,8 +146,8 @@ class NewMapUI(QMainWindow):
         left_layout.addWidget(wordmark)
 
         mono = QFont("JetBrains Mono", 18)
-        self.btn_cancel = QPushButton("Cancel")
-        self.btn_back   = QPushButton("Back")
+        self.btn_cancel = QPushButton("Hủy")
+        self.btn_back   = QPushButton("Quay lại")
 
         for btn in [self.btn_cancel, self.btn_back]:
             btn.setObjectName("action-btn")
@@ -199,7 +199,7 @@ class NewMapUI(QMainWindow):
         info.setWordWrap(True)
         content_layout.addWidget(info)
 
-        self.btn_start = QPushButton("Start Mapping")
+        self.btn_start = QPushButton("Bắt đầu lập bản đồ")
         self.btn_start.setObjectName("primary-btn")
         self.btn_start.setFont(QFont("JetBrains Mono", 18))
         self.btn_start.clicked.connect(self.start_mapping)
@@ -214,11 +214,11 @@ class NewMapUI(QMainWindow):
         save_row = QHBoxLayout()
         self.map_name_input = QLineEdit()
         self.map_name_input.setObjectName("map-input")
-        self.map_name_input.setPlaceholderText("Enter map name...")
+        self.map_name_input.setPlaceholderText("Tên bản đồ...")
         self.map_name_input.setFont(QFont("JetBrains Mono", 16))
         save_row.addWidget(self.map_name_input)
 
-        self.btn_apply = QPushButton("Apply")
+        self.btn_apply = QPushButton("Áp dụng")
         self.btn_apply.setObjectName("apply-btn")
         self.btn_apply.setFont(QFont("JetBrains Mono", 16))
         self.btn_apply.setFixedWidth(120)

@@ -1,318 +1,487 @@
 <?xml version="1.0" encoding="utf-8"?>
-<robot name="view_robot_pkg">
-
-  <!-- ===== BASE ===== -->
-  <link name="base_link">
+<robot
+  name="view_robot_pkg">
+  <link
+    name="base_link">
     <inertial>
-      <origin xyz="0.039595 -0.00037937 -0.012421" rpy="0 0 0" />
-      <mass value="10.432" />
+      <origin
+        xyz="0.040152875441441 0.00179266566990163 0.174469357905354"
+        rpy="0 0 0" />
+      <mass
+        value="12.2572549705629" />
       <inertia
-        ixx="0.0724"
-        ixy="-4.7752E-07"
-        ixz="-2.8755E-06"
-        iyy="0.13488"
-        iyz="3.5422E-07"
-        izz="0.185" />
+        ixx="0.0467702154493857"
+        ixy="1.70495645510769E-06"
+        ixz="-0.000303201507532657"
+        iyy="0.0569837907124072"
+        iyz="-1.30839425417384E-06"
+        izz="0.0629833358341123" />
     </inertial>
-
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/base_link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/base_link.STL" />
       </geometry>
-      <material name="">
-        <color rgba="1 1 1 1" />
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
       </material>
     </visual>
-
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/base_link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/base_link.STL" />
       </geometry>
     </collision>
   </link>
-
-  <!-- ===== LEFT WHEEL ===== -->
-  <link name="leftwheel_Link">
+  <link
+    name="leftwheel_Link">
     <inertial>
-      <origin xyz="1.0901E-05 2.7033E-06 0.0016223" rpy="0 0 0" />
-      <mass value="0.19451" />
+      <origin
+        xyz="1.09006833197561E-05 2.70329233448448E-06 0.00162234371795802"
+        rpy="0 0 0" />
+      <mass
+        value="0.194507281551966" />
       <inertia
-        ixx="0.00019233"
-        ixy="-4.1541E-09"
-        ixz="1.7928E-08"
-        iyy="0.00019235"
-        iyz="4.3103E-09"
-        izz="0.00036212" />
+        ixx="0.000192331469193584"
+        ixy="-4.15408148587942E-09"
+        ixz="1.79283643410024E-08"
+        iyy="0.000192347019915484"
+        iyz="4.31032408718448E-09"
+        izz="0.000362123785735418" />
     </inertial>
-
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/leftwheel_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/leftwheel_Link.STL" />
       </geometry>
-      <material name="">
-        <color rgba="0.89804 0.91765 0.92941 1" />
+      <material
+        name="">
+        <color
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/leftwheel_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/leftwheel_Link.STL" />
       </geometry>
     </collision>
   </link>
-
-  <joint name="leftwheel_joint" type="continuous">
-    <origin xyz="0.03658 -0.14538 0.06286" rpy="1.5708 0 0" />
-    <parent link="base_link" />
-    <child link="leftwheel_Link" />
-    <axis xyz="0 0 1" />
-    <dynamics damping="0.1" friction="0.1" />
+  <joint
+    name="leftwheel_joint"
+    type="continuous">
+    <origin
+      xyz="0 0.14499 0.028031"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="leftwheel_Link" />
+    <axis
+      xyz="0 0 1" />
+    <dynamics
+      damping="0.1"
+      friction="0.1" />
   </joint>
-
-  <!-- ===== RIGHT WHEEL ===== -->
-  <link name="rightwheel_Link">
+  <link
+    name="rightwheel_Link">
     <inertial>
-      <origin xyz="9.73918656300976E-06 -5.59293584567223E-06 -0.00162234371795797" rpy="0 0 0" />
-      <mass value="0.194507281551966" />
+      <origin
+        xyz="9.73918656292649E-06 -5.5929358456757E-06 -0.00162234371795805"
+        rpy="0 0 0" />
+      <mass
+        value="0.194507281551966" />
       <inertia
-        ixx="0.000192334835886035"
-        ixy="7.63388976536888E-09"
-        ixz="-1.60553387756337E-08"
+        ixx="0.000192334835886034"
+        ixy="7.6338897653833E-09"
+        ixz="-1.60553387756544E-08"
         iyy="0.000192343653223033"
-        iyz="9.06814415856364E-09"
-        izz="0.000362123785735419" />
+        iyz="9.06814415857961E-09"
+        izz="0.000362123785735418" />
     </inertial>
-
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/rightwheel_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/rightwheel_Link.STL" />
       </geometry>
-      <material name="">
-        <color rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
+      <material
+        name="">
+        <color
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/rightwheel_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/rightwheel_Link.STL" />
       </geometry>
     </collision>
   </link>
-
-  <joint name="rightwheel_joint" type="continuous">
-    <origin xyz="0.03658 0.14462 0.06286" rpy="1.5708 0 0" />
-    <parent link="base_link" />
-    <child link="rightwheel_Link" />
-    <axis xyz="0 0 1" />
-    <dynamics damping="0.1" friction="0.1" />
+  <joint
+    name="rightwheel_joint"
+    type="continuous">
+    <origin
+      xyz="0 -0.14501 0.028031"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rightwheel_Link" />
+    <axis
+      xyz="0 0 1" />
+    <dynamics
+      damping="0.1"
+      friction="0.1" />
   </joint>
-
-  <!-- ===== CASTERS ===== -->
-  <link name="left_casterwheel_before_Link">
+  <link
+    name="left_casterwheel_before_Link">
     <inertial>
-      <origin xyz="-0.0097055 0.023158 -6.0239E-05" rpy="0 0 0" />
-      <mass value="0.050885" />
+      <origin
+        xyz="-0.0097055106288608 0.0231580533440657 -6.02385249136445E-05"
+        rpy="0 0 0" />
+      <mass
+        value="0.0508845884047379" />
       <inertia
-        ixx="1.8387E-05"
-        ixy="3.9261E-06"
-        ixz="-2.7421E-09"
-        iyy="1.0911E-05"
-        iyz="1.3404E-08"
-        izz="2.0189E-05" />
+        ixx="1.83865076256345E-05"
+        ixy="3.92608934894462E-06"
+        ixz="-2.74205625337165E-09"
+        iyy="1.09114014506497E-05"
+        iyz="1.34035273656307E-08"
+        izz="2.0189072497429E-05" />
     </inertial>
-
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/left_casterwheel_before_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/left_casterwheel_before_Link.STL" />
       </geometry>
-      <material name="">
-        <color rgba="0.79216 0.81961 0.93333 1" />
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
       </material>
     </visual>
-
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/left_casterwheel_before_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/left_casterwheel_before_Link.STL" />
       </geometry>
     </collision>
   </link>
-
-  <joint name="left_casterwheel_before_joint" type="fixed">
-    <origin xyz="0.25358 -0.15543 0.062462" rpy="1.5708 0 0" />
-    <parent link="base_link" />
-    <child link="left_casterwheel_before_Link" />
-    <axis xyz="0 0 0" />
-    <dynamics damping="0.1" friction="0.1" />
+  <joint
+    name="left_casterwheel_before_joint"
+    type="fixed">
+    <origin
+      xyz="0.217 0.15504 0.02943"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="left_casterwheel_before_Link" />
+    <axis
+      xyz="0 0 0" />
+    <dynamics
+      friction="0.1" />
   </joint>
-
-  <link name="left_casterwheel_after_Link">
+  <link
+    name="left_casterwheel_after_Link">
     <inertial>
-      <origin xyz="-0.0097008 0.023158 0.00030738" rpy="0 0 0" />
-      <mass value="0.050885" />
+      <origin
+        xyz="-0.00970082884711948 0.0231580533440657 0.000307384003666783"
+        rpy="0 0 0" />
+      <mass
+        value="0.0508845884047379" />
       <inertia
-        ixx="1.8389E-05"
-        ixy="3.9238E-06"
-        ixz="6.5486E-08"
-        iyy="1.0911E-05"
-        iyz="-1.353E-07"
-        izz="2.0187E-05" />
+        ixx="1.83888856430935E-05"
+        ixy="3.92378021448862E-06"
+        ixz="6.5485835426848E-08"
+        iyy="1.09114014506497E-05"
+        iyz="-1.35299884810972E-07"
+        izz="2.01866944799701E-05" />
     </inertial>
-
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/left_casterwheel_after_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/left_casterwheel_after_Link.STL" />
       </geometry>
-      <material name="">
-        <color rgba="0.79216 0.81961 0.93333 1" />
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
       </material>
     </visual>
-
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/left_casterwheel_after_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/left_casterwheel_after_Link.STL" />
       </geometry>
     </collision>
   </link>
-
-  <joint name="left_casterwheel_after_joint" type="fixed">
-    <origin xyz="-0.18642 -0.15554 0.062462" rpy="1.5708 0 0" />
-    <parent link="base_link" />
-    <child link="left_casterwheel_after_Link" />
-    <axis xyz="0 0 0" />
-    <dynamics damping="0.1" friction="0.1" />
+  <joint
+    name="left_casterwheel_after_joint"
+    type="fixed">
+    <origin
+      xyz="-0.223 0.15515 0.02943"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="left_casterwheel_after_Link" />
+    <axis
+      xyz="0 0 0" />
+    <dynamics
+      damping="0.1"
+      friction="0.1" />
   </joint>
-
-  <link name="right_casterwheel_before_Link">
+  <link
+    name="right_casterwheel_before_Link">
     <inertial>
-      <origin xyz="-0.0096776 0.023158 0.00073801" rpy="0 0 0" />
-      <mass value="0.050885" />
+      <origin
+        xyz="-0.00970196433141934 0.0231580533440657 0.00026917161566925"
+        rpy="0 0 0" />
+      <mass
+        value="0.0508845884047379" />
       <inertia
-        ixx="1.8398E-05"
-        ixy="3.9139E-06"
-        ixz="1.4501E-07"
-        iyy="1.0911E-05"
-        iyz="-3.0947E-07"
-        izz="2.0177E-05" />
+        ixx="1.83883976627838E-05"
+        ixy="3.92428270118908E-06"
+        ixz="5.84025787419623E-08"
+        iyy="1.09114014506497E-05"
+        iyz="-1.1984369649811E-07"
+        izz="2.01871824602798E-05" />
     </inertial>
-
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/right_casterwheel_before_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/right_casterwheel_before_Link.STL" />
       </geometry>
-      <material name="">
-        <color rgba="0.79216 0.81961 0.93333 1" />
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
       </material>
     </visual>
-
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/right_casterwheel_before_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/right_casterwheel_before_Link.STL" />
       </geometry>
     </collision>
   </link>
-
-  <joint name="right_casterwheel_before_joint" type="fixed">
-    <origin xyz="0.25359 0.15433 0.062462" rpy="1.5708 0 0" />
-    <parent link="base_link" />
-    <child link="right_casterwheel_before_Link" />
-    <axis xyz="0 0 0" />
-    <dynamics damping="0.1" friction="0.1" />
+  <joint
+    name="right_casterwheel_before_joint"
+    type="fixed">
+    <origin
+      xyz="0.217 -0.15486 0.02943"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="right_casterwheel_before_Link" />
+    <axis
+      xyz="0 0 0" />
+    <dynamics
+      damping="0.1"
+      friction="0.1" />
   </joint>
-
-  <link name="right_casterwheel_after_Link">
+  <link
+    name="right_casterwheel_after_Link">
     <inertial>
-      <origin xyz="-0.0097021 0.023158 0.00026428" rpy="0 0 0" />
-      <mass value="0.050885" />
+      <origin
+        xyz="-0.00970209892470675 0.0231580533440657 0.000264275806722503"
+        rpy="0 0 0" />
+      <mass
+        value="0.0508845884047379" />
       <inertia
-        ixx="1.8388E-05"
-        ixy="3.9243E-06"
-        ixz="5.7495E-08"
-        iyy="1.0911E-05"
-        iyz="-1.1786E-07"
-        izz="2.0187E-05" />
+        ixx="1.838833917898E-05"
+        ixy="3.92434267670156E-06"
+        ixz="5.74948519968227E-08"
+        iyy="1.09114014506497E-05"
+        iyz="-1.1786342206603E-07"
+        izz="2.01872409440836E-05" />
     </inertial>
-
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/right_casterwheel_after_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/right_casterwheel_after_Link.STL" />
       </geometry>
-      <material name="">
-        <color rgba="0.79216 0.81961 0.93333 1" />
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
       </material>
     </visual>
-
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/right_casterwheel_after_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/right_casterwheel_after_Link.STL" />
       </geometry>
     </collision>
   </link>
-
-  <joint name="right_casterwheel_after_joint" type="fixed">
-    <origin xyz="-0.18642 0.15447 0.062462" rpy="1.5708 0 0" />
-    <parent link="base_link" />
-    <child link="right_casterwheel_after_Link" />
-    <axis xyz="0 0 0" />
-    <dynamics damping="0.1" friction="0.1" />
+  <joint
+    name="right_casterwheel_after_joint"
+    type="fixed">
+    <origin
+      xyz="-0.223 -0.15486 0.02943"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="right_casterwheel_after_Link" />
+    <axis
+      xyz="0 0 0" />
+    <dynamics
+      damping="0.1"
+      friction="0.1" />
   </joint>
-
-  <!-- ===== LIDAR ===== -->
-  <link name="lidar_link">
-    <!-- Mình giữ inertial cũ (có mass) để Gazebo không lỗi mass=0 -->
+  <link
+    name="front_lidar_link">
     <inertial>
-      <origin xyz="0.00303996073383583 9.65820217607716E-07 0.0128055204576732" rpy="0 0 0" />
-      <mass value="0.0350818392563211" />
+      <origin
+        xyz="0.00248691948945368 9.65795588461771E-07 -0.0129719621273069"
+        rpy="0 0 0" />
+      <mass
+        value="0.0350818392125044" />
       <inertia
-        ixx="1.94316858914545E-05"
-        ixy="9.09209227752789E-10"
-        ixz="-4.07022921376659E-08"
-        iyy="1.93203924159225E-05"
-        iyz="8.87508504986298E-10"
-        izz="3.70184546846267E-05" />
+        ixx="1.94316858730464E-05"
+        ixy="9.0919149375299E-10"
+        ixz="-4.07022940178494E-08"
+        iyy="1.93203923984126E-05"
+        iyz="8.8751043503044E-10"
+        izz="3.70184546491441E-05" />
     </inertial>
-
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/lidar_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/front_lidar_link.STL" />
       </geometry>
-      <material name="">
-        <color rgba="0 0 0 1" />
+      <material
+        name="">
+        <color
+          rgba="0 0 0 1" />
       </material>
     </visual>
-
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://view_robot_pkg/meshes/lidar_Link.STL" />
+        <mesh
+          filename="package://view_robot_pkg/meshes/front_lidar_link.STL" />
       </geometry>
     </collision>
   </link>
-
-  <!-- dùng joint theo export mới -->
-  <joint name="lidar_joint" type="fixed">
-    <origin xyz="0.35047 -0.00042694 0.047292" rpy="0 0 3.1416" />
-    <parent link="base_link" />
-    <child link="lidar_link" />
-    <axis xyz="0 0 0" />
-    <dynamics damping="0.1" friction="0.1" />
+  <joint
+    name="front_lidar_joint"
+    type="fixed">
+    <origin
+      xyz="0.26014 0 0.18998"
+      rpy="0 0 3.1416" />
+    <parent
+      link="base_link" />
+    <child
+      link="front_lidar_link" />
+    <axis
+      xyz="0 0 0" />
   </joint>
-  
-
+  <link
+    name="rear_lidar_link">
+    <inertial>
+      <origin
+        xyz="0.00248761935045066 1.66572703870493E-06 -0.0129719621272952"
+        rpy="0 0 0" />
+      <mass
+        value="0.0350818392110918" />
+      <inertia
+        ixx="1.94316858720787E-05"
+        ixy="9.09170144242753E-10"
+        ixz="-4.07022901696743E-08"
+        iyy="1.93203923980015E-05"
+        iyz="8.87508889865286E-10"
+        izz="3.70184546477792E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://view_robot_pkg/meshes/rear_lidar_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://view_robot_pkg/meshes/rear_lidar_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rear_lidar_joint"
+    type="fixed">
+    <origin
+      xyz="-0.260140349955004 0 0.189977482585341"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rear_lidar_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
 </robot>
 
 <!-- 

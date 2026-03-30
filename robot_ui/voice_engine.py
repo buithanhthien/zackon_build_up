@@ -2,6 +2,7 @@ import threading
 import time
 import re
 import os
+import json
 import asyncio
 import subprocess
 import tempfile
@@ -48,10 +49,14 @@ class VoiceState:
 # ── Waypoint voice command ────────────────────────────────────────────────────
 # Patterns recognised as "Đi tới <slot>".
 # Vietnamese STT may transcribe the number as a digit or a written-out word.
-WAYPOINT_PREFIXES = ["đi tới", "đi tới số", "di tới", "di tới số",
-                     "đi đến", "đi đến số", "di đến", "di đến số",
-                     "đi tới vị trí", "đi đến vị trí", "di tới vị trí", "di đến vị trí",
-                     "tới số", "tới vị trí", "đến số", "đến vị trí"]
+WAYPOINT_PREFIXES = [
+    "đi tới vị trí số", "đi đến vị trí số", "di tới vị trí số", "di đến vị trí số",
+    "đi tới vị trí", "đi đến vị trí", "di tới vị trí", "di đến vị trí",
+    "đi tới số", "đi đến số", "di tới số", "di đến số",
+    "tới vị trí số", "đến vị trí số", "tới vị trí", "đến vị trí",
+    "tới số", "đến số",
+    "đi tới", "đi đến", "di tới", "di đến",
+]
 # Vietnamese number words 1-10 → digit
 VI_DIGITS = {
     "một": "1", "hai": "2", "ba": "3", "bốn": "4", "năm": "5",
@@ -246,21 +251,30 @@ class VoiceEngine(QObject):
 
     # ── Waypoint command parser ────────────────────────────────────────────────
 
-    def _check_waypoint_command(self, text: str) -> str | None:
-        """Return slot number string if text matches a waypoint command, else None.
+    def _load_waypoint_keys(self):
+        try:
+            import sys, os
+            wp_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'waypoints.json')
+            with open(wp_file, 'r', encoding='utf-8') as f:
+                return list(json.load(f).keys())
+        except Exception:
+            return []
 
-        Recognises phrases like:
-          "đi tới 1", "đi đến số 3", "di tới năm", …
-        Returns the digit string (e.g. "1") or None.
-        """
+    def _check_waypoint_command(self, text: str) -> str | None:
         text = text.strip()
         for prefix in WAYPOINT_PREFIXES:
             if text.startswith(prefix):
                 remainder = text[len(prefix):].strip()
-                # Direct digit(s)
                 if remainder.isdigit():
                     return remainder
-                # Vietnamese word number
                 if remainder in VI_DIGITS:
                     return VI_DIGITS[remainder]
+                # Named waypoint (e.g. "phòng cô tâm")
+                for key in self._load_waypoint_keys():
+                    if remainder == key.lower():
+                        return key
+        # Direct named waypoint without prefix (say the name directly)
+        for key in self._load_waypoint_keys():
+            if text == key.lower():
+                return key
         return None

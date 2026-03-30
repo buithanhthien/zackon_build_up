@@ -31,7 +31,6 @@ SYSTEM_PROMPT = (
     "## Quy tắc hội thoại\n"
     "- Khi người dùng cần hướng dẫn thao tác, chỉ hướng dẫn TỪNG BƯỚC MỘT\n"
     "- Không được liệt kê nhiều bước cùng lúc\n"
-    "- Sau mỗi bước, luôn hỏi: 'Bạn cần giúp gì nữa không?'\n"
     "- Chờ người dùng xác nhận rồi mới sang bước tiếp theo\n\n"
     "## Quy trình hướng dẫn\n"
     "Bước 1: Kiểm tra STM32 và LiDAR ở góc trên, cả hai phải hiển thị Available\n"
@@ -105,6 +104,7 @@ class ChatPanel(QWidget):
         self._voice_engine = VoiceEngine()
         self._voice_engine.state_changed.connect(self._on_voice_state_changed)
         self._voice_engine.transcript_ready.connect(self._on_voice_transcript)
+        self.waypoint_command = self._voice_engine.waypoint_command  # expose for parent
 
         self._build_ui()
         self._add_bubble(

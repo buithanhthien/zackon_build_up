@@ -527,6 +527,8 @@ class WaypointsModeLayout(QMainWindow):
             return
         
         if not self.ros_node.nav_server_available:
+            self.ros_node.nav_server_available = self.ros_node.nav_client.wait_for_server(timeout_sec=3.0)
+        if not self.ros_node.nav_server_available:
             self.log('Nav2 server not available')
             return
         
@@ -650,13 +652,14 @@ class WaypointsModeLayout(QMainWindow):
     def voice_navigate_to_waypoint(self, slot: str):
         """Called when the VoiceEngine emits waypoint_command(slot)."""
         self.log(f'[Voice] Command received: Đi tới {slot}')
+        print(f'[DEBUG] voice_navigate_to_waypoint called, slot={slot!r}, waypoints keys={list(self.waypoints.keys())}, nav_available={self.ros_node.nav_server_available}')
         if slot not in self.waypoints:
             msg = f'Vị trí {slot} chưa được lưu'
             self.log(f'[Voice] {msg}')
             self._voice.speak(msg)
             return
-        self._voice.speak(f'Đang đi tới vị trí {slot}')
-        self.navigate_to_waypoint(int(slot))
+        self._voice.speak(f'Đang đi tới {slot}')
+        self.navigate_to_waypoint(slot)
 
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:
@@ -681,4 +684,10 @@ class WaypointsModeLayout(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = WaypointsModeLayout()
+    # Auto-navigate if launched with --go-to <slot>
+    if '--go-to' in sys.argv:
+        idx = sys.argv.index('--go-to')
+        if idx + 1 < len(sys.argv):
+            slot = sys.argv[idx + 1]
+            QTimer.singleShot(1500, lambda: window.navigate_to_waypoint(slot))
     sys.exit(app.exec())

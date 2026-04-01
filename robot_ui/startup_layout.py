@@ -466,6 +466,17 @@ class RobotUI(QMainWindow):
 
         left_layout.addStretch()
 
+        self.btn_dev = QPushButton("⚙ Developer")
+        self.btn_dev.setObjectName("mode-btn")
+        self.btn_dev.setFont(QFont("JetBrains Mono", 15))
+        self.btn_dev.setMinimumHeight(56)
+        self.btn_dev.setCheckable(False)
+        self.btn_dev.setStyleSheet(
+            "QPushButton#mode-btn { color: #ffb300; border-left: 4px solid #ffb30044; }"
+            "QPushButton#mode-btn:hover { background-color: #1a1f2e; border-left: 4px solid #ffb300; }"
+        )
+        left_layout.addWidget(self.btn_dev)
+
         self.btn_tracking.clicked.connect(lambda: self.mode_changed("Tracking"))
         self.btn_waypoints.clicked.connect(lambda: self.mode_changed("Waypoints"))
         self.btn_reestimate.clicked.connect(self.start_reestimate)
@@ -473,6 +484,7 @@ class RobotUI(QMainWindow):
         self.btn_load_map.clicked.connect(self.load_map)
         self.btn_docking.clicked.connect(self.start_docking)
         self.btn_nav2.clicked.connect(lambda: self.mode_changed("Nav2"))
+        self.btn_dev.clicked.connect(self.open_developer_mode)
 
         # ── Right area ────────────────────────────────────────────────────────
         right_widget = QWidget()
@@ -559,7 +571,7 @@ class RobotUI(QMainWindow):
 
         self.chat_panel = ChatPanel()
         self.chat_panel.hide()
-        self.chat_panel.action_tag.connect(lambda tag: self.log(f"[AI-ACTION] {tag}"))
+        self.chat_panel.action_tag.connect(self._on_ai_action)
         self.chat_panel.waypoint_command.connect(self._voice_go_to_waypoint)
 
         right_layout.addWidget(self.log_panel, 1)
@@ -824,6 +836,28 @@ class RobotUI(QMainWindow):
             f'<span style="color:#6b7a99">[{ts}]</span> '
             f'<span style="color:{color}">{message}</span>'
         )
+
+    def _on_ai_action(self, tag: str):
+        self.log(f"[AI-ACTION] {tag}")
+        if tag.startswith("LOAD_MAP:"):
+            map_name = tag.split(":", 1)[1].strip()
+            self.update_map_files(map_name)
+        elif tag == "LOCALIZE":
+            self.start_reestimate()
+        elif tag == "DOCK":
+            self.start_docking()
+        elif tag == "STATUS_CHECK":
+            self.update_status()
+
+    def open_developer_mode(self):
+        self.log("Opening Developer Mode (Claude Code)")
+        try:
+            subprocess.Popen([
+                'gnome-terminal', '--', 'bash', '-c',
+                f'cd {SOURCE_PATH} && source install/setup.bash && claude; exec bash'
+            ])
+        except Exception as e:
+            self.log(f"[ERROR] Failed to open Developer Mode: {e}. Is 'claude' installed?")
 
     def _voice_go_to_waypoint(self, slot: str):
         self.log(f"[Voice] Navigating to waypoint {slot}")

@@ -21,6 +21,15 @@ STT_LANGUAGE    = "vi-VN"
 
 WAKE_TRIGGERS = ["ê mày", "e mày", "e may", "ê dách con", "e dách con", "start", "hey zackon", "alo alo"]
 
+UI_COMMANDS = {
+    "tải bản đồ":  "LOAD_MAP",
+    "tải map":     "LOAD_MAP",
+    "chọn bản đồ": "LOAD_MAP",
+    "chọn map":    "LOAD_MAP",
+    "tạo map":     "NEW_MAP",
+    "tạo bản đồ":  "NEW_MAP",
+}
+
 WAYPOINT_PREFIXES = [
     "đi tới vị trí số", "đi đến vị trí số", "di tới vị trí số", "di đến vị trí số",
     "đi tới vị trí", "đi đến vị trí", "di tới vị trí", "di đến vị trí",
@@ -77,6 +86,7 @@ class VoiceEngine(QObject):
     state_changed    = pyqtSignal(str)
     transcript_ready = pyqtSignal(str)
     waypoint_command = pyqtSignal(str)
+    ui_command       = pyqtSignal(str)
 
     def __init__(self, edge_voice: str | None = EDGE_TTS_VOICE):
         super().__init__()
@@ -90,6 +100,7 @@ class VoiceEngine(QObject):
         self.recognizer.pause_threshold  = 0.7
 
         self._tts_queue = queue.Queue()
+        self._state     = VoiceState.IDLE
         threading.Thread(target=self._tts_worker, daemon=True).start()
 
     def set_voice(self, edge_voice: str) -> None:
@@ -114,6 +125,7 @@ class VoiceEngine(QObject):
             self._tts_queue.put(clean)
 
     def _set_state(self, state: str):
+        self._state = state
         self.state_changed.emit(state)
 
     def _tts_worker(self):
@@ -187,9 +199,10 @@ class VoiceEngine(QObject):
         try:
             audio = self.recognizer.listen(source, timeout=2.0, phrase_time_limit=3.0)
             text  = self.recognizer.recognize_google(audio, language=STT_LANGUAGE).lower()
-            slot  = self._check_waypoint_command(text)
-            if slot is not None:
-                self.waypoint_command.emit(slot)
+            if text in UI_COMMANDS:
+                self.ui_command.emit(UI_COMMANDS[text])
+            elif self._check_waypoint_command(text) is not None:
+                self.waypoint_command.emit(self._check_waypoint_command(text))
             elif any(w in text for w in WAKE_TRIGGERS):
                 self._handle_command(source)
         except (sr.WaitTimeoutError, sr.UnknownValueError):
@@ -211,7 +224,12 @@ class VoiceEngine(QObject):
         self._set_state(VoiceState.THINKING)
         try:
             text = self.recognizer.recognize_google(audio, language=STT_LANGUAGE)
-            slot = self._check_waypoint_command(text.lower())
+            lower = text.lower()
+            if lower in UI_COMMANDS:
+                self.ui_command.emit(UI_COMMANDS[lower])
+                self._set_state(VoiceState.IDLE)
+                return
+            slot = self._check_waypoint_command(lower)
             if slot is not None:
                 self.waypoint_command.emit(slot)
                 self._set_state(VoiceState.IDLE)

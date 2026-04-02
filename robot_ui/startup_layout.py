@@ -573,6 +573,7 @@ class RobotUI(QMainWindow):
         self.chat_panel.hide()
         self.chat_panel.action_tag.connect(self._on_ai_action)
         self.chat_panel.waypoint_command.connect(self._voice_go_to_waypoint)
+        self.chat_panel._voice_engine.ui_command.connect(self._on_voice_ui_command)
 
         right_layout.addWidget(self.log_panel, 1)
         right_layout.addWidget(self.chat_panel, 1)
@@ -864,6 +865,13 @@ class RobotUI(QMainWindow):
         subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
                           '--go-to', slot])
         self.close()
+
+    def _on_voice_ui_command(self, command: str):
+        self.log(f"[Voice] UI command: {command}")
+        if command == "LOAD_MAP":
+            self.load_map()
+        elif command == "NEW_MAP":
+            self.start_new_map()
 
     def closeEvent(self, event):
         if self.localization_worker:

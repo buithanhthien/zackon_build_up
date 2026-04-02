@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import re
+import json
 from openai import OpenAI
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QLineEdit, QScrollArea, QSizePolicy)
@@ -25,6 +26,71 @@ def _load_env():
 
 _load_env()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+
+
+def _load_iuh_database() -> str:
+    """Load iuh_database.json and convert to a concise text block for the system prompt."""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'iuh_database.json')
+    try:
+        with open(db_path, encoding='utf-8') as f:
+            db = json.load(f)
+    except Exception:
+        return "(Không tải được dữ liệu IUH)"
+
+    t = db.get('truong', {})
+    lines = [
+        f"Tên trường: {t.get('ten_day_du', '')} ({t.get('viet_tat', '')})",
+        f"Tiếng Anh: {t.get('ten_tieng_anh', '')}",
+        f"Website: {t.get('website', '')}  |  Email: {t.get('email_chinh', '')}  |  ĐT: {t.get('dien_thoai', '')}",
+        f"Lịch sử: {t.get('lich_su', '')}",
+        f"Tầm nhìn: {t.get('tam_nhin', '')}",
+        f"Sứ mạng: {t.get('su_mang', '')}",
+        f"Giá trị cốt lõi: {t.get('gia_tri_cot_loi', '')}",
+        f"Cơ sở vật chất: {t.get('co_so_vat_chat', '')}",
+        "Thành tựu nổi bật: " + "; ".join(t.get('thanh_tuu', [])),
+        "",
+    ]
+
+    # Campus locations
+    lines.append("=== Cơ sở & Phân hiệu ===")
+    for key, cs in db.get('co_so', {}).items():
+        lines.append(f"  - {cs.get('dia_chi', '')}")
+    lines.append("")
+
+    # Contact
+    lh = db.get('lien_he', {})
+    lines.append("=== Liên hệ ===")
+    lines.append(f"  Phòng Đào tạo: {lh.get('phong_dao_tao', '')}")
+    lines.append(f"  Tuyển sinh: {lh.get('tuyen_sinh', '')}")
+    lines.append(f"  Portal SV: {lh.get('portal_sinh_vien', '')}")
+    lines.append("")
+
+    # FEET
+    feet = db.get('khoa_cong_nghe_dien', {})
+    lines.append(f"=== {feet.get('ten', '')} ===")
+    lines.append(f"  Website: {feet.get('website', '')}")
+    bl_feet = feet.get('ban_lanh_dao', {})
+    lines.append(f"  Trưởng khoa: {bl_feet.get('truong_khoa', '')}")
+    lines.append("  Phó trưởng khoa: " + ", ".join(bl_feet.get('pho_truong_khoa', [])))
+    lines.append("  Chương trình đào tạo: " + ", ".join(feet.get('chuong_trinh_dao_tao', [])))
+    for bm in feet.get('bo_mon', []):
+        gv_list = ", ".join(bm.get('giang_vien', []))
+        truong = bm.get('truong_bo_mon', '')
+        truong_str = f" | Trưởng Bộ môn: {truong}" if truong else ""
+        lines.append(f"  Bộ môn {bm['ten']}{truong_str} | GV: {gv_list}")
+    lines.append("")
+
+    # ZACKON
+    zk = db.get('robot_zackon', {})
+    lines.append("=== Robot ZACKON ===")
+    lines.append(f"  {zk.get('mo_ta', '')}")
+    lines.append("  Công nghệ: " + ", ".join(zk.get('cong_nghe', [])))
+    lines.append(f"  {zk.get('lien_quan_den_khoa', '')}")
+
+    return "\n".join(lines)
+
+
+_IUH_DATABASE_TEXT = _load_iuh_database()
 GROQ_MODEL     = "gpt-5.4-nano"
 SYSTEM_PROMPT = (
     "Bạn là ZACKON, AI trợ lý tích hợp trong robot ROS 2 của hệ thống Zackon.\n"
@@ -71,6 +137,10 @@ SYSTEM_PROMPT = (
     "- <DOCK>: gửi robot về trạm sạc\n"
     "- <NAVIGATE>: bắt đầu điều hướng (dùng kèm Waypoints Mode)\n"
     "- <HELP>: hiển thị hướng dẫn sử dụng\n"
+
+    "## Thông tin về trường IUH (từ cơ sở dữ liệu)\n"
+    + _IUH_DATABASE_TEXT + "\n"
+    
 )
 
 

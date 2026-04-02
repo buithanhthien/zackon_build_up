@@ -97,7 +97,7 @@ class VoiceEngine(QObject):
         self.recognizer = sr.Recognizer()
         self.recognizer.dynamic_energy_threshold = True
         self.recognizer.energy_threshold = 400
-        self.recognizer.pause_threshold  = 0.7
+        self.recognizer.pause_threshold  = 1.5
 
         self._tts_queue = queue.Queue()
         self._state     = VoiceState.IDLE
@@ -209,15 +209,15 @@ class VoiceEngine(QObject):
             pass
         except sr.RequestError as e:
             print(f"[VoiceEngine] STT error: {e}")
-            time.sleep(1)
+            time.sleep(0.5)
         except Exception as e:
             print(f"[VoiceEngine] Listen error: {e}")
-            time.sleep(1)
+            time.sleep(0.5)
 
     def _handle_command(self, source):
         self._set_state(VoiceState.LISTENING)
         try:
-            audio = self.recognizer.listen(source, timeout=4.0, phrase_time_limit=10.0)
+            audio = self.recognizer.listen(source, timeout=10.0, phrase_time_limit=10.0)
         except sr.WaitTimeoutError:
             self._set_state(VoiceState.IDLE)
             return

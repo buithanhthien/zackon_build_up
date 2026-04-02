@@ -1,14 +1,15 @@
+import asyncio
+import json
+import os
+import queue
+import re
+import subprocess
 import threading
 import time
-import re
-import os
-import json
-import asyncio
-import subprocess
-import queue
 from contextlib import contextmanager
-import speech_recognition as sr
+
 import edge_tts
+import speech_recognition as sr
 from PyQt6.QtCore import QObject, pyqtSignal
 
 EDGE_TTS_VOICE = "vi-VN-HoaiMyNeural"
@@ -16,16 +17,16 @@ MIC_DEVICE_NAME = "USB2.0 Device"
 
 # Put your recorded wake word samples in this folder (3-4 .wav files).
 # Record with: lwake record wake_refs/sample-1.wav
-WAKE_TRIGGERS = ["ê mày", "e mày", "e may", "ê dách con", "e dách con", "start", "hey zackon"]
+WAKE_TRIGGERS = ["ê mày", "e mày", "e may", "ê dách con", "e dách con", "start", "hey zackon", "alo alo"]
 
 
 def _find_mic_index(name: str | None) -> int | None:
     if name is None:
         return None
-    for i, n in enumerate(sr.Microphone.list_microphone_names()):
-        if name.lower() in n.lower():
-            return i
-    return None
+    return next(
+        (i for i, n in enumerate(sr.Microphone.list_microphone_names()) if name.lower() in n.lower()),
+        None
+    )
 
 
 @contextmanager
@@ -111,42 +112,50 @@ class VoiceEngine(QObject):
             self._tts_queue.put(clean)
 
     def _tts_worker(self):
+        proc = subprocess.Popen(
+            ['mpg123', '-q', '-'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         while True:
             text = self._tts_queue.get()
             self._set_state(VoiceState.SPEAKING)
-            self._speak_blocking(text)
+            if self._edge_voice:
+                audio = self._fetch_edge_audio(text)
+                if audio:
+                    try:
+                        proc.stdin.write(audio)
+                        proc.stdin.flush()
+                    except Exception:
+                        proc = subprocess.Popen(
+                            ['mpg123', '-q', '-'],
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                        proc.stdin.write(audio)
+                        proc.stdin.flush()
+                else:
+                    self._speak_espeak(text)
+            else:
+                self._speak_espeak(text)
             self._tts_queue.task_done()
+            if self._tts_queue.empty() and self._running:
+                self._set_state(VoiceState.IDLE)
 
-    def _speak_blocking(self, text: str):
-        if self._edge_voice:
-            self._speak_edge(text)
-        else:
-            self._speak_espeak(text)
-
-    def _speak_edge(self, text: str):
+    def _fetch_edge_audio(self, text: str) -> bytes:
         try:
             communicate = edge_tts.Communicate(text, self._edge_voice, rate=self._edge_rate)
-            proc = subprocess.Popen(
-                ['mpg123', '-q', '-'],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            async def _stream():
+            chunks = []
+            async def _collect():
                 async for chunk in communicate.stream():
                     if chunk["type"] == "audio":
-                        proc.stdin.write(chunk["data"])
-                proc.stdin.close()
-            asyncio.run(_stream())
-            proc.wait()
-        except FileNotFoundError:
-            print("[VoiceEngine] mpg123 not found — sudo apt install mpg123")
-        except Exception as e:
-            print(f"[VoiceEngine] edge-tts error: {e}  →  falling back to espeak-ng")
-            self._speak_espeak(text)
-        finally:
-            if self._running:
-                self._set_state(VoiceState.IDLE)
+                        chunks.append(chunk["data"])
+            asyncio.run(_collect())
+            return b''.join(chunks)
+        except Exception:
+            return b''
 
     def _speak_espeak(self, text: str):
         try:

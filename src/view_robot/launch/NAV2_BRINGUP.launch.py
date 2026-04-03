@@ -12,16 +12,18 @@ def generate_launch_description():
     # ----------------------------------------------------
     PACKAGE_NAME = 'view_robot_pkg' 
     pkg_dir = get_package_share_directory(PACKAGE_NAME)
-    slam_dir = get_package_share_directory('slam_toolbox')
     sllidar_dir = get_package_share_directory('sllidar_ros2')
     
     # ----------------------------------------------------
     # 2. DECLARE ARGUMENTS
     # ----------------------------------------------------
     
-    # File Config for Recording Map
-    slam_params_file = PathJoinSubstitution([pkg_dir, 'config', 'mapper_params_online_async.yaml'])
-    # Params for lidar
+    # File Config & Map for navigation 
+    # Need to change map file name here when you change the environment to test 
+    nav2_params_file = PathJoinSubstitution([pkg_dir, 'config', 'nav2_params.yaml'])
+    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'X5_19032026.yaml'])
+
+    # Hardware Params
     lidar_frame_arg = DeclareLaunchArgument('lidar_frame', default_value='lidar_link')
     lidar_port_arg = DeclareLaunchArgument('lidar_port', default_value='/dev/lidar')
     lidar_baud_arg = DeclareLaunchArgument('lidar_baud', default_value='1000000')
@@ -29,6 +31,13 @@ def generate_launch_description():
     # Simulation Time
     use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value='False')
 
+    # Map Argument
+    map_arg = DeclareLaunchArgument(
+        'map',
+        default_value=map_file_path,
+        description='Full path to map yaml file to load'
+    )
+    
     # ----------------------------------------------------
     # 3. HARDWARE SECTION
     # ----------------------------------------------------
@@ -60,6 +69,14 @@ def generate_launch_description():
     #         'serial_baudrate': LaunchConfiguration('lidar_baud')
     #     }.items()
     # )
+    
+    # # 3.4 Lidar filter: Filter in front of data of the robot 
+    # lidar_filter = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([pkg_dir, 'launch', 'lidar_filter.launch.py'])
+    #     ),
+    # )
+
 
     sllidar_driver_front_and_rear=IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -85,31 +102,8 @@ def generate_launch_description():
         )
     )
     
-    # # 3.4 Lidar filter: Filter in front of data of the robot
-    # lidar_filter = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource(
-    #         PathJoinSubstitution([pkg_dir, 'launch', 'lidar_filter.launch.py'])
-    #     ),
-    # )
-
     # ----------------------------------------------------
-    # 4. MAPPING SECTION (SLAM TOOLBOX)
-    # ----------------------------------------------------
-    # Using for recording map
-    #When you want to storage map in rviz, use this cmd 'ros2 run nav2_map_server map_saver_cli -f <map_name>'
-    # Change <map name> with your name you want to change to save map. Map will be saved in the folder 'maps' of this package
-    slam_node = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([slam_dir, 'launch', 'online_async_launch.py'])
-        ),
-        launch_arguments={
-            'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'slam_params_file': slam_params_file
-        }.items()
-    )
-
-    # ----------------------------------------------------
-    # 5. Estimate pose 
+    # 4. LOCALIZATION (Map + AMCL)
     # ----------------------------------------------------
     ekf_yaml = PathJoinSubstitution([pkg_dir, 'config', 'ekf.yaml'])
     ekf_node = Node(
@@ -121,17 +115,40 @@ def generate_launch_description():
         #remappings=[('odom', '/odometry/filtered')],
     )
 
+    localization_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'zackon_localization.launch.py'])
+        ),
+        launch_arguments={
+            'map': LaunchConfiguration('map'),
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'params_file': nav2_params_file
+        }.items()
+    )
+
+    # 5. NAVIGATION (Controller + Planner)
+    navigation_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'zackon_navigation.launch.py'])
+        ),
+        launch_arguments={
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'params_file': nav2_params_file
+        }.items()
+    )
+
     # ----------------------------------------------------
     # 6. RETURN
     # ----------------------------------------------------
     return LaunchDescription([
         # --- Arguments ---
-        # lidar_frame_arg,
-        # lidar_port_arg,
-        # lidar_baud_arg,
+        map_arg,
+        lidar_frame_arg,
+        lidar_port_arg,
+        lidar_baud_arg,
         use_sim_time_arg,
         
-        # --- Hardware  ---
+        # --- Hardware ---
         robot_state_and_rviz,
         micro_ros_agent,
         sllidar_driver_front_and_rear,
@@ -140,9 +157,12 @@ def generate_launch_description():
         merge_lidar,
         # sllidar_driver,
         # lidar_filter,
-        
-        # --- Estimate pose and record map ---
+
+        # --- STATE ESTIMATION (MUST RUN FIRST) ---
         ekf_node,
-        slam_node, 
+        
+        # --- CHẾ ĐỘ: NAVIGATION  ---
+        localization_launch,
+        navigation_launch,
 
     ])

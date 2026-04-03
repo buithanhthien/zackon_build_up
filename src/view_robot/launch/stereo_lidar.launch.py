@@ -17,7 +17,7 @@ def generate_launch_description():
     ])
 
     front_lidar = GroupAction([
-        PushRosNamespace('front'),
+        PushRosNamespace('front_lidar'),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(sllidar_launch),
             launch_arguments={
@@ -33,7 +33,7 @@ def generate_launch_description():
     ])
 
     rear_lidar = GroupAction([
-        PushRosNamespace('rear'),
+        PushRosNamespace('rear_lidar'),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(sllidar_launch),
             launch_arguments={
@@ -49,6 +49,6 @@ def generate_launch_description():
     ])
 
     return LaunchDescription([
-        # front_lidar,
+        front_lidar,
         rear_lidar,
     ])

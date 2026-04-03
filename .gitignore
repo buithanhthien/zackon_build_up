@@ -44,3 +44,7 @@ robot_ui/waypoints.json
 
 src/micro_ros_setup/
 src/uros/
+src/tf2_frame/frames_2026-04-01_09.01.43.pdf
+src/tf2_frame/frames_2026-04-01_09.01.43.gv
+
+.env

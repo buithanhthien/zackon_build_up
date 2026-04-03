@@ -22,7 +22,7 @@ def generate_launch_description():
     # File Config & Map
     nav2_params_file = PathJoinSubstitution([pkg_dir, 'config', 'nav2_params.yaml'])
     slam_params_file = PathJoinSubstitution([pkg_dir, 'config', 'mapper_params_online_async.yaml'])
-    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'F5.yaml'])
+    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'X5_19032026.yaml'])
 
     # Hardware Params
     lidar_frame_arg = DeclareLaunchArgument('lidar_frame', default_value='lidar_link')
@@ -73,22 +73,47 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 3.4 Node Lidar
+    # 3.4 Node Lidar (single - commented out)
+    # sllidar_driver = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([sllidar_dir, 'launch', 'sllidar_s2_launch.py']) 
+    #     ),
+    #     launch_arguments={
+    #         'frame_id': LaunchConfiguration('lidar_frame'),
+    #         'serial_port': LaunchConfiguration('lidar_port'),
+    #         'serial_baudrate': LaunchConfiguration('lidar_baud')
+    #     }.items()
+    # )
+    
+    # # Lidar filter (single - commented out)
+    # lidar_filter = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([pkg_dir, 'launch', 'lidar_filter.launch.py'])
+    #     ),
+    # )
+
+    # 3.4 Node Lidar (dual)
     sllidar_driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            PathJoinSubstitution([sllidar_dir, 'launch', 'sllidar_s2_launch.py']) 
+            PathJoinSubstitution([pkg_dir, 'launch', 'stereo_lidar.launch.py'])
         ),
-        launch_arguments={
-            'frame_id': LaunchConfiguration('lidar_frame'),
-            'serial_port': LaunchConfiguration('lidar_port'),
-            'serial_baudrate': LaunchConfiguration('lidar_baud')
-        }.items()
     )
-    
-    # Lidar filter 
-    lidar_filter = IncludeLaunchDescription(
+
+    lidar_front_filter = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            PathJoinSubstitution([pkg_dir, 'launch', 'lidar_filter.launch.py'])
+            PathJoinSubstitution([pkg_dir, 'launch', 'front_lidar_filter.launch.py'])
+        ),
+    )
+
+    lidar_rear_filter = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'rear_lidar_filter.launch.py'])
+        ),
+    )
+
+    merge_lidar = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'merge_lidar.launch.py'])
         ),
     )
 
@@ -159,7 +184,9 @@ def generate_launch_description():
         robot_state_and_rviz,
         micro_ros_agent, # disable this when run UI
         sllidar_driver,
-        lidar_filter,
+        lidar_front_filter,
+        lidar_rear_filter,
+        merge_lidar,
         # slam_node, 
         
         # --- STATE ESTIMATION (MUST RUN FIRST) ---

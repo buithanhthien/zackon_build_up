@@ -4,6 +4,7 @@ import os
 import queue
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from contextlib import contextmanager
@@ -60,15 +61,6 @@ def _find_mic_index(name: str | None) -> int | None:
     )
 
 
-def _new_mpg123() -> subprocess.Popen:
-    return subprocess.Popen(
-        ['mpg123', '-q', '-'],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-
 @contextmanager
 def _suppress_stderr():
     null_fd = os.open(os.devnull, os.O_RDWR)
@@ -82,6 +74,23 @@ def _suppress_stderr():
         os.close(save_fd)
 
 
+def _fetch_edge_audio(text: str, voice: str, rate: str) -> bytes:
+    async def _collect():
+        chunks = []
+        async for chunk in edge_tts.Communicate(text, voice, rate=rate).stream():
+            if chunk["type"] == "audio":
+                chunks.append(chunk["data"])
+        return b''.join(chunks)
+    try:
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(_collect())
+        finally:
+            loop.close()
+    except Exception:
+        return b''
+
+
 class VoiceEngine(QObject):
     state_changed    = pyqtSignal(str)
     transcript_ready = pyqtSignal(str)
@@ -90,9 +99,11 @@ class VoiceEngine(QObject):
 
     def __init__(self, edge_voice: str | None = EDGE_TTS_VOICE):
         super().__init__()
-        self._edge_voice = edge_voice
-        self._running    = False
-        self._state_lock = threading.Lock()
+        self._edge_voice  = edge_voice
+        self._running     = False
+        self._state_lock  = threading.Lock()
+        self._play_lock   = threading.Lock()
+        self._stop_flag   = threading.Event()
 
         self.recognizer = sr.Recognizer()
         self.recognizer.dynamic_energy_threshold = True
@@ -119,25 +130,36 @@ class VoiceEngine(QObject):
             self._running = False
         self._set_state(VoiceState.IDLE)
 
+    def stop_speaking(self):
+        self._stop_flag.set()
+        while not self._tts_queue.empty():
+            try:
+                self._tts_queue.get_nowait()
+                self._tts_queue.task_done()
+            except queue.Empty:
+                break
+        if self._running:
+            self._set_state(VoiceState.IDLE)
+
     def speak(self, text: str):
-        clean = re.sub(r'<[^>]+>', '', text).strip()
-        if clean:
-            self._tts_queue.put(clean)
+        text = re.sub(r'<[^>]+>', '', text).strip()  # strip HTML/action tags
+        if text:
+            self._tts_queue.put(text)
 
     def _set_state(self, state: str):
         self._state = state
         self.state_changed.emit(state)
 
     def _tts_worker(self):
-        proc = _new_mpg123()
         while True:
             text = self._tts_queue.get()
+            self._stop_flag.clear()
             self._set_state(VoiceState.SPEAKING)
             if self._edge_voice:
-                audio = self._fetch_edge_audio(text)
-                if audio:
-                    proc = self._play_audio(proc, audio)
-                else:
+                audio = _fetch_edge_audio(text, self._edge_voice, EDGE_TTS_RATE)
+                if audio and not self._stop_flag.is_set():
+                    self._play_mp3(audio)
+                elif not audio:
                     self._speak_espeak(text)
             else:
                 self._speak_espeak(text)
@@ -145,28 +167,24 @@ class VoiceEngine(QObject):
             if self._tts_queue.empty() and self._running:
                 self._set_state(VoiceState.IDLE)
 
-    def _play_audio(self, proc: subprocess.Popen, audio: bytes) -> subprocess.Popen:
-        try:
-            proc.stdin.write(audio)
-            proc.stdin.flush()
-        except Exception:
-            proc = _new_mpg123()
-            proc.stdin.write(audio)
-            proc.stdin.flush()
-        return proc
-
-    def _fetch_edge_audio(self, text: str) -> bytes:
-        try:
-            communicate = edge_tts.Communicate(text, self._edge_voice, rate=EDGE_TTS_RATE)
-            chunks = []
-            async def _collect():
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        chunks.append(chunk["data"])
-            asyncio.run(_collect())
-            return b''.join(chunks)
-        except Exception:
-            return b''
+    def _play_mp3(self, audio: bytes):
+        with self._play_lock:
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
+                f.write(audio)
+                tmp_path = f.name
+            try:
+                proc = subprocess.Popen(
+                    ['mpg123', '-q', tmp_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                while proc.poll() is None:
+                    if self._stop_flag.is_set():
+                        proc.kill()
+                        break
+                    time.sleep(0.05)
+            finally:
+                os.unlink(tmp_path)
 
     def _speak_espeak(self, text: str):
         try:
@@ -179,9 +197,6 @@ class VoiceEngine(QObject):
             print("[VoiceEngine] espeak-ng not found — sudo apt install espeak-ng")
         except Exception as e:
             print(f"[VoiceEngine] espeak error: {e}")
-        finally:
-            if self._running:
-                self._set_state(VoiceState.IDLE)
 
     def _listen_loop(self):
         mic_index = _find_mic_index(MIC_DEVICE_NAME)

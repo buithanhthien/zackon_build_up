@@ -145,12 +145,9 @@ SYSTEM_PROMPT = (
 
 
 class _AIChatWorker(QObject):
-    chunk_ready    = pyqtSignal(str)
     response_ready = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
     finished       = pyqtSignal()
-
-    _SENTENCE_END = re.compile(r'(?<=[.?!。？！])\s+')
 
     def __init__(self, history):
         super().__init__()
@@ -166,19 +163,11 @@ class _AIChatWorker(QObject):
                 temperature=0.7,
                 stream=True,
             )
-            full, buffer = [], ""
+            full = []
             for chunk in stream:
                 token = (chunk.choices[0].delta.content or "") if chunk.choices else ""
-                if not token:
-                    continue
-                full.append(token)
-                buffer += token
-                parts = self._SENTENCE_END.split(buffer)
-                while len(parts) > 1:
-                    self.chunk_ready.emit(parts.pop(0).strip())
-                    buffer = " ".join(parts)
-            if buffer.strip():
-                self.chunk_ready.emit(buffer.strip())
+                if token:
+                    full.append(token)
             self.response_ready.emit("".join(full).strip())
         except Exception as e:
             self.error_occurred.emit(str(e)[:200])
@@ -288,10 +277,18 @@ class ChatPanel(QWidget):
         self.clear_btn.setFont(QFont("JetBrains Mono", 11))
         self.clear_btn.clicked.connect(self.clear_chat)
 
+        self.interrupt_btn = QPushButton("■")
+        self.interrupt_btn.setObjectName("interrupt-btn")
+        self.interrupt_btn.setFont(QFont("JetBrains Mono", 11))
+        self.interrupt_btn.setFixedWidth(44)
+        self.interrupt_btn.setToolTip("Stop speaking")
+        self.interrupt_btn.clicked.connect(self._voice_engine.stop_speaking)
+
         input_layout.addWidget(self.voice_btn)
         input_layout.addWidget(self.chat_input)
         input_layout.addWidget(self.send_btn)
         input_layout.addWidget(self.clear_btn)
+        input_layout.addWidget(self.interrupt_btn)
         layout.addWidget(input_row)
 
         self._typing_dots = 0
@@ -331,7 +328,6 @@ class ChatPanel(QWidget):
         self._ai_thread = QThread()
         self._ai_worker.moveToThread(self._ai_thread)
         self._ai_thread.started.connect(self._ai_worker.run)
-        self._ai_worker.chunk_ready.connect(self._on_chunk)
         self._ai_worker.response_ready.connect(self._on_response)
         self._ai_worker.error_occurred.connect(self._on_error)
         self._ai_worker.finished.connect(self._ai_thread.quit)
@@ -345,15 +341,12 @@ class ChatPanel(QWidget):
         clean = re.sub(pattern, '', reply).strip()
         return clean, tags
 
-    def _on_chunk(self, sentence: str):
-        clean, _ = self._strip_tags(sentence)
-        if clean and self._voice_enabled:
-            self._voice_engine.speak(clean)
-
     def _on_response(self, reply):
         clean, tags = self._strip_tags(reply)
         self._chat_history.append({"role": "assistant", "content": clean})
         self._add_bubble(clean, "assistant")
+        if self._voice_enabled:
+            self._voice_engine.speak(clean)
         for tag in tags:
             self.action_tag.emit(tag)
 

@@ -29,6 +29,8 @@ UI_COMMANDS = {
     "chọn map":    "LOAD_MAP",
     "tạo map":     "NEW_MAP",
     "tạo bản đồ":  "NEW_MAP",
+    "nav2":        "NAV2",
+    "điều hướng":  "NAV2",
 }
 
 WAYPOINT_PREFIXES = [

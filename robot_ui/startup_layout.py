@@ -872,6 +872,8 @@ class RobotUI(QMainWindow):
             self.load_map()
         elif command == "NEW_MAP":
             self.start_new_map()
+        elif command == "NAV2":
+            self.mode_changed("Nav2")
 
     def closeEvent(self, event):
         if self.localization_worker:

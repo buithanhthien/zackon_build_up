@@ -13,6 +13,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from voice_engine import VoiceEngine, VoiceState
 
 
+import math
+
+_LOCATION_PATTERNS = re.compile(
+    r'(tôi đang ở đâu|tôi đang ở dâu|robot đang ở đâu|vị trí (hiện tại|của tôi|robot))',
+    re.IGNORECASE
+)
+
+
 def _load_env():
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
     if not os.path.exists(env_path):
@@ -219,7 +227,8 @@ class ChatPanel(QWidget):
         self._voice_engine = VoiceEngine()
         self._voice_engine.state_changed.connect(self._on_voice_state_changed)
         self._voice_engine.transcript_ready.connect(self._on_voice_transcript)
-        self.waypoint_command = self._voice_engine.waypoint_command  # expose for parent
+        self.waypoint_command = self._voice_engine.waypoint_command
+        self._pose_provider = None
 
         self._build_ui()
         self._add_bubble(
@@ -321,6 +330,43 @@ class ChatPanel(QWidget):
         self.typing_label.setText(f"ZACKON is thinking{dots}")
         self._typing_dots += 1
 
+    def set_pose_provider(self, provider):
+        self._pose_provider = provider
+
+    def _pose_context(self) -> str | None:
+        if not self._pose_provider:
+            return None
+        pose = self._pose_provider()
+        if pose is None:
+            return None
+        x, y = pose.position.x, pose.position.y
+
+        wp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'waypoints.json')
+        try:
+            with open(wp_path, encoding='utf-8') as f:
+                waypoints = json.load(f)
+        except Exception:
+            waypoints = {}
+
+        nearest_id, nearest_dist = None, float('inf')
+        for wp_id, wp in waypoints.items():
+            d = math.hypot(x - wp['x'], y - wp['y'])
+            if d < nearest_dist:
+                nearest_dist, nearest_id = d, wp_id
+
+        NEARBY_THRESHOLD_M = 2.0
+
+        if nearest_id is not None and nearest_dist <= NEARBY_THRESHOLD_M:
+            return (
+                f"Robot đang ở gần vị trí số {nearest_id} (cách {nearest_dist:.1f} m)."
+            )
+        elif nearest_id is not None:
+            return (
+                f"Robot đang ở x={x:.2f} m, y={y:.2f} m. "
+                f"Điểm đến gần nhất là vị trí số {nearest_id} nhưng còn cách khá xa ({nearest_dist:.1f} m)."
+            )
+        return f"Vị trí hiện tại của robot: x={x:.2f} m, y={y:.2f} m. Chưa có waypoint nào được lưu."
+
     def send_message(self):
         text = self.chat_input.text().strip()
         if not text or (self._ai_thread and self._ai_thread.isRunning()):
@@ -329,13 +375,21 @@ class ChatPanel(QWidget):
         self._add_bubble(text, "user")
         self._chat_history.append({"role": "user", "content": text})
 
+        history = list(self._chat_history)
+        if _LOCATION_PATTERNS.search(text):
+            pose_ctx = self._pose_context()
+            if pose_ctx:
+                history.append({"role": "system", "content": pose_ctx})
+            else:
+                history.append({"role": "system", "content": "Chưa nhận được dữ liệu vị trí từ AMCL. Robot có thể chưa được định vị."})
+
         self.typing_label.show()
         self._typing_dots = 0
         self._typing_timer.start(400)
         self.send_btn.setEnabled(False)
         self.chat_input.setEnabled(False)
 
-        self._ai_worker = _AIChatWorker(list(self._chat_history))
+        self._ai_worker = _AIChatWorker(history)
         self._ai_thread = QThread()
         self._ai_worker.moveToThread(self._ai_thread)
         self._ai_thread.started.connect(self._ai_worker.run)

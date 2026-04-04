@@ -217,16 +217,34 @@ class LocalizationWorker(QObject):
 class RobotUI(QMainWindow):
     def __init__(self, skip_micro_ros=False):
         super().__init__()
-        self.prev_stm32_status    = None
-        self.prev_lidar_status    = None
-        self.localization_worker  = None
-        self.localization_thread  = None
+        self.prev_stm32_status       = None
+        self.prev_lidar_status       = None
+        self.prev_lidar_rear_status  = None
+        self.localization_worker     = None
+        self.localization_thread     = None
+        self._latest_pose            = None
+
+        try:
+            rclpy.init()
+        except Exception:
+            pass
+        self._ros_node = Node('robot_ui_node')
+        self._ros_node.create_subscription(
+            PoseWithCovarianceStamped, '/amcl_pose', self._amcl_callback, 10
+        )
+        self._ros_spin_timer = QTimer()
+        self._ros_spin_timer.timeout.connect(lambda: rclpy.spin_once(self._ros_node, timeout_sec=0))
+        self._ros_spin_timer.start(100)
 
         self.init_ui()
+        self.chat_panel.set_pose_provider(lambda: self._latest_pose)
         self.chat_panel.voice_btn.setChecked(True)
         self.chat_panel._toggle_voice()
         if not skip_micro_ros:
             self.start_micro_ros()
+
+    def _amcl_callback(self, msg):
+        self._latest_pose = msg.pose.pose
 
     # ══════════════════════════════════════════════════════════════════════════
     #  UI construction
@@ -878,6 +896,8 @@ class RobotUI(QMainWindow):
     def closeEvent(self, event):
         if self.localization_worker:
             self.localization_worker.stop()
+        self._ros_spin_timer.stop()
+        self._ros_node.destroy_node()
         self.chat_panel.cleanup()
         event.accept()
 

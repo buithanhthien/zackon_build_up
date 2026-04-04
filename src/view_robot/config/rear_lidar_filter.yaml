@@ -1,9 +1,9 @@
-scan_front_filter:
+scan_rear_filter:
   ros__parameters:
     filter1:
       name: front_180
-      #type: laser_filters/LaserScanAngularBoundsFilter
-      type: laser_filters/LaserScanAngularBoundsFilterInPlace
+      type: laser_filters/LaserScanAngularBoundsFilter
+      # type: laser_filters/LaserScanAngularBoundsFilterInPlace
       params:
       #From pi / 2 to 3 * pi / 2
         lower_angle:  -1.5707963268 #1.5708061764   # -90 deg

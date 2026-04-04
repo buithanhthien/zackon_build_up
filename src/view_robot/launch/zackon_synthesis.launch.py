@@ -12,8 +12,6 @@ def generate_launch_description():
     # ----------------------------------------------------
     PACKAGE_NAME = 'view_robot_pkg' 
     pkg_dir = get_package_share_directory(PACKAGE_NAME)
-    slam_dir = get_package_share_directory('slam_toolbox')
-    sllidar_dir = get_package_share_directory('sllidar_ros2')
     
     # ----------------------------------------------------
     # 2. DECLARE ARGUMENTS

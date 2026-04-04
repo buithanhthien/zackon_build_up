@@ -428,7 +428,7 @@ class RobotUI(QMainWindow):
             try:
                 subprocess.Popen([
                     'gnome-terminal', '--', 'bash', '-c',
-                    'source ~/zackon_build_up/install/setup.bash && ros2 launch view_robot_pkg zackon_synthesis.launch.py; exec bash'
+                    f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py; exec bash'
                 ])
                 self.log("Launched Nav2 navigation system")
             except Exception as e:
@@ -499,7 +499,7 @@ class RobotUI(QMainWindow):
             self.log(f"✗ Error updating nav2_params.yaml: {e}")
             return
         
-        synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_synthesis.launch.py'
+        synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py'
         try:
             with open(synthesis_launch, 'r') as f:
                 content = f.read()
@@ -512,9 +512,9 @@ class RobotUI(QMainWindow):
             
             with open(synthesis_launch, 'w') as f:
                 f.write(updated)
-            self.log(f"✓ Updated zackon_synthesis.launch.py")
+            self.log(f"✓ Updated NAV2_BRINGUP.launch.py")
         except Exception as e:
-            self.log(f"✗ Error updating zackon_synthesis.launch.py: {e}")
+            self.log(f"✗ Error updating NAV2_BRINGUP.launch.py: {e}")
             return
         
         localization_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_localization.launch.py'

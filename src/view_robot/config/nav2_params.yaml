@@ -44,7 +44,8 @@ amcl:
     z_max: 0.05
     z_rand: 0.5
     z_short: 0.05
-    scan_topic: /scan_front_filter
+    # scan_topic: /scan_front_filter
+    scan_topic: /merged
 
 bt_navigator:
   ros__parameters:
@@ -483,7 +484,8 @@ local_costmap:
           #   * User chosen topic is `scan`.
           #   * Topic will be remapped to `/tb4/scan_front_filter` without `global_costmap`.
           #   * Use global topic `/scan` if you do not wish the node namespace to apply
-          topic: /scan_front_filter
+          # topic: /scan_front_filter
+          topic: /merged
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -566,7 +568,8 @@ global_costmap:
           #   * User chosen topic is `scan`.
           #   * Topic will be remapped to `/tb4/scan` without `global_costmap`.
           #   * Use global topic `/scan` if you do not wish the node namespace to apply
-          topic: /scan_front_filter
+          # topic: /scan_front_filter
+          topic: /merged
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -844,7 +847,8 @@ collision_monitor:
     observation_sources: ["scan"]
     scan:
       type: "scan"
-      topic: /scan_front_filter
+      # topic: /scan_front_filter
+      topic: /merged
       min_height: 0.15
       max_height: 2.0
       enabled: True

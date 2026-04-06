@@ -49,24 +49,48 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 3.3 Node Lidar
-    sllidar_driver = IncludeLaunchDescription(
+    # # 3.3 Node Lidar
+    # sllidar_driver = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([sllidar_dir, 'launch', 'sllidar_s2_launch.py']) 
+    #     ),
+    #     launch_arguments={
+    #         'frame_id': LaunchConfiguration('lidar_frame'),
+    #         'serial_port': LaunchConfiguration('lidar_port'),
+    #         'serial_baudrate': LaunchConfiguration('lidar_baud')
+    #     }.items()
+    # )
+
+    sllidar_driver_front_and_rear=IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            PathJoinSubstitution([sllidar_dir, 'launch', 'sllidar_s2_launch.py']) 
+            PathJoinSubstitution([pkg_dir, 'launch', 'stereo_lidar.launch.py']) 
         ),
-        launch_arguments={
-            'frame_id': LaunchConfiguration('lidar_frame'),
-            'serial_port': LaunchConfiguration('lidar_port'),
-            'serial_baudrate': LaunchConfiguration('lidar_baud')
-        }.items()
+    )
+
+    lidar_front_filter=IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'front_lidar_filter.launch.py']) 
+        ),
+    )
+
+    lidar_rear_filter=IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'rear_lidar_filter.launch.py']) 
+        ),
+    )
+
+    merge_lidar=IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'merge_lidar.launch.py']) 
+        )
     )
     
-    # 3.4 Lidar filter: Filter in front of data of the robot
-    lidar_filter = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([pkg_dir, 'launch', 'lidar_filter.launch.py'])
-        ),
-    )
+    # # 3.4 Lidar filter: Filter in front of data of the robot
+    # lidar_filter = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([pkg_dir, 'launch', 'lidar_filter.launch.py'])
+    #     ),
+    # )
 
     # ----------------------------------------------------
     # 4. MAPPING SECTION (SLAM TOOLBOX)
@@ -102,16 +126,20 @@ def generate_launch_description():
     # ----------------------------------------------------
     return LaunchDescription([
         # --- Arguments ---
-        lidar_frame_arg,
-        lidar_port_arg,
-        lidar_baud_arg,
+        # lidar_frame_arg,
+        # lidar_port_arg,
+        # lidar_baud_arg,
         use_sim_time_arg,
         
         # --- Hardware  ---
         robot_state_and_rviz,
         micro_ros_agent,
-        sllidar_driver,
-        lidar_filter,
+        sllidar_driver_front_and_rear,
+        lidar_front_filter,
+        lidar_rear_filter,
+        merge_lidar,
+        # sllidar_driver,
+        # lidar_filter,
         
         # --- Estimate pose and record map ---
         ekf_node,

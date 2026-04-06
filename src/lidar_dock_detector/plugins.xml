@@ -8,4 +8,13 @@
       from RPLidar S2 LaserScan.
     </description>
   </class>
+  <class
+    name="lidar_dock_detector/BlindDocking"
+    type="lidar_dock_detector::BlindDocking"
+    base_class_type="opennav_docking_core::ChargingDock">
+    <description>
+      Sensor-free dead-reckoning dock plugin. Robot approaches staging pose
+      facing away from dock, then reverses into dock using odometry only.
+    </description>
+  </class>
 </library>

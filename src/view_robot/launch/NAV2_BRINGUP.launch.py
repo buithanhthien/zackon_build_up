@@ -12,25 +12,21 @@ def generate_launch_description():
     # ----------------------------------------------------
     PACKAGE_NAME = 'view_robot_pkg' 
     pkg_dir = get_package_share_directory(PACKAGE_NAME)
-    slam_dir = get_package_share_directory('slam_toolbox')
     sllidar_dir = get_package_share_directory('sllidar_ros2')
     
     # ----------------------------------------------------
     # 2. DECLARE ARGUMENTS
     # ----------------------------------------------------
     
-    # File Config & Map
+    # File Config & Map for navigation 
+    # Need to change map file name here when you change the environment to test 
     nav2_params_file = PathJoinSubstitution([pkg_dir, 'config', 'nav2_params.yaml'])
-    slam_params_file = PathJoinSubstitution([pkg_dir, 'config', 'mapper_params_online_async.yaml'])
-    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'F5.yaml'])
+    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'X5_19032026.yaml'])
 
     # Hardware Params
     lidar_frame_arg = DeclareLaunchArgument('lidar_frame', default_value='lidar_link')
     lidar_port_arg = DeclareLaunchArgument('lidar_port', default_value='/dev/lidar')
     lidar_baud_arg = DeclareLaunchArgument('lidar_baud', default_value='1000000')
-    
-    #Port for serial communication with STM32. Use when STM32 use UART
-    #stm32_port_arg = DeclareLaunchArgument('stm32_port', default_value='/dev/stm32')
     
     # Simulation Time
     use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value='False')
@@ -46,7 +42,6 @@ def generate_launch_description():
     # 3. HARDWARE SECTION
     # ----------------------------------------------------
     
-    
     # 3.1 Robot State Publisher
     robot_state_and_rviz = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -54,17 +49,7 @@ def generate_launch_description():
         ),
         launch_arguments={'use_sim_time': LaunchConfiguration('use_sim_time')}.items()
     )
-    
-    # 3.3 Node Micro-ROS
-    #Node for serial communication with STM32. Use when STM32 use UART. If STM32 use Ethernet, use the second micro_ros_agent node below.
-    # micro_ros_agent = Node(
-    #     package='micro_ros_agent',
-    #     executable='micro_ros_agent',
-    #     name='micro_ros_agent',
-    #     arguments=['serial', '--dev', LaunchConfiguration('stm32_port'), '-b', '115200'],
-    #     output='screen'
-    # )
-    
+    # 3.2 Node Micro-ROS
     micro_ros_agent = Node(
         package='micro_ros_agent',
         executable='micro_ros_agent',
@@ -73,44 +58,54 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 3.4 Node Lidar
-    sllidar_driver = IncludeLaunchDescription(
+    # # 3.3 Node Lidar
+    # sllidar_driver = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([sllidar_dir, 'launch', 'sllidar_s2_launch.py']) 
+    #     ),
+    #     launch_arguments={
+    #         'frame_id': LaunchConfiguration('lidar_frame'),
+    #         'serial_port': LaunchConfiguration('lidar_port'),
+    #         'serial_baudrate': LaunchConfiguration('lidar_baud')
+    #     }.items()
+    # )
+    
+    # # 3.4 Lidar filter: Filter in front of data of the robot 
+    # lidar_filter = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([pkg_dir, 'launch', 'lidar_filter.launch.py'])
+    #     ),
+    # )
+
+
+    sllidar_driver_front_and_rear=IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            PathJoinSubstitution([sllidar_dir, 'launch', 'sllidar_s2_launch.py']) 
+            PathJoinSubstitution([pkg_dir, 'launch', 'stereo_lidar.launch.py']) 
         ),
-        launch_arguments={
-            'frame_id': LaunchConfiguration('lidar_frame'),
-            'serial_port': LaunchConfiguration('lidar_port'),
-            'serial_baudrate': LaunchConfiguration('lidar_baud')
-        }.items()
+    )
+
+    lidar_front_filter=IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'front_lidar_filter.launch.py']) 
+        ),
+    )
+
+    lidar_rear_filter=IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'rear_lidar_filter.launch.py']) 
+        ),
+    )
+
+    merge_lidar=IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([pkg_dir, 'launch', 'merge_lidar.launch.py']) 
+        )
     )
     
-    # Lidar filter 
-    lidar_filter = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([pkg_dir, 'launch', 'lidar_filter.launch.py'])
-        ),
-    )
-
     # ----------------------------------------------------
-    # 4. MAPPING SECTION (SLAM TOOLBOX)
-    # ----------------------------------------------------
-    # Dùng khi muốn vẽ bản đồ mới.
-    slam_node = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([slam_dir, 'launch', 'online_async_launch.py'])
-        ),
-        launch_arguments={
-            'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'slam_params_file': slam_params_file
-        }.items()
-    )
-
-    # ----------------------------------------------------
-    # 5. NAVIGATION SECTION (MODULES)
+    # 4. LOCALIZATION (Map + AMCL)
     # ----------------------------------------------------
     ekf_yaml = PathJoinSubstitution([pkg_dir, 'config', 'ekf.yaml'])
-
     ekf_node = Node(
         package='robot_localization',
         executable='ekf_node',
@@ -120,7 +115,6 @@ def generate_launch_description():
         #remappings=[('odom', '/odometry/filtered')],
     )
 
-    # 5.1 LOCALIZATION (Map + AMCL) - Dùng khi chạy map có sẵn
     localization_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([pkg_dir, 'launch', 'zackon_localization.launch.py'])
@@ -132,7 +126,7 @@ def generate_launch_description():
         }.items()
     )
 
-    # 5.2 NAVIGATION (Controller + Planner)
+    # 5. NAVIGATION (Controller + Planner)
     navigation_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([pkg_dir, 'launch', 'zackon_navigation.launch.py'])
@@ -152,24 +146,23 @@ def generate_launch_description():
         lidar_frame_arg,
         lidar_port_arg,
         lidar_baud_arg,
-        #stm32_port_arg,
         use_sim_time_arg,
         
-        # --- Hardware (Luôn chạy) ---
+        # --- Hardware ---
         robot_state_and_rviz,
-        micro_ros_agent, # disable this when run UI
-        sllidar_driver,
-        lidar_filter,
-        # slam_node, 
-        
+        micro_ros_agent,
+        sllidar_driver_front_and_rear,
+        lidar_front_filter,
+        lidar_rear_filter,
+        merge_lidar,
+        # sllidar_driver,
+        # lidar_filter,
+
         # --- STATE ESTIMATION (MUST RUN FIRST) ---
         ekf_node,
         
-        # --- CHẾ ĐỘ 1: NAVIGATION (Chạy map cũ) ---
-        # (Bỏ comment 2 dòng dưới để chạy Nav2)
+        # --- CHẾ ĐỘ: NAVIGATION  ---
         localization_launch,
         navigation_launch,
 
-        # --- CHẾ ĐỘ 2: MAPPING (Vẽ map mới) ---
-        # (Bỏ comment dòng dưới, và comment 2 dòng trên để chạy SLAM)
     ])

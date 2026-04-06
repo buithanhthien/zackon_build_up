@@ -589,9 +589,80 @@ class RobotUI(QMainWindow):
 
         self.chat_panel = ChatPanel()
         self.chat_panel.hide()
-        self.chat_panel.action_tag.connect(self._on_ai_action)
-        self.chat_panel.waypoint_command.connect(self._voice_go_to_waypoint)
-        self.chat_panel._voice_engine.ui_command.connect(self._on_voice_ui_command)
+        chat_layout = QVBoxLayout(self.chat_panel)
+        chat_layout.setContentsMargins(0, 0, 0, 0)
+        chat_layout.setSpacing(0)
+
+        # Scrollable message area
+        self.chat_scroll = QScrollArea()
+        self.chat_scroll.setWidgetResizable(True)
+        self.chat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.chat_messages_widget = QWidget()
+        self.chat_messages_widget.setStyleSheet("background-color: #080a0d;")
+        self.chat_messages_layout = QVBoxLayout(self.chat_messages_widget)
+        self.chat_messages_layout.setContentsMargins(16, 16, 16, 16)
+        self.chat_messages_layout.setSpacing(8)
+        self.chat_messages_layout.addStretch()   # pushes messages to bottom
+
+        self.chat_scroll.setWidget(self.chat_messages_widget)
+        chat_layout.addWidget(self.chat_scroll, 1)
+
+        # Typing indicator label
+        self.typing_label = QLabel("ZACKON is thinking...")
+        self.typing_label.setFont(QFont("Fira Code", 11))
+        self.typing_label.setStyleSheet("color: #3a4460; padding: 4px 20px; background-color: #080a0d;")
+        self.typing_label.hide()
+        chat_layout.addWidget(self.typing_label)
+
+        # Voice status indicator (e.g. 🔴 LISTENING)
+        self.voice_status_label = QLabel(VoiceState.IDLE)
+        self.voice_status_label.setFont(QFont("Fira Code", 11, QFont.Weight.Bold))
+        self.voice_status_label.setStyleSheet("color: #6b7a99; padding: 0 20px; background-color: #080a0d;")
+        self.voice_status_label.hide()
+        chat_layout.addWidget(self.voice_status_label)
+
+        # Input row
+        input_row = QWidget()
+        input_row.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
+        input_layout = QHBoxLayout(input_row)
+        input_layout.setContentsMargins(16, 10, 16, 10)
+        input_layout.setSpacing(10)
+
+        self.chat_input = QLineEdit()
+        self.chat_input.setObjectName("chat-input")
+        self.chat_input.setFont(QFont("Fira Code", 13))
+        self.chat_input.setPlaceholderText("Ask ZACKON anything about the robot...")
+        self.chat_input.returnPressed.connect(self.send_chat_message)
+
+        self.voice_btn = QPushButton("🎤")
+        self.voice_btn.setObjectName("voice-btn")
+        self.voice_btn.setCheckable(True)
+        self.voice_btn.setFixedSize(44, 44)
+        self.voice_btn.clicked.connect(self._toggle_voice)
+
+        self.send_btn = QPushButton("SEND")
+        self.send_btn.setObjectName("send-btn")
+        self.send_btn.setFont(QFont("JetBrains Mono", 12, QFont.Weight.Bold))
+        self.send_btn.setFixedWidth(80)
+        self.send_btn.clicked.connect(self.send_chat_message)
+
+        self.clear_btn = QPushButton("CLEAR")
+        self.clear_btn.setObjectName("clear-btn")
+        self.clear_btn.setFont(QFont("JetBrains Mono", 11))
+        self.clear_btn.clicked.connect(self.clear_chat)
+
+        input_layout.addWidget(self.voice_btn)
+        input_layout.addWidget(self.chat_input)
+        input_layout.addWidget(self.send_btn)
+        input_layout.addWidget(self.clear_btn)
+        chat_layout.addWidget(input_row)
+
+        # Add welcome message
+        self._add_chat_bubble(
+            "Nghe này, em yêu",
+            "assistant"
+        )
 
         right_layout.addWidget(self.log_panel, 1)
         right_layout.addWidget(self.chat_panel, 1)
@@ -729,8 +800,7 @@ class RobotUI(QMainWindow):
             try:
                 subprocess.Popen([
                     'gnome-terminal', '--', 'bash', '-c',
-                    'source ~/zackon_build_up/install/setup.bash && '
-                    'ros2 launch view_robot_pkg zackon_synthesis.launch.py; exec bash'
+                    f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py; exec bash'
                 ])
                 self.log("Launched Nav2 navigation system")
             except Exception as e:
@@ -797,8 +867,7 @@ class RobotUI(QMainWindow):
         except Exception as e:
             self.log(f"✗ Error updating nav2_params.yaml: {e}")
             return
-
-        synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_synthesis.launch.py'
+        synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py'
         try:
             with open(synthesis_launch, 'r') as f:
                 content = f.read()
@@ -808,9 +877,9 @@ class RobotUI(QMainWindow):
             )
             with open(synthesis_launch, 'w') as f:
                 f.write(updated)
-            self.log("✓ Updated zackon_synthesis.launch.py")
+            self.log(f"✓ Updated NAV2_BRINGUP.launch.py")
         except Exception as e:
-            self.log(f"✗ Error updating zackon_synthesis.launch.py: {e}")
+            self.log(f"✗ Error updating NAV2_BRINGUP.launch.py: {e}")
             return
 
         localization_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_localization.launch.py'

@@ -1,41 +1,50 @@
-# Ignore only top-level colcon folders
+# ===== ROS 2 / colcon build outputs =====
 /build/
 /install/
 /log/
-
-# Also ignore colcon metadata
 /.colcon/
 /.colcon_metadata/
 
-# Python cache
+# ===== Python =====
 **/__pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# ===== Virtual env =====
+# ===== Virtual environments =====
 venv/
 .env/
 
-# ===== UI build =====
-ui/__pycache__/
+# ===== Machine-specific config =====
+# Contains hardcoded local paths (SOURCE_PATH), do not commit
+config.py
 
-# CMake generated files inside packages
+# ===== Dependencies list (machine-generated) =====
+require.txt
+
+# ===== CMake generated files inside packages =====
 **/CMakeFiles/
 **/CMakeCache.txt
 **/cmake_install.cmake
 **/Makefile
 
-# Test results
+# ===== Test results =====
 **/test_results/
 
-# VS Code
+# ===== VS Code =====
+# Large IntelliSense database — can exceed 1 GB
 .vscode/browse.vc.db*
 .vscode/*.db*
+# Machine-specific IDE settings
 **/.vscode/c_cpp_properties.json
 **/.vscode/settings.json
 
-require.txt
-
+# ===== Runtime / app data =====
 robot_ui/waypoints.json
+
+src/micro_ros_setup/
+src/uros/
+src/tf2_frame/frames_2026-04-01_09.01.43.pdf
+src/tf2_frame/frames_2026-04-01_09.01.43.gv
+
 .env

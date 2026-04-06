@@ -7,54 +7,53 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(nav_msgs REQUIRED)
-find_package(nav2_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(opennav_docking_core REQUIRED)
+find_package(pluginlib REQUIRED)
+find_package(angles REQUIRED)
 
-# ── Standalone docking node ──────────────────────────────────────────────────
-add_executable(docking_node
-  src/docking_node.cpp
-)
-target_include_directories(docking_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-ament_target_dependencies(docking_node
+set(DOCK_DEPS
   rclcpp
-  rclcpp_action
+  rclcpp_lifecycle
   sensor_msgs
   geometry_msgs
-  nav_msgs
-  nav2_msgs
-  std_srvs
   tf2
   tf2_ros
   tf2_geometry_msgs
+  opennav_docking_core
+  pluginlib
+  angles
 )
 
-# ── Debug intensity node ─────────────────────────────────────────────────────
-add_executable(debug_intensity_node
-  src/debug_intensity_node.cpp
+add_library(lidar_dock_detector SHARED
+  src/lidar_intensity_dock.cpp
+  src/blind_docking.cpp
 )
-ament_target_dependencies(debug_intensity_node
-  rclcpp
-  sensor_msgs
+target_include_directories(lidar_dock_detector PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(lidar_dock_detector ${DOCK_DEPS})
+pluginlib_export_plugin_description_file(opennav_docking_core plugins.xml)
+
+install(TARGETS lidar_dock_detector
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
-install(TARGETS docking_node debug_intensity_node
-  DESTINATION lib/${PROJECT_NAME}
-)
 install(DIRECTORY include/
   DESTINATION include
 )
 install(DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
+install(FILES plugins.xml
   DESTINATION share/${PROJECT_NAME}
 )
 

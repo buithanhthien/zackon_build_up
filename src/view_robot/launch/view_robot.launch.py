@@ -7,7 +7,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 
 def generate_launch_description():
-    pkg = get_package_share_directory('view_robot_pkg') # Đổi tên package của bạn nếu khác
+    pkg = get_package_share_directory('view_robot_pkg') 
 
     # 1. Arguments
     use_sim_time = LaunchConfiguration('use_sim_time')
@@ -30,9 +30,7 @@ def generate_launch_description():
     urdf_path = os.path.join(pkg, 'urdf', 'robot_description.urdf')
     with open(urdf_path, 'r') as infp:
         robot_desc_content = infp.read()
-    
-    # Tạo dictionary tham số để dùng lại nhiều lần
-    # Đây là chìa khóa để sửa lỗi "Waiting..."
+   
     robot_desc_param = {'robot_description': robot_desc_content}
 
     # 3. Định nghĩa các Node
@@ -53,7 +51,6 @@ def generate_launch_description():
         executable='joint_state_publisher_gui',
         name='joint_state_publisher_gui',
         output='screen',
-        # Truyền robot_description vào đây để nó không phải chờ
         parameters=[robot_desc_param, {'use_sim_time': use_sim_time}]
     )
 
@@ -64,7 +61,6 @@ def generate_launch_description():
         executable='joint_state_publisher',
         name='joint_state_publisher',
         output='screen',
-        # Truyền robot_description vào đây để nó không phải chờ
         parameters=[robot_desc_param, {'use_sim_time': use_sim_time}]
     )
 

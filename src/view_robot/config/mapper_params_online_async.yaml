@@ -13,7 +13,8 @@ slam_toolbox:
     odom_frame: odom
     map_frame: map
     base_frame: base_link
-    scan_topic: /scan_front_filter
+    # scan_topic: /scan_front_filter
+    scan_topic: /merged
     #use_map_saver: true
     mode:   mapping #localization #mapping 
     # khi quét map để ở chế độ mapping 

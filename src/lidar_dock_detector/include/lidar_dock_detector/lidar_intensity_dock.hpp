@@ -73,6 +73,13 @@ private:
     double lrf_offset,
     geometry_msgs::msg::PoseStamped & pose_out) const;
 
+  // ── PHASE C: Near-range helper ──
+  // Computes robust range estimate from a narrow angular sector of the scan.
+  // Returns true if a valid estimate was computed, false otherwise.
+  bool computeNearRangeEstimate(
+    const sensor_msgs::msg::LaserScan & scan,
+    double & range_out) const;
+
   // Parameters
   std::string name_;                   // Plugin instance name (set by the docking server on configure)
   std::string scan_topic_;             // LaserScan topic to subscribe to (e.g. "/scan_front_filter")
@@ -94,12 +101,22 @@ private:
   bool   use_external_detection_pose_; // If true, skip LiDAR detection and accept pose from an external node
   bool   rotate_to_dock_;              // If true, staging faces away from dock for forward approach; robot rotates and backs in (requires dock_direction: backward)
 
+  // ── PHASE C: Near-range stopping parameters ──
+  // These parameters enable robust docking completion when the 2-reflector pair becomes unstable at very close range.
+  bool   use_near_range_stop_;              // Enable near-range direct-range stopping mode
+  double near_range_entry_distance_;        // Distance (m) below which near-range mode can activate
+  double near_range_sector_half_angle_rad_; // Half-width (rad) of angular sector around rear direction for range sampling
+  double near_range_stop_threshold_;        // Range (m) below which robot is considered docked in near-range mode
+  int    near_range_required_stable_count_; // Consecutive cycles range must stay below threshold to declare docked
+  std::string near_range_statistic_;        // Statistic for robust range: "min", "median", "trimmed_mean"
+
   // ROS handles
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr detected_pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr dock_pose_odom_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr dock_distance_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr dock_near_range_pub_;  // NEW: debug topic for near-range estimate
   std::shared_ptr<tf2_ros::Buffer> tf_;
 
   // State
@@ -109,6 +126,11 @@ private:
   bool       has_refined_pose_latch_{false};
   int        miss_count_{0};
   std::mutex pose_mutex_;
+  
+  // ── PHASE C: Near-range stopping state ──
+  sensor_msgs::msg::LaserScan::SharedPtr last_scan_;  // Most recent scan for near-range range computation
+  int        near_range_stable_count_{0};             // Counter for consecutive cycles below threshold
+  std::mutex scan_mutex_;                             // Protects last_scan_ access
 };
 
 }  // namespace lidar_dock_detector

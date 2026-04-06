@@ -16,37 +16,68 @@ docking_server:
     #dock_backwards: true              # SERVER reads this to flip approach by π → drives robot backward (dock_direction is SimpleChargingDock-only)
     
     # Types of docks
-    dock_plugins: ["reflective_tape_dock", "blind_docking"]  # List of dock plugin names to load
+    # dock_plugins: ["reflective_tape_dock", "blind_docking"]  # List of dock plugin names to load
+    dock_plugins: ["reflective_tape_dock"]  # List of dock plugin names to load
 
-    blind_docking:
-      plugin: "lidar_dock_detector/BlindDocking"  # Sensor-free dead-reckoning: approach staging facing away, reverse into dock
-      base_frame: "base_link"
-      staging_x_offset: -0.80                     # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
-      staging_yaw_offset: 0.0                      # Extra yaw offset (rad) on top of the 180° flip
-      docking_threshold: 0.32                       # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
-      dock_direction: "backward"                   # Robot reverses into dock
-      rotate_to_dock: false                        # Declared for parameter namespace compatibility
+    # blind_docking:
+    #   plugin: "lidar_dock_detector/BlindDocking"  # Sensor-free dead-reckoning: approach staging facing away, reverse into dock
+    #   base_frame: "base_link"
+    #   staging_x_offset: -0.80                     # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
+    #   staging_yaw_offset: 0.0                      # Extra yaw offset (rad) on top of the 180° flip
+    #   docking_threshold: 0.32                       # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
+    #   dock_direction: "backward"                   # Robot reverses into dock
+    #   rotate_to_dock: false                        # Declared for parameter namespace compatibility
 
     reflective_tape_dock:
       plugin: "lidar_dock_detector/LidarIntensityDock"      # your custom LiDAR-based dock detector
       use_external_detection_pose: false                    # plugin detects internally via LiDAR scan; set true to accept pose from external node
-      scan_topic: "/scan_front_filter"                      # LaserScan topic the plugin subscribes to for reflector detection
+      
+      # ── PHASE B: Changed from front to REAR lidar for rear-first docking ──
+      # scan_topic: "/scan_front_filter"                    # OLD: front lidar (forward-facing docking)
+      scan_topic: "/scan_rear_lidar_filter"                 # NEW: rear lidar topic for rear-first docking strategy
+      
       base_frame: "base_link"                               # Robot base TF frame used for range/distance calculations
       lrf_tilt_alpha_deg: 0.0                               # LRF tilt angle (deg) — compensates range if sensor is mounted at an angle; 0.0 = flat
-      lrf_forward_offset: 0.35                              # Forward offset (m) from base_link origin to the LRF optical centre; added to dock midpoint X
+      
+      # lrf_forward_offset: 0.35                            # OLD: forward offset for FRONT lidar
+      lrf_forward_offset: 0.35                             # NEW: NEGATIVE offset for REAR lidar (behind base_link)
+      
       tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes on the dock
       rubber_width: 0.32                                    # Width (m) of the rubber/backing strip; used to compute the geometric max detection range
       reflector_width: 0.048                                # Width (m) of a single reflective tape strip; used in inception-angle computation
-      i_peak: 43.0                                          # Minimum intensity value to classify a beam as a reflector peak candidate
-      i_valley: 29.0                                        # Maximum intensity value allowed for the neighbouring valley beams around a peak
+      
+      # ── PHASE B: Tuned for REAR lidar reflective statistics (observed peak-valley pair: 46-21) ──
+      # i_peak: 43.0                                        # OLD: front lidar threshold
+      i_peak: 46.0                                          # NEW: rear lidar peak threshold (tuned from observation)
+      # i_valley: 29.0                                      # OLD: front lidar valley threshold
+      i_valley: 21.0                                        # NEW: rear lidar valley threshold (tuned from observation)
+      
       valley_search_range: 19                               # Number of beams to scan left/right from a peak candidate when searching for valley neighbours
       max_detect_range: 3.0                                 # Maximum range (m) beyond which a detected reflector is discarded as too far
       max_fail_count: 5                                     # Consecutive scan failures before dock_detected_ is cleared (debounce guard)
-      staging_x_offset: -0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
-      staging_yaw_offset: 0.0                               # Yaw offset (rad) added to staging orientation; 0 = face the dock; front LiDAR detects tapes; dock_backwards makes controller reverse in
-      docking_threshold: 0.32                                # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true
-      dock_direction: "backward"                            # Declared for parameter namespace; processed by SimpleChargingDock only (not used by this plugin)
-      rotate_to_dock: true                                 # SimpleChargingDock-only; not applicable to this custom plugin
+      staging_x_offset: 0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
+      
+      # ── PHASE A: Changed staging orientation so REAR faces dock ──
+      # staging_yaw_offset: 0.0                             # OLD: robot faces dock (front lidar sees tapes, controller reverses)
+      staging_yaw_offset: 0.0                           # NEW: π rad = 180° flip → robot REAR faces dock, rear lidar sees tapes, controller drives forward
+      
+      docking_threshold: 0.32                               # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true (used in reflective-pose mode)
+      
+      # dock_direction: "backward"                          # OLD: controller reverses (for front-facing staging)
+      dock_direction: "forward"                             # NEW: controller drives forward (robot already rear-facing at staging)
+      
+      # rotate_to_dock: true                                # OLD: SimpleChargingDock-only parameter
+      rotate_to_dock: false                                 # NEW: no extra rotation needed; staging already orients rear toward dock
+      
+      # ── PHASE C: Near-range stopping parameters ──
+      # When robot gets very close, 2-reflector pair becomes unstable/disappears.
+      # Near-range mode uses direct range from a narrow rear-facing sector for robust docking completion.
+      use_near_range_stop: true                             # Enable near-range direct-range stopping mode
+      near_range_entry_distance: 0.60                       # Distance (m) below which near-range mode can activate
+      near_range_sector_half_angle_deg: 15.0                # Half-width (deg) of angular sector around rear direction for range sampling
+      near_range_stop_threshold: 0.10                       # Range (m) below which robot is considered docked in near-range mode
+      near_range_required_stable_count: 3                   # Consecutive cycles range must stay below threshold to declare docked
+      near_range_statistic: "median"                        # Statistic for robust range estimate: "min", "median", "trimmed_mean"
 
       # ── SimpleChargingDock (for reference — only usable if detector is a separate node) ──
       # plugin: "opennav_docking::SimpleChargingDock"
@@ -65,13 +96,13 @@ docking_server:
 
     # ── LiDAR detector parameters (used by docking_sequence.py and debug tools) ──
     lidar_detector:                                         # Standalone detector params — mirrored by docking_sequence.py and debug tools (not loaded by the plugin itself)
-      scan_topic: "/scan_front_filter"                      # LaserScan topic to subscribe to for reflector detection
-      lrf_forward_offset: 0.35                              # Forward offset (m) from base_link to LRF optical centre; matches reflective_tape_dock value
+      scan_topic: "/scan_rear_lidar_filter"                 # LaserScan topic to subscribe to for reflector detection (UPDATED: rear lidar)
+      lrf_forward_offset: 0.35                             # Forward offset (m) from base_link to LRF optical centre (UPDATED: negative for rear lidar)
       tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes
       rubber_width: 0.32                                    # Width (m) of the rubber backing strip; used for geometric max-range calculation
       reflector_width: 0.048                                # Width (m) of a single reflective tape; used in inception-angle computation
-      i_peak: 43.0                                          # Minimum intensity threshold to classify a beam as a reflector peak
-      i_valley: 29.0                                        # Maximum intensity allowed for valley (non-reflective) neighbour beams
+      i_peak: 46.0                                          # Minimum intensity threshold to classify a beam as a reflector peak (UPDATED: rear lidar)
+      i_valley: 21.0                                        # Maximum intensity allowed for valley (non-reflective) neighbour beams (UPDATED: rear lidar)
       valley_search_range: 19                               # Number of beams to scan each side of a peak when looking for valley neighbours
       max_detect_range: 3.0                                 # Maximum detection range (m); reflectors beyond this are ignored
 
@@ -83,7 +114,10 @@ docking_server:
       type: "reflective_tape_dock"        # Plugin type (must match a key in dock_plugins)
       # type: "blind_docking" 
       frame: "map"                        # TF frame in which the pose is expressed
-      pose: [-0.40155, 1.34912, 1.57]     # Dock pose in map frame: [x (m), y (m), yaw (rad)]
+      # pose: [-0.40155, 1.34912, 0]     # Dock pose in map frame: [x (m), y (m), yaw (rad)]
+      # pose: [-0.40155, 1.34912, 1.57]     # Dock pose in map frame: [x (m), y (m), yaw (rad)]
+      pose: [-0.5155331150, 1.5446702719, -1.6477]     # UPDATED: Dock pose in map frame with 180° flip for rear-first docking strategy
+
 
     controller:
       k_phi: 3.0                                            # Gain on heading-to-goal angle (phi) — higher = turns faster toward dock

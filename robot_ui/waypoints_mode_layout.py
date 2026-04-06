@@ -16,6 +16,8 @@ from nav2_msgs.action import NavigateToPose
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
+from voice_engine import VoiceEngine
+from chat_panel_widget import ChatPanel
 
 
 class WaypointsNode(Node):
@@ -113,6 +115,12 @@ class WaypointsModeLayout(QMainWindow):
         self.running_sequence = False
         self.current_sequence_index = 0
         self.init_ui()
+
+        # ── Voice engine ───────────────────────────────────────────────────
+        self._voice = VoiceEngine()
+        self._voice.waypoint_command.connect(self.voice_navigate_to_waypoint)
+        self._voice.start()
+        self.log("[Voice] Listening — say \"Đi tới <số>\" to navigate")
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.spin_and_update)
@@ -361,7 +369,34 @@ class WaypointsModeLayout(QMainWindow):
         self.log_text.setFont(QFont("Fira Code", 13))
         log_layout.addWidget(self.log_text)
 
+        self.chat_widget = ChatPanel()
+        self.chat_widget.hide()
+
+        tab_bar = QWidget()
+        tab_bar.setFixedHeight(36)
+        tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
+        tab_layout = QHBoxLayout(tab_bar)
+        tab_layout.setContentsMargins(12, 0, 12, 0)
+        tab_layout.setSpacing(0)
+        tab_log  = QPushButton("SYSTEM LOG")
+        tab_chat = QPushButton("AI CHAT")
+        for tab in [tab_log, tab_chat]:
+            tab.setObjectName("panel-tab")
+            tab.setFont(QFont("DM Sans", 11))
+            tab.setCheckable(True)
+            tab.setAutoExclusive(True)
+            tab_layout.addWidget(tab)
+        tab_layout.addStretch()
+        self.tab_live_badge = QLabel("● LIVE")
+        self.tab_live_badge.setStyleSheet("color: #00c853; font-size: 11px; padding-right: 4px;")
+        tab_layout.addWidget(self.tab_live_badge)
+        tab_log.setChecked(True)
+        tab_log.clicked.connect(lambda: (log_panel.show(), self.chat_widget.hide(), self.tab_live_badge.show()))
+        tab_chat.clicked.connect(lambda: (log_panel.hide(), self.chat_widget.show(), self.tab_live_badge.hide(), self.chat_widget.focus_input()))
+
+        right_layout.addWidget(tab_bar)
         right_layout.addWidget(log_panel, 1)
+        right_layout.addWidget(self.chat_widget, 1)
 
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
@@ -492,6 +527,8 @@ class WaypointsModeLayout(QMainWindow):
             return
         
         if not self.ros_node.nav_server_available:
+            self.ros_node.nav_server_available = self.ros_node.nav_client.wait_for_server(timeout_sec=3.0)
+        if not self.ros_node.nav_server_available:
             self.log('Nav2 server not available')
             return
         
@@ -612,6 +649,18 @@ class WaypointsModeLayout(QMainWindow):
             f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
         )
         
+    def voice_navigate_to_waypoint(self, slot: str):
+        """Called when the VoiceEngine emits waypoint_command(slot)."""
+        self.log(f'[Voice] Command received: Đi tới {slot}')
+        print(f'[DEBUG] voice_navigate_to_waypoint called, slot={slot!r}, waypoints keys={list(self.waypoints.keys())}, nav_available={self.ros_node.nav_server_available}')
+        if slot not in self.waypoints:
+            msg = f'Vị trí {slot} chưa được lưu'
+            self.log(f'[Voice] {msg}')
+            self._voice.speak(msg)
+            return
+        self._voice.speak(f'Đang đi tới {slot}')
+        self.navigate_to_waypoint(slot)
+
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
@@ -619,6 +668,7 @@ class WaypointsModeLayout(QMainWindow):
         self.close()
     
     def closeEvent(self, event):
+        self._voice.stop()
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
         if self.ros_node:
@@ -627,10 +677,17 @@ class WaypointsModeLayout(QMainWindow):
             rclpy.shutdown()
         except:
             pass
+        self.chat_widget.cleanup()
         event.accept()
 
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = WaypointsModeLayout()
+    # Auto-navigate if launched with --go-to <slot>
+    if '--go-to' in sys.argv:
+        idx = sys.argv.index('--go-to')
+        if idx + 1 < len(sys.argv):
+            slot = sys.argv[idx + 1]
+            QTimer.singleShot(1500, lambda: window.navigate_to_waypoint(slot))
     sys.exit(app.exec())

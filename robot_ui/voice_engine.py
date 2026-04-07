@@ -258,17 +258,27 @@ class VoiceEngine(QObject):
             print(f"[VoiceEngine] Command error: {e}")
             self._set_state(VoiceState.IDLE)
 
-    def _load_waypoint_keys(self) -> list[str]:
+    def _load_waypoints(self) -> dict:
         try:
             wp_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'waypoints.json')
             with open(wp_file, 'r', encoding='utf-8') as f:
-                return list(json.load(f).keys())
+                return json.load(f)
         except Exception:
-            return []
+            return {}
+
+    def _load_waypoint_keys(self) -> list[str]:
+        return list(self._load_waypoints().keys())
 
     def _check_waypoint_command(self, text: str) -> str | None:
         text = text.strip()
-        keys = self._load_waypoint_keys()
+        wps = self._load_waypoints()
+        keys = list(wps.keys())
+
+        def _matches(remainder: str, key: str) -> bool:
+            if remainder == key.lower():
+                return True
+            return any(remainder == a.lower() for a in wps[key].get("aliases", []))
+
         for prefix in WAYPOINT_PREFIXES:
             if not text.startswith(prefix):
                 continue
@@ -277,7 +287,7 @@ class VoiceEngine(QObject):
                 return remainder
             if remainder in VI_DIGITS:
                 return VI_DIGITS[remainder]
-            matched = next((k for k in keys if remainder == k.lower()), None)
+            matched = next((k for k in keys if _matches(remainder, k)), None)
             if matched:
                 return matched
-        return next((k for k in keys if text == k.lower()), None)
+        return next((k for k in keys if _matches(text, k)), None)

@@ -2,6 +2,7 @@
 import os
 import re
 import json
+import unicodedata
 from openai import OpenAI
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QLineEdit, QScrollArea, QSizePolicy)
@@ -19,6 +20,59 @@ _LOCATION_PATTERNS = re.compile(
     r'(tôi đang ở đâu|tôi đang ở dâu|robot đang ở đâu|vị trí (hiện tại|của tôi|robot))',
     re.IGNORECASE
 )
+
+# Trigger phrases that signal navigation intent — order matters (longer first)
+_NAV_INTENT_RE = re.compile(
+    r'^(?:dẫn tôi (?:tới|đến|toi)|đưa tôi (?:tới|đến|toi)|tôi muốn (?:tới|đến|đi tới|đi đến)|'
+    r'đi (?:tới|đến)|tới|đến)\s+',
+    re.IGNORECASE
+)
+
+# Phrases that ask HOW to get somewhere (triggers confirmation flow)
+_NAV_QUESTION_RE = re.compile(
+    r'(?:làm thế nào|làm sao|đường đến|cách đến|cách tới|hướng dẫn.*đến|hướng dẫn.*tới)',
+    re.IGNORECASE
+)
+
+# Confirmation / denial
+_CONFIRM_RE = re.compile(r'^(ok|oke|okay|đồng ý|dong y|được|duoc|đi|di|có|co|yes|ừ|uh|uhm)$', re.IGNORECASE)
+_DENY_RE    = re.compile(r'^(không|khong|thôi|thoi|no|nope)$', re.IGNORECASE)
+
+
+def _normalize(text: str) -> str:
+    """Lowercase + remove Vietnamese diacritics for fuzzy comparison."""
+    text = text.lower()
+    nfkd = unicodedata.normalize('NFKD', text)
+    return ''.join(c for c in nfkd if not unicodedata.combining(c))
+
+
+def _token_overlap(query: str, candidate: str) -> float:
+    """Fraction of query tokens found in candidate tokens."""
+    q_tokens = set(_normalize(query).split())
+    c_tokens = set(_normalize(candidate).split())
+    if not q_tokens:
+        return 0.0
+    return len(q_tokens & c_tokens) / len(q_tokens)
+
+
+def _resolve_destination(remainder: str) -> str | None:
+    """Match remainder against waypoint keys + aliases. Returns the key or None."""
+    wp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'waypoints.json')
+    try:
+        with open(wp_path, encoding='utf-8') as f:
+            waypoints = json.load(f)
+    except Exception:
+        return None
+
+    best_key, best_score = None, 0.0
+    for key, data in waypoints.items():
+        candidates = [key] + (data.get('aliases', []) if isinstance(data, dict) else [])
+        for c in candidates:
+            score = _token_overlap(remainder, c)
+            if score > best_score:
+                best_score, best_key = score, key
+
+    return best_key if best_score >= 0.5 else None
 
 
 def _load_env():
@@ -229,6 +283,7 @@ class ChatPanel(QWidget):
         self._voice_engine.transcript_ready.connect(self._on_voice_transcript)
         self.waypoint_command = self._voice_engine.waypoint_command
         self._pose_provider = None
+        self._pending_nav: str | None = None  # waypoint key awaiting confirmation
 
         self._build_ui()
         self._add_bubble(
@@ -373,6 +428,44 @@ class ChatPanel(QWidget):
             return
         self.chat_input.clear()
         self._add_bubble(text, "user")
+
+        # --- Pending confirmation check ---
+        if self._pending_nav:
+            if _CONFIRM_RE.match(text):
+                dest = self._pending_nav
+                self._pending_nav = None
+                reply = f"Đang dẫn bạn tới {dest}!"
+                self._add_bubble(reply, "assistant")
+                if self._voice_enabled:
+                    self._voice_engine.speak(reply)
+                self.waypoint_command.emit(dest)
+                return
+            elif _DENY_RE.match(text):
+                self._pending_nav = None
+                self._add_bubble("Ok, không sao!", "assistant")
+                return
+            else:
+                self._pending_nav = None  # user said something else, cancel
+
+        # --- Direct navigation intent ---
+        nav_match = _NAV_INTENT_RE.match(text)
+        if nav_match:
+            remainder = text[nav_match.end():]
+            dest = _resolve_destination(remainder)
+            if dest:
+                reply = f"Đang dẫn bạn tới {dest}!"
+                self._add_bubble(reply, "assistant")
+                if self._voice_enabled:
+                    self._voice_engine.speak(reply)
+                self.waypoint_command.emit(dest)
+                return
+
+        # --- Navigation question → resolve dest, let AI answer, then confirm ---
+        if _NAV_QUESTION_RE.search(text):
+            dest = _resolve_destination(text)
+            if dest:
+                self._pending_nav = dest
+
         self._chat_history.append({"role": "user", "content": text})
 
         history = list(self._chat_history)
@@ -415,6 +508,8 @@ class ChatPanel(QWidget):
     def _on_response(self, reply):
         clean, tags = self._strip_tags(reply)
         self._chat_history.append({"role": "assistant", "content": clean})
+        if self._pending_nav:
+            clean += f"\n\nBạn có muốn tôi dẫn bạn đến {self._pending_nav} không?"
         self._add_bubble(clean, "assistant")
         for tag in tags:
             self.action_tag.emit(tag)

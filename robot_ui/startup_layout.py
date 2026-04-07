@@ -238,6 +238,7 @@ class RobotUI(QMainWindow):
 
         self.init_ui()
         self.chat_panel.set_pose_provider(lambda: self._latest_pose)
+        self.chat_panel.waypoint_command.connect(self._voice_go_to_waypoint)
         self.chat_panel.voice_btn.setChecked(True)
         self.chat_panel._toggle_voice()
         if not skip_micro_ros:

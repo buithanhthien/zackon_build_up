@@ -4,7 +4,8 @@ import json
 import subprocess
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                              QLabel, QGridLayout, QTextEdit, QApplication, QMainWindow, QSizePolicy)
+                              QLabel, QGridLayout, QTextEdit, QApplication, QMainWindow, QSizePolicy,
+                              QDialog, QLineEdit)
 from PyQt6.QtCore import Qt, QTimer, QPointF
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform, QFontDatabase
 import rclpy
@@ -98,6 +99,66 @@ class MapWidget(QWidget):
         painter.drawPolygon(QPolygon([tip, left, right]))
         painter.setPen(QPen(QColor(232, 236, 240), 1))
         painter.drawText(px + 8, py - 10, label)
+
+
+class NewWaypointDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("New Waypoint")
+        self.setModal(True)
+        self.resize(400, 200)
+        self.setStyleSheet("""
+            QDialog { background-color: #0d0f12; color: #e8ecf0; }
+            QLabel { color: #6b7a99; font-size: 11px; letter-spacing: 2px; padding-bottom: 8px; }
+            QLineEdit {
+                background-color: #1c2030; color: #e8ecf0;
+                border: 1px solid #2a3040; border-radius: 4px;
+                font-size: 15px; padding: 10px 14px;
+            }
+            QLineEdit:focus { border: 1px solid #00e5ff66; }
+            QPushButton#ok-btn {
+                background-color: #1c2030; color: #00e5ff;
+                border: 1px solid #00e5ff; border-radius: 4px;
+                font-size: 15px; min-height: 44px;
+            }
+            QPushButton#ok-btn:hover { background-color: #1a2a3a; }
+            QPushButton#cancel-btn {
+                background-color: transparent; color: #6b7a99;
+                border: 1px solid #2a3040; border-radius: 4px;
+                font-size: 15px; min-height: 44px;
+            }
+            QPushButton#cancel-btn:hover { background-color: #1a1f2e; color: #e8ecf0; border: 1px solid #3a4460; }
+        """)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        label = QLabel("WAYPOINT NAME")
+        label.setFont(QFont("DM Sans", 11))
+        layout.addWidget(label)
+
+        self.name_input = QLineEdit()
+        self.name_input.setFont(QFont("JetBrains Mono", 15))
+        self.name_input.setPlaceholderText("Enter name...")
+        self.name_input.returnPressed.connect(self.accept)
+        layout.addWidget(self.name_input)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(8)
+        btn_confirm = QPushButton("Confirm")
+        btn_confirm.setObjectName("ok-btn")
+        btn_confirm.setFont(QFont("JetBrains Mono", 15))
+        btn_confirm.clicked.connect(self.accept)
+        btn_back = QPushButton("Back")
+        btn_back.setObjectName("cancel-btn")
+        btn_back.setFont(QFont("JetBrains Mono", 15))
+        btn_back.clicked.connect(self.reject)
+        btn_layout.addWidget(btn_confirm)
+        btn_layout.addWidget(btn_back)
+        layout.addLayout(btn_layout)
+
+    def get_name(self):
+        return self.name_input.text().strip()
 
 
 class WaypointsModeLayout(QMainWindow):
@@ -247,10 +308,11 @@ class WaypointsModeLayout(QMainWindow):
         self.run_btn   = QPushButton("Run")
         self.reset_btn = QPushButton("Reset")
         self.stop_btn  = QPushButton("Stop")
+        self.new_btn   = QPushButton("New")
         self.back_btn  = QPushButton("Back")
 
         for btn in [self.save_btn, self.clear_btn, self.run_btn,
-                    self.reset_btn, self.stop_btn, self.back_btn]:
+                    self.reset_btn, self.stop_btn, self.new_btn, self.back_btn]:
             btn.setObjectName("action-btn")
             btn.setFont(mono)
             btn.setMinimumHeight(64)
@@ -286,6 +348,7 @@ class WaypointsModeLayout(QMainWindow):
         self.run_btn.clicked.connect(self.run_sequence)
         self.reset_btn.clicked.connect(self.reset_sequence)
         self.stop_btn.clicked.connect(self.stop_navigation)
+        self.new_btn.clicked.connect(self.open_new_waypoint_dialog)
         self.back_btn.clicked.connect(self.go_back)
 
         # ── Right area ────────────────────────────────────────────────────────
@@ -430,7 +493,7 @@ class WaypointsModeLayout(QMainWindow):
                         return maps_dir + map_file
         except Exception:
             pass
-        return f'{SOURCE_PATH}/src/view_robot/maps/F5.yaml'
+        return f'{SOURCE_PATH}/src/view_robot/maps/X5_19032026.yaml'
 
     def load_map_yaml(self, yaml_path):
         data = {}
@@ -660,6 +723,30 @@ class WaypointsModeLayout(QMainWindow):
             return
         self._voice.speak(f'Đang đi tới {slot}')
         self.navigate_to_waypoint(slot)
+
+    def open_new_waypoint_dialog(self):
+        if not self.ros_node.current_pose:
+            self.log('[WARN] No pose data available — cannot save waypoint')
+            return
+        dialog = NewWaypointDialog(self)
+        if dialog.exec():
+            name = dialog.get_name()
+            if not name:
+                self.log('[WARN] Waypoint name cannot be empty')
+                return
+            pose = self.ros_node.current_pose
+            self.waypoints[name] = {
+                'x': pose.pose.pose.position.x,
+                'y': pose.pose.pose.position.y,
+                'z': pose.pose.pose.position.z,
+                'qx': pose.pose.pose.orientation.x,
+                'qy': pose.pose.pose.orientation.y,
+                'qz': pose.pose.pose.orientation.z,
+                'qw': pose.pose.pose.orientation.w,
+            }
+            self.save_waypoints()
+            self.map_widget.set_waypoints(self.waypoints)
+            self.log(f'Saved new waypoint: {name}')
 
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:

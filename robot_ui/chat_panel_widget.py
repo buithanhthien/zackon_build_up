@@ -47,12 +47,18 @@ def _normalize(text: str) -> str:
 
 
 def _token_overlap(query: str, candidate: str) -> float:
-    """Fraction of query tokens found in candidate tokens."""
+    """Fraction of query tokens found in candidate tokens, with substring fallback."""
     q_tokens = set(_normalize(query).split())
     c_tokens = set(_normalize(candidate).split())
     if not q_tokens:
         return 0.0
-    return len(q_tokens & c_tokens) / len(q_tokens)
+    # exact token match
+    exact = len(q_tokens & c_tokens) / len(q_tokens)
+    if exact >= 0.5:
+        return exact
+    # substring: count query tokens that appear inside any candidate token
+    substr = sum(1 for qt in q_tokens if any(qt in ct or ct in qt for ct in c_tokens))
+    return substr / len(q_tokens)
 
 
 def _resolve_destination(remainder: str) -> str | None:
@@ -178,11 +184,11 @@ SYSTEM_PROMPT = (
 
     "## Chế độ Waypoints\n"
     "- Waypoint là các vị trí đã lưu trên bản đồ (lưu trong waypoints.json)\n"
-    "- Để điều hướng: nhấn nút waypoint trên giao diện HOẶC dùng lệnh giọng nói hoặc chat\n"
+    "- Khi người dùng yêu cầu đi đến một địa điểm: NGAY LẬP TỨC thực hiện, KHÔNG hỏi thêm bất kỳ điều gì\n"
+    "- Hệ thống tự động chuyển sang Waypoints Mode nếu cần — người dùng không cần làm gì thêm\n"
     "- Lệnh điều hướng hợp lệ: 'Đi tới <tên>', 'Tới <tên>', 'Dẫn tôi đến <tên>'\n"
     "  Ví dụ: 'Đi tới Cua phong X5.4', 'Tới phòng hội thảo', 'Đi đến X5.11'\n"
-    "- Có thể dùng tên đầy đủ hoặc tên viết tắt (aliases) của waypoint\n"
-    "- Lệnh điều hướng hoạt động từ cả màn hình chính lẫn Waypoints Mode\n\n"
+    "- Có thể dùng tên đầy đủ hoặc tên viết tắt (aliases) của waypoint\n\n"
 
     "## Chế độ Tracking\n"
     "- Robot dùng camera + YOLOv8 để phát hiện và theo dõi người\n"
@@ -191,7 +197,7 @@ SYSTEM_PROMPT = (
     "## Quy tắc hội thoại\n"
     "- Khi hướng dẫn thao tác: chỉ hướng dẫn TỪNG BƯỚC MỘT, chờ xác nhận rồi mới tiếp\n"
     "- Không liệt kê nhiều bước cùng lúc\n"
-    "- Nếu người dùng hỏi về waypoint/điểm đến: luôn nhắc họ phải đang ở chế độ 'Điểm đến'\n\n"
+    "- Khi người dùng muốn đi đến một địa điểm: THỰC HIỆN NGAY, không hỏi xác nhận, không hỏi về chế độ hiện tại\n\n"
 
     "## Thẻ hành động\n"
     "Chỉ dùng khi cần thực thi trực tiếp trên robot. Tối đa một thẻ mỗi phản hồi. Không dùng khi trò chuyện thông thường.\n"
@@ -272,6 +278,7 @@ class _ChatBubble(QWidget):
 
 class ChatPanel(QWidget):
     action_tag = pyqtSignal(str)
+    waypoint_command = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -282,7 +289,7 @@ class ChatPanel(QWidget):
         self._voice_engine = VoiceEngine()
         self._voice_engine.state_changed.connect(self._on_voice_state_changed)
         self._voice_engine.transcript_ready.connect(self._on_voice_transcript)
-        self.waypoint_command = self._voice_engine.waypoint_command
+        self._voice_engine.waypoint_command.connect(self.waypoint_command.emit)
         self._pose_provider = None
         self._pending_nav: str | None = None  # waypoint key awaiting confirmation
 
@@ -452,16 +459,16 @@ class ChatPanel(QWidget):
 
         # --- Direct navigation intent ---
         nav_match = _NAV_INTENT_RE.match(text)
-        if nav_match:
-            remainder = text[nav_match.end():]
-            dest = _resolve_destination(remainder)
-            if dest:
-                reply = f"Đang dẫn bạn tới {dest}!"
-                self._add_bubble(reply, "assistant")
-                if self._voice_enabled:
-                    self._voice_engine.speak(reply)
-                self.waypoint_command.emit(dest)
-                return
+        remainder = text[nav_match.end():] if nav_match else text
+        dest = _resolve_destination(remainder)
+        if dest:
+            reply = f"Đang dẫn bạn tới {dest}!"
+            self._add_bubble(reply, "assistant")
+            if self._voice_enabled:
+                self._voice_engine.speak(reply)
+            print(f'[DEBUG] ChatPanel id={id(self)} emitting waypoint_command: {dest!r}')
+            self.waypoint_command.emit(dest)
+            return
 
         # --- Navigation question → resolve dest, let AI answer, then confirm ---
         if _NAV_QUESTION_RE.search(text):

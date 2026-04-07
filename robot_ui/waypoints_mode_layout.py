@@ -180,6 +180,7 @@ class WaypointsModeLayout(QMainWindow):
         # ── Voice engine ───────────────────────────────────────────────────
         self._voice = VoiceEngine()
         self._voice.waypoint_command.connect(self.voice_navigate_to_waypoint)
+        self._voice.transcript_ready.connect(self._on_voice_transcript)
         self._voice.start()
         self.log("[Voice] Listening — say \"Đi tới <số>\" to navigate")
         
@@ -409,22 +410,11 @@ class WaypointsModeLayout(QMainWindow):
         right_layout.addWidget(map_container, 2)
 
         # Log panel
-        log_panel = QWidget()
-        log_panel.setObjectName("log-panel")
-        log_layout = QVBoxLayout(log_panel)
+        self.log_panel = QWidget()
+        self.log_panel.setObjectName("log-panel")
+        log_layout = QVBoxLayout(self.log_panel)
         log_layout.setContentsMargins(16, 12, 16, 12)
         log_layout.setSpacing(6)
-
-        log_header = QHBoxLayout()
-        log_title = QLabel("SYSTEM LOG")
-        log_title.setObjectName("log-title")
-        log_title.setFont(QFont("DM Sans", 11))
-        live_badge = QLabel("● LIVE")
-        live_badge.setStyleSheet("color: #00c853; font-size: 11px;")
-        log_header.addWidget(log_title)
-        log_header.addStretch()
-        log_header.addWidget(live_badge)
-        log_layout.addLayout(log_header)
 
         self.log_text = QTextEdit()
         self.log_text.setObjectName("log-text")
@@ -433,17 +423,21 @@ class WaypointsModeLayout(QMainWindow):
         log_layout.addWidget(self.log_text)
 
         self.chat_widget = ChatPanel()
+        print(f'[DEBUG] chat_widget id={id(self.chat_widget)}, connecting waypoint_command')
+        self.chat_widget.waypoint_command.connect(self.voice_navigate_to_waypoint)
+        print(f'[DEBUG] connection done')
         self.chat_widget.hide()
 
+        # ── Panel tab bar ─────────────────────────────────────────────────────
         tab_bar = QWidget()
         tab_bar.setFixedHeight(36)
         tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
         tab_layout = QHBoxLayout(tab_bar)
         tab_layout.setContentsMargins(12, 0, 12, 0)
         tab_layout.setSpacing(0)
-        tab_log  = QPushButton("SYSTEM LOG")
-        tab_chat = QPushButton("AI CHAT")
-        for tab in [tab_log, tab_chat]:
+        self.tab_log  = QPushButton("SYSTEM LOG")
+        self.tab_chat = QPushButton("AI CHAT")
+        for tab in [self.tab_log, self.tab_chat]:
             tab.setObjectName("panel-tab")
             tab.setFont(QFont("DM Sans", 11))
             tab.setCheckable(True)
@@ -453,12 +447,12 @@ class WaypointsModeLayout(QMainWindow):
         self.tab_live_badge = QLabel("● LIVE")
         self.tab_live_badge.setStyleSheet("color: #00c853; font-size: 11px; padding-right: 4px;")
         tab_layout.addWidget(self.tab_live_badge)
-        tab_log.setChecked(True)
-        tab_log.clicked.connect(lambda: (log_panel.show(), self.chat_widget.hide(), self.tab_live_badge.show()))
-        tab_chat.clicked.connect(lambda: (log_panel.hide(), self.chat_widget.show(), self.tab_live_badge.hide(), self.chat_widget.focus_input()))
+        self.tab_log.setChecked(True)
+        self.tab_log.clicked.connect(self._show_log_panel)
+        self.tab_chat.clicked.connect(self._show_chat_panel)
 
         right_layout.addWidget(tab_bar)
-        right_layout.addWidget(log_panel, 1)
+        right_layout.addWidget(self.log_panel, 1)
         right_layout.addWidget(self.chat_widget, 1)
 
         main_layout.addWidget(left_panel, 22)
@@ -480,7 +474,18 @@ class WaypointsModeLayout(QMainWindow):
     def _update_clock(self):
         from datetime import datetime
         self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
-    
+
+    def _show_log_panel(self):
+        self.log_panel.show()
+        self.chat_widget.hide()
+        self.tab_live_badge.show()
+
+    def _show_chat_panel(self):
+        self.log_panel.hide()
+        self.chat_widget.show()
+        self.tab_live_badge.hide()
+        self.chat_widget.focus_input()
+
     def get_current_map_path(self):
         nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
         try:
@@ -586,13 +591,14 @@ class WaypointsModeLayout(QMainWindow):
             
     def navigate_to_waypoint(self, slot_num):
         if str(slot_num) not in self.waypoints:
-            self.log(f'Slot {slot_num} is empty')
+            self.log(f'[NAV] Slot "{slot_num}" not found in waypoints')
             return
         
         if not self.ros_node.nav_server_available:
+            self.log('[NAV] Waiting for Nav2 server...')
             self.ros_node.nav_server_available = self.ros_node.nav_client.wait_for_server(timeout_sec=3.0)
         if not self.ros_node.nav_server_available:
-            self.log('Nav2 server not available')
+            self.log('[NAV] [ERROR] Nav2 server not available')
             return
         
         if self.ros_node.current_goal_handle is not None:
@@ -714,6 +720,7 @@ class WaypointsModeLayout(QMainWindow):
         
     def voice_navigate_to_waypoint(self, slot: str):
         """Called when the VoiceEngine emits waypoint_command(slot)."""
+        print(f'[DEBUG] voice_navigate_to_waypoint CALLED slot={slot!r}')
         self.log(f'[Voice] Command received: Đi tới {slot}')
         print(f'[DEBUG] voice_navigate_to_waypoint called, slot={slot!r}, waypoints keys={list(self.waypoints.keys())}, nav_available={self.ros_node.nav_server_available}')
         if slot not in self.waypoints:
@@ -723,6 +730,13 @@ class WaypointsModeLayout(QMainWindow):
             return
         self._voice.speak(f'Đang đi tới {slot}')
         self.navigate_to_waypoint(slot)
+
+    def _on_voice_transcript(self, text: str):
+        """Forward unrecognized voice input to the AI chat panel."""
+        self.tab_chat.setChecked(True)
+        self._show_chat_panel()
+        self.chat_widget.chat_input.setText(text)
+        self.chat_widget.send_message()
 
     def open_new_waypoint_dialog(self):
         if not self.ros_node.current_pose:

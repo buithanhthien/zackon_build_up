@@ -15,9 +15,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 EDGE_TTS_VOICE  = "vi-VN-HoaiMyNeural"
 EDGE_TTS_RATE   = "+30%"
-ESPEAK_LANG     = "vi-vn-x-central"
-ESPEAK_RATE     = 150
-MIC_DEVICE_NAME = "USB2.0 Device"
+MIC_DEVICE_NAME = "USB2.0 Device"  # matches both "USB2.0 Device" and "USB2.0 Device Mono"
 STT_LANGUAGE    = "vi-VN"
 
 WAKE_TRIGGERS = ["ê mày", "e mày", "e may", "ê dách con", "e dách con", "start", "hey zackon", "alo alo"]
@@ -157,14 +155,9 @@ class VoiceEngine(QObject):
             text = self._tts_queue.get()
             self._stop_flag.clear()
             self._set_state(VoiceState.SPEAKING)
-            if self._edge_voice:
-                audio = _fetch_edge_audio(text, self._edge_voice, EDGE_TTS_RATE)
-                if audio and not self._stop_flag.is_set():
-                    self._play_mp3(audio)
-                elif not audio:
-                    self._speak_espeak(text)
-            else:
-                self._speak_espeak(text)
+            audio = _fetch_edge_audio(text, self._edge_voice, EDGE_TTS_RATE)
+            if audio and not self._stop_flag.is_set():
+                self._play_mp3(audio)
             self._tts_queue.task_done()
             if self._tts_queue.empty() and self._running:
                 self._set_state(VoiceState.IDLE)
@@ -188,29 +181,32 @@ class VoiceEngine(QObject):
             finally:
                 os.unlink(tmp_path)
 
-    def _speak_espeak(self, text: str):
-        try:
-            subprocess.run(
-                ['espeak-ng', '-v', ESPEAK_LANG, '-s', str(ESPEAK_RATE), '-a', '200', '--', text],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                check=True,
-            )
-        except FileNotFoundError:
-            print("[VoiceEngine] espeak-ng not found — sudo apt install espeak-ng")
-        except Exception as e:
-            print(f"[VoiceEngine] espeak error: {e}")
-
     def _listen_loop(self):
         mic_index = _find_mic_index(MIC_DEVICE_NAME)
+        mic = sr.Microphone(device_index=mic_index)
         with _suppress_stderr():
-            mic = sr.Microphone(device_index=mic_index)
-            source = mic.__enter__()
+            try:
+                source = mic.__enter__()
+            except Exception as e:
+                print(f"[VoiceEngine] Microphone open error: {e}")
+                self._running = False
+                return
+        if getattr(source, 'stream', None) is None:
+            print("[VoiceEngine] Microphone stream failed to open")
+            self._running = False
+            return
         try:
             self.recognizer.adjust_for_ambient_noise(source, duration=1.0)
             while self._running:
                 self._process_wake_word(source)
+        except Exception as e:
+            print(f"[VoiceEngine] Listen loop error: {e}")
         finally:
-            mic.__exit__(None, None, None)
+            try:
+                mic.__exit__(None, None, None)
+            except Exception:
+                pass
+            self._running = False
 
     def _process_wake_word(self, source):
         try:
@@ -252,6 +248,7 @@ class VoiceEngine(QObject):
                 self._set_state(VoiceState.IDLE)
             else:
                 self.transcript_ready.emit(text)
+                self._set_state(VoiceState.IDLE)
         except (sr.UnknownValueError, sr.WaitTimeoutError):
             self._set_state(VoiceState.IDLE)
         except Exception as e:

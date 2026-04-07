@@ -178,10 +178,11 @@ SYSTEM_PROMPT = (
 
     "## Chế độ Waypoints\n"
     "- Waypoint là các vị trí đã lưu trên bản đồ (lưu trong waypoints.json)\n"
-    "- Để điều hướng: nhấn nút waypoint trên giao diện HOẶC dùng lệnh giọng nói\n"
-    "- Lệnh giọng nói hợp lệ: 'Đi tới <số>', 'Tới vị trí <số>', 'Đi đến số <số>'\n"
-    "  Ví dụ: 'Đi tới 3', 'Tới vị trí 5', 'Đi đến số hai'\n"
-    "- Chỉ hoạt động khi đang ở Waypoints Mode\n\n"
+    "- Để điều hướng: nhấn nút waypoint trên giao diện HOẶC dùng lệnh giọng nói hoặc chat\n"
+    "- Lệnh điều hướng hợp lệ: 'Đi tới <tên>', 'Tới <tên>', 'Dẫn tôi đến <tên>'\n"
+    "  Ví dụ: 'Đi tới Cua phong X5.4', 'Tới phòng hội thảo', 'Đi đến X5.11'\n"
+    "- Có thể dùng tên đầy đủ hoặc tên viết tắt (aliases) của waypoint\n"
+    "- Lệnh điều hướng hoạt động từ cả màn hình chính lẫn Waypoints Mode\n\n"
 
     "## Chế độ Tracking\n"
     "- Robot dùng camera + YOLOv8 để phát hiện và theo dõi người\n"
@@ -405,6 +406,8 @@ class ChatPanel(QWidget):
 
         nearest_id, nearest_dist = None, float('inf')
         for wp_id, wp in waypoints.items():
+            if 'x' not in wp or 'y' not in wp:
+                continue
             d = math.hypot(x - wp['x'], y - wp['y'])
             if d < nearest_dist:
                 nearest_dist, nearest_id = d, wp_id

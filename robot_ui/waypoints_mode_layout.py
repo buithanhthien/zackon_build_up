@@ -519,7 +519,7 @@ class WaypointsModeLayout(QMainWindow):
                         return maps_dir + map_file
         except Exception:
             pass
-        return f'{SOURCE_PATH}/src/view_robot/maps/X5_19032026.yaml'
+        return f'{SOURCE_PATH}/src/view_robot/maps/X5_08042026.yaml'
 
     def load_map_yaml(self, yaml_path):
         data = {}

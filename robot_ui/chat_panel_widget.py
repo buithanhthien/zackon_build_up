@@ -2,6 +2,7 @@
 import os
 import re
 import json
+import math
 from openai import OpenAI
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QLineEdit, QScrollArea, QSizePolicy)
@@ -12,35 +13,44 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from voice_engine import VoiceEngine, VoiceState
 
-
-import math
-
+_DIR = os.path.dirname(os.path.abspath(__file__))
 _LOCATION_PATTERNS = re.compile(
     r'(tôi đang ở đâu|tôi đang ở dâu|robot đang ở đâu|vị trí (hiện tại|của tôi|robot))',
     re.IGNORECASE
 )
+_ACTION_TAG_RE = re.compile(r'<(STATUS_CHECK|HELP|DOCK|LOCALIZE)>')
+_NAVIGATE_TAG_RE = re.compile(r'<NAVIGATE:([^>]+)>')
+
+_WAYPOINTS = None
+
+def _load_waypoints():
+    global _WAYPOINTS
+    if _WAYPOINTS is None:
+        try:
+            with open(os.path.join(_DIR, 'waypoints.json'), encoding='utf-8') as f:
+                _WAYPOINTS = json.load(f)
+        except Exception:
+            _WAYPOINTS = {}
+    return _WAYPOINTS
 
 
 def _load_env():
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-    if not os.path.exists(env_path):
-        return
-    with open(env_path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                k, v = line.split('=', 1)
-                os.environ.setdefault(k.strip(), v.strip())
+    env_path = os.path.join(os.path.dirname(_DIR), '.env')
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    k, v = line.split('=', 1)
+                    os.environ.setdefault(k.strip(), v.strip())
 
 _load_env()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 
 def _load_iuh_database() -> str:
-    """Load iuh_database.json and convert to a concise text block for the system prompt."""
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'iuh_database.json')
     try:
-        with open(db_path, encoding='utf-8') as f:
+        with open(os.path.join(_DIR, 'iuh_database.json'), encoding='utf-8') as f:
             db = json.load(f)
     except Exception:
         return "(Không tải được dữ liệu IUH)"
@@ -57,52 +67,60 @@ def _load_iuh_database() -> str:
         f"Cơ sở vật chất: {t.get('co_so_vat_chat', '')}",
         "Thành tựu nổi bật: " + "; ".join(t.get('thanh_tuu', [])),
         "",
+        "=== Cơ sở & Phân hiệu ===",
     ]
-
-    # Campus locations
-    lines.append("=== Cơ sở & Phân hiệu ===")
-    for key, cs in db.get('co_so', {}).items():
+    for cs in db.get('co_so', {}).values():
         lines.append(f"  - {cs.get('dia_chi', '')}")
-    lines.append("")
-
-    # Contact
+    
     lh = db.get('lien_he', {})
-    lines.append("=== Liên hệ ===")
-    lines.append(f"  Phòng Đào tạo: {lh.get('phong_dao_tao', '')}")
-    lines.append(f"  Tuyển sinh: {lh.get('tuyen_sinh', '')}")
-    lines.append(f"  Portal SV: {lh.get('portal_sinh_vien', '')}")
-    lines.append("")
+    lines.extend([
+        "",
+        "=== Liên hệ ===",
+        f"  Phòng Đào tạo: {lh.get('phong_dao_tao', '')}",
+        f"  Tuyển sinh: {lh.get('tuyen_sinh', '')}",
+        f"  Portal SV: {lh.get('portal_sinh_vien', '')}",
+        "",
+    ])
 
-    # FEET
     feet = db.get('khoa_cong_nghe_dien', {})
     lines.append(f"=== {feet.get('ten', '')} ===")
     lines.append(f"  Website: {feet.get('website', '')}")
-    bl_feet = feet.get('ban_lanh_dao', {})
-    lines.append(f"  Trưởng khoa: {bl_feet.get('truong_khoa', '')}")
-    lines.append("  Phó trưởng khoa: " + ", ".join(bl_feet.get('pho_truong_khoa', [])))
+    bl = feet.get('ban_lanh_dao', {})
+    lines.append(f"  Trưởng khoa: {bl.get('truong_khoa', '')}")
+    lines.append("  Phó trưởng khoa: " + ", ".join(bl.get('pho_truong_khoa', [])))
     lines.append("  Chương trình đào tạo: " + ", ".join(feet.get('chuong_trinh_dao_tao', [])))
     for bm in feet.get('bo_mon', []):
-        gv_list = ", ".join(bm.get('giang_vien', []))
-        truong = bm.get('truong_bo_mon', '')
-        truong_str = f" | Trưởng Bộ môn: {truong}" if truong else ""
-        lines.append(f"  Bộ môn {bm['ten']}{truong_str} | GV: {gv_list}")
-    lines.append("")
+        truong = f" | Trưởng Bộ môn: {bm['truong_bo_mon']}" if bm.get('truong_bo_mon') else ""
+        lines.append(f"  Bộ môn {bm['ten']}{truong} | GV: {', '.join(bm.get('giang_vien', []))}")
 
-    # ZACKON
     zk = db.get('robot_zackon', {})
-    lines.append("=== Robot ZACKON ===")
-    lines.append(f"  {zk.get('mo_ta', '')}")
-    lines.append("  Công nghệ: " + ", ".join(zk.get('cong_nghe', [])))
-    lines.append(f"  {zk.get('lien_quan_den_khoa', '')}")
-
+    lines.extend([
+        "",
+        "=== Robot ZACKON ===",
+        f"  {zk.get('mo_ta', '')}",
+        "  Công nghệ: " + ", ".join(zk.get('cong_nghe', [])),
+        f"  {zk.get('lien_quan_den_khoa', '')}",
+    ])
     return "\n".join(lines)
 
 
-_IUH_DATABASE_TEXT = _load_iuh_database()
-GROQ_MODEL     = "gpt-5.4-nano"
+def _load_waypoint_keys() -> str:
+    wps = _load_waypoints()
+    if not wps:
+        return "(Không tải được danh sách địa điểm)"
+    lines = []
+    for key, data in wps.items():
+        aliases = data.get('aliases', []) if isinstance(data, dict) else []
+        alias_str = f" (aliases: {', '.join(aliases)})" if aliases else ""
+        lines.append(f"  - {key}{alias_str}")
+    return "\n".join(lines)
+
+OPENAI_MODEL = "gpt-5.4-mini"
 SYSTEM_PROMPT = (
     "Bạn là ZACKON, AI trợ lý tích hợp trong robot ROS 2 của hệ thống Zackon.\n"
-    "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn và thân thiện.\n\n"
+    "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn và thân thiện.\n"
+    "Không sử dụng dấu ngoặc kép (\") trong câu trả lời.\n\n"
+    "Hãy trả lời ngắn gọn trong 2 đến 3 câu"
 
     "## Kiến trúc hệ thống\n"
     "Giao diện chính (startup_layout) có thanh bên trái với các nút:\n"
@@ -123,11 +141,13 @@ SYSTEM_PROMPT = (
     "Bước 4: Chọn chế độ vận hành phù hợp\n\n"
 
     "## Chế độ Waypoints\n"
-    "- Waypoint là các vị trí đã lưu trên bản đồ (lưu trong waypoints.json)\n"
-    "- Để điều hướng: nhấn nút waypoint trên giao diện HOẶC dùng lệnh giọng nói\n"
-    "- Lệnh giọng nói hợp lệ: 'Đi tới <số>', 'Tới vị trí <số>', 'Đi đến số <số>'\n"
-    "  Ví dụ: 'Đi tới 3', 'Tới vị trí 5', 'Đi đến số hai'\n"
-    "- Chỉ hoạt động khi đang ở Waypoints Mode\n\n"
+    "- Địa điểm (waypoint) là các vị trí đã lưu trên bản đồ (lưu trong waypoints.json)\n"
+    "- Khi người dùng yêu cầu đi đến một địa điểm: NGAY LẬP TỨC thực hiện, KHÔNG hỏi thêm bất kỳ điều gì\n"
+    "- Hệ thống tự động chuyển sang Waypoints Mode nếu cần — người dùng không cần làm gì thêm\n"
+    "- Lệnh điều hướng hợp lệ: 'Đi tới <tên>', 'Tới <tên>', 'Dẫn tôi đến <tên>'\n"
+    "  Ví dụ: 'Đi tới Cua phong X5.4', 'Tới phòng hội thảo', 'Đi đến X5.11'\n"
+    "- Có thể dùng tên đầy đủ hoặc tên viết tắt (aliases) của địa điểm\n"
+    "- Khi nói về các vị trí đã lưu, LUÔN dùng từ 'địa điểm' thay vì 'waypoint'\n\n"
 
     "## Chế độ Tracking\n"
     "- Robot dùng camera + YOLOv8 để phát hiện và theo dõi người\n"
@@ -136,29 +156,28 @@ SYSTEM_PROMPT = (
     "## Quy tắc hội thoại\n"
     "- Khi hướng dẫn thao tác: chỉ hướng dẫn TỪNG BƯỚC MỘT, chờ xác nhận rồi mới tiếp\n"
     "- Không liệt kê nhiều bước cùng lúc\n"
-    "- Nếu người dùng hỏi về waypoint/điểm đến: luôn nhắc họ phải đang ở chế độ 'Điểm đến'\n\n"
+    "- Khi người dùng muốn đi đến một địa điểm: THỰC HIỆN NGAY, không hỏi xác nhận, không hỏi về chế độ hiện tại\n\n"
 
     "## Thẻ hành động\n"
     "Chỉ dùng khi cần thực thi trực tiếp trên robot. Tối đa một thẻ mỗi phản hồi. Không dùng khi trò chuyện thông thường.\n"
     "- <STATUS_CHECK>: kiểm tra trạng thái STM32 và LiDAR\n"
     "- <LOCALIZE>: chạy lại định vị (Định vị lại)\n"
     "- <DOCK>: gửi robot về trạm sạc\n"
-    "- <NAVIGATE>: bắt đầu điều hướng (dùng kèm Waypoints Mode)\n"
+    "- <NAVIGATE:key>: điều hướng đến địa điểm, trong đó key là tên chính xác của địa điểm trong waypoints.json (ví dụ: <NAVIGATE:x5.4>, <NAVIGATE:X5.11>). Chỉ dùng key có trong danh sách địa điểm. QUAN TRỌNG: Luôn kèm theo câu trả lời tự nhiên TRƯỚC thẻ, ví dụ: 'Đang dẫn bạn tới phòng X5.4! <NAVIGATE:x5.4>'\n"
     "- <HELP>: hiển thị hướng dẫn sử dụng\n"
 
+    "## Danh sách địa điểm đã lưu (dùng key chính xác trong <NAVIGATE:key>)\n"
+    + _load_waypoint_keys() + "\n\n"
+
     "## Thông tin về trường IUH (từ cơ sở dữ liệu)\n"
-    + _IUH_DATABASE_TEXT + "\n"
-    
+    + _load_iuh_database() + "\n"
 )
 
 
 class _AIChatWorker(QObject):
-    chunk_ready    = pyqtSignal(str)
     response_ready = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
     finished       = pyqtSignal()
-
-    _SENTENCE_END = re.compile(r'(?<=[.?!。？！])\s+')
 
     def __init__(self, history):
         super().__init__()
@@ -168,25 +187,17 @@ class _AIChatWorker(QObject):
         try:
             client = OpenAI(api_key=OPENAI_API_KEY)
             stream = client.chat.completions.create(
-                model=GROQ_MODEL,
+                model=OPENAI_MODEL,
                 messages=self.history,
                 max_completion_tokens=1000,
                 temperature=0.7,
                 stream=True,
             )
-            full, buffer = [], ""
+            full = []
             for chunk in stream:
                 token = (chunk.choices[0].delta.content or "") if chunk.choices else ""
-                if not token:
-                    continue
-                full.append(token)
-                buffer += token
-                parts = self._SENTENCE_END.split(buffer)
-                while len(parts) > 1:
-                    self.chunk_ready.emit(parts.pop(0).strip())
-                    buffer = " ".join(parts)
-            if buffer.strip():
-                self.chunk_ready.emit(buffer.strip())
+                if token:
+                    full.append(token)
             self.response_ready.emit("".join(full).strip())
         except Exception as e:
             self.error_occurred.emit(str(e)[:200])
@@ -217,6 +228,7 @@ class _ChatBubble(QWidget):
 
 class ChatPanel(QWidget):
     action_tag = pyqtSignal(str)
+    waypoint_command = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -227,8 +239,9 @@ class ChatPanel(QWidget):
         self._voice_engine = VoiceEngine()
         self._voice_engine.state_changed.connect(self._on_voice_state_changed)
         self._voice_engine.transcript_ready.connect(self._on_voice_transcript)
-        self.waypoint_command = self._voice_engine.waypoint_command
+        self._voice_engine.waypoint_command.connect(self.waypoint_command.emit)
         self._pose_provider = None
+        self._pending_response = None
 
         self._build_ui()
         self._add_bubble(
@@ -262,7 +275,7 @@ class ChatPanel(QWidget):
         self.typing_label.hide()
         layout.addWidget(self.typing_label)
 
-        self.voice_status_label = QLabel(VoiceState.IDLE)
+        self.voice_status_label = QLabel("")
         self.voice_status_label.setFont(QFont("Fira Code", 11, QFont.Weight.Bold))
         self.voice_status_label.setStyleSheet("color:#6b7a99;padding:0 20px;background-color:#080a0d;")
         self.voice_status_label.hide()
@@ -274,11 +287,12 @@ class ChatPanel(QWidget):
         input_layout.setContentsMargins(16, 10, 16, 10)
         input_layout.setSpacing(10)
 
-        self.voice_btn = QPushButton("[MIC]")
+        self.voice_btn = QPushButton("🎤")
         self.voice_btn.setObjectName("voice-btn")
-        self.voice_btn.setCheckable(True)
+        self.voice_btn.setCheckable(False)
         self.voice_btn.setFixedSize(44, 44)
-        self.voice_btn.clicked.connect(self._toggle_voice)
+        self.voice_btn.setToolTip("Click to speak")
+        self.voice_btn.clicked.connect(self._on_listen_btn_clicked)
 
         self.chat_input = QLineEdit()
         self.chat_input.setObjectName("chat-input")
@@ -341,30 +355,18 @@ class ChatPanel(QWidget):
             return None
         x, y = pose.position.x, pose.position.y
 
-        wp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'waypoints.json')
-        try:
-            with open(wp_path, encoding='utf-8') as f:
-                waypoints = json.load(f)
-        except Exception:
-            waypoints = {}
-
+        waypoints = _load_waypoints()
         nearest_id, nearest_dist = None, float('inf')
         for wp_id, wp in waypoints.items():
-            d = math.hypot(x - wp['x'], y - wp['y'])
-            if d < nearest_dist:
-                nearest_dist, nearest_id = d, wp_id
+            if 'x' in wp and 'y' in wp:
+                d = math.hypot(x - wp['x'], y - wp['y'])
+                if d < nearest_dist:
+                    nearest_dist, nearest_id = d, wp_id
 
-        NEARBY_THRESHOLD_M = 2.0
-
-        if nearest_id is not None and nearest_dist <= NEARBY_THRESHOLD_M:
-            return (
-                f"Robot đang ở gần vị trí số {nearest_id} (cách {nearest_dist:.1f} m)."
-            )
-        elif nearest_id is not None:
-            return (
-                f"Robot đang ở x={x:.2f} m, y={y:.2f} m. "
-                f"Điểm đến gần nhất là vị trí số {nearest_id} nhưng còn cách khá xa ({nearest_dist:.1f} m)."
-            )
+        if nearest_id and nearest_dist <= 2.0:
+            return f"Robot đang ở gần vị trí số {nearest_id} (cách {nearest_dist:.1f} m)."
+        elif nearest_id:
+            return f"Robot đang ở x={x:.2f} m, y={y:.2f} m. Điểm đến gần nhất là vị trí số {nearest_id} nhưng còn cách khá xa ({nearest_dist:.1f} m)."
         return f"Vị trí hiện tại của robot: x={x:.2f} m, y={y:.2f} m. Chưa có waypoint nào được lưu."
 
     def send_message(self):
@@ -373,6 +375,9 @@ class ChatPanel(QWidget):
             return
         self.chat_input.clear()
         self._add_bubble(text, "user")
+        
+        print(f"[CHAT] User: {text}")
+
         self._chat_history.append({"role": "user", "content": text})
 
         history = list(self._chat_history)
@@ -393,7 +398,6 @@ class ChatPanel(QWidget):
         self._ai_thread = QThread()
         self._ai_worker.moveToThread(self._ai_thread)
         self._ai_thread.started.connect(self._ai_worker.run)
-        self._ai_worker.chunk_ready.connect(self._on_chunk)
         self._ai_worker.response_ready.connect(self._on_response)
         self._ai_worker.error_occurred.connect(self._on_error)
         self._ai_worker.finished.connect(self._ai_thread.quit)
@@ -402,43 +406,76 @@ class ChatPanel(QWidget):
 
     @staticmethod
     def _strip_tags(reply):
-        pattern = r'<(STATUS_CHECK|HELP|NAVIGATE|DOCK|LOCALIZE)>'
-        tags = re.findall(pattern, reply)
-        clean = re.sub(pattern, '', reply).strip()
-        return clean, tags
-
-    def _on_chunk(self, sentence: str):
-        clean, _ = self._strip_tags(sentence)
-        if clean and self._voice_enabled:
-            self._voice_engine.speak(clean)
+        tags = _ACTION_TAG_RE.findall(reply)
+        nav_keys = _NAVIGATE_TAG_RE.findall(reply)
+        clean = _ACTION_TAG_RE.sub('', reply)
+        clean = _NAVIGATE_TAG_RE.sub('', clean).strip()
+        return clean, tags, nav_keys
 
     def _on_response(self, reply):
-        clean, tags = self._strip_tags(reply)
+        clean, tags, nav_keys = self._strip_tags(reply)
         self._chat_history.append({"role": "assistant", "content": clean})
+        
+        print(f"[CHAT] Assistant: {clean}")
+        if nav_keys:
+            print(f"[CHAT] Navigation triggered: {nav_keys}")
+        
+        # Show response immediately if voice disabled, or wait for TTS to start
+        if self._voice_enabled:
+            self._pending_response = (clean, tags, nav_keys)
+            self._voice_engine.speak(clean)
+        else:
+            self._show_response(clean, tags, nav_keys)
+
+    def _show_response(self, clean, tags, nav_keys):
         self._add_bubble(clean, "assistant")
+        
+        if nav_keys and self._voice_enabled:
+            QTimer.singleShot(100, lambda: self._emit_waypoint_after_speech(nav_keys))
+        elif nav_keys:
+            for key in nav_keys:
+                self.waypoint_command.emit(key.strip())
+        
         for tag in tags:
             self.action_tag.emit(tag)
-
-    def _on_error(self, error):
-        self._add_bubble(f"[ERROR] {error}", "assistant")
-
-    def _on_done(self):
+        
+        # Hide typing animation after showing response
         self.typing_label.hide()
         self._typing_timer.stop()
         self.send_btn.setEnabled(True)
         self.chat_input.setEnabled(True)
         self.chat_input.setFocus()
 
-    def _toggle_voice(self):
-        self._voice_enabled = self.voice_btn.isChecked()
-        if self._voice_enabled:
-            self.voice_status_label.show()
-            self._voice_engine.start()
+    def _emit_waypoint_after_speech(self, nav_keys):
+        if self._voice_engine._tts_queue.empty():
+            for key in nav_keys:
+                self.waypoint_command.emit(key.strip())
         else:
-            self.voice_status_label.hide()
-            self._voice_engine.stop()
+            QTimer.singleShot(500, lambda: self._emit_waypoint_after_speech(nav_keys))
+
+    def _on_error(self, error):
+        self._add_bubble(f"[ERROR] {error}", "assistant")
+        self.typing_label.hide()
+        self._typing_timer.stop()
+        self.send_btn.setEnabled(True)
+        self.chat_input.setEnabled(True)
+
+    def _on_done(self):
+        pass
+
+    def _on_listen_btn_clicked(self):
+        self._voice_enabled = True
+        self.voice_status_label.show()
+        self._voice_engine.listen_once()
 
     def _on_voice_state_changed(self, state):
+        # Show response when TTS starts speaking
+        if "SPEAKING" in state and self._pending_response:
+            clean, tags, nav_keys = self._pending_response
+            self._pending_response = None
+            self._show_response(clean, tags, nav_keys)
+        
+        self.voice_status_label.show()
         self.voice_status_label.setText(state)
         if "LISTENING" in state:
             self.voice_status_label.setStyleSheet("color:#00e5ff;padding:0 20px;background-color:#080a0d;")
@@ -468,4 +505,4 @@ class ChatPanel(QWidget):
 
     def cleanup(self):
         if self._voice_enabled:
-            self._voice_engine.stop()
+            self._voice_engine.stop_speaking()

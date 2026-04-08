@@ -312,7 +312,7 @@ class TrackingModeUI(QMainWindow):
                         return f'{SOURCE_PATH}/src/view_robot/maps/{os.path.basename(path)}'
         except Exception:
             pass
-        return f'{SOURCE_PATH}/src/view_robot/maps/X5_19032026.yaml'
+        return f'{SOURCE_PATH}/src/view_robot/maps/X5_08042026.yaml'
 
     def load_map_yaml(self, yaml_path):
         data = {}

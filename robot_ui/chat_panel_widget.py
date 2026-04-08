@@ -185,11 +185,11 @@ def _load_iuh_database() -> str:
 
 
 _IUH_DATABASE_TEXT = _load_iuh_database()
-GROQ_MODEL     = "gpt-5.4-nano"
+OPENAI_MODEL     = "gpt-5.4-mini"
 SYSTEM_PROMPT = (
     "Bạn là ZACKON, AI trợ lý tích hợp trong robot ROS 2 của hệ thống Zackon.\n"
     "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn và thân thiện.\n\n"
-    "Hãy trả lời ngắn gọn trong 2 đến 3 câu"
+    "Hãy trả lời ngắn gọn trong 2 đến 4 câu"
 
     "## Kiến trúc hệ thống\n"
     "Giao diện chính (startup_layout) có thanh bên trái với các nút:\n"
@@ -256,7 +256,7 @@ class _AIChatWorker(QObject):
         try:
             client = OpenAI(api_key=OPENAI_API_KEY)
             stream = client.chat.completions.create(
-                model=GROQ_MODEL,
+                model=OPENAI_MODEL,
                 messages=self.history,
                 max_completion_tokens=1000,
                 temperature=0.7,

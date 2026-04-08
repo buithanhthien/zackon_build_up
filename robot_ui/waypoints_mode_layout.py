@@ -17,7 +17,6 @@ from nav2_msgs.action import NavigateToPose
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
-from voice_engine import VoiceEngine
 from chat_panel_widget import ChatPanel
 
 
@@ -177,12 +176,12 @@ class WaypointsModeLayout(QMainWindow):
         self.current_sequence_index = 0
         self.init_ui()
 
-        # ── Voice engine ───────────────────────────────────────────────────
-        self._voice = VoiceEngine()
-        self._voice.waypoint_command.connect(self.voice_navigate_to_waypoint)
-        self._voice.transcript_ready.connect(self._on_voice_transcript)
-        self._voice.start()
+        # ── Voice engine — use ChatPanel's internal engine (same as startup_layout) ──
+        self.chat_widget._voice_engine.waypoint_command.connect(self.voice_navigate_to_waypoint)
         self.log("[Voice] Listening — say \"Đi tới <số>\" to navigate")
+
+        # Auto-start voice after event loop is ready (avoids JACK/heap init race)
+        QTimer.singleShot(500, self._auto_start_voice)
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.spin_and_update)
@@ -281,6 +280,25 @@ class WaypointsModeLayout(QMainWindow):
             QLabel#header-title {
                 color: #e8ecf0;
                 font-size: 15px;
+            }
+
+            /* ── Panel tab buttons ── */
+            QPushButton#panel-tab {
+                background-color: transparent;
+                color: #6b7a99;
+                border: none;
+                border-bottom: 2px solid transparent;
+                border-radius: 0px;
+                padding: 6px 16px;
+                font-size: 11px;
+                letter-spacing: 2px;
+            }
+            QPushButton#panel-tab:checked {
+                color: #00e5ff;
+                border-bottom: 2px solid #00e5ff;
+            }
+            QPushButton#panel-tab:hover {
+                color: #e8ecf0;
             }
         """
         self.setStyleSheet(STYLESHEET)
@@ -423,9 +441,7 @@ class WaypointsModeLayout(QMainWindow):
         log_layout.addWidget(self.log_text)
 
         self.chat_widget = ChatPanel()
-        print(f'[DEBUG] chat_widget id={id(self.chat_widget)}, connecting waypoint_command')
         self.chat_widget.waypoint_command.connect(self.voice_navigate_to_waypoint)
-        print(f'[DEBUG] connection done')
         self.chat_widget.hide()
 
         # ── Panel tab bar ─────────────────────────────────────────────────────
@@ -444,9 +460,10 @@ class WaypointsModeLayout(QMainWindow):
             tab.setAutoExclusive(True)
             tab_layout.addWidget(tab)
         tab_layout.addStretch()
-        self.tab_live_badge = QLabel("● LIVE")
-        self.tab_live_badge.setStyleSheet("color: #00c853; font-size: 11px; padding-right: 4px;")
-        tab_layout.addWidget(self.tab_live_badge)
+        self.live_badge = QLabel("● LIVE")
+        self.live_badge.setStyleSheet("color: #00c853; font-size: 11px; padding-right: 4px;")
+        self.live_badge.setFont(QFont("DM Sans", 11))
+        tab_layout.addWidget(self.live_badge)
         self.tab_log.setChecked(True)
         self.tab_log.clicked.connect(self._show_log_panel)
         self.tab_chat.clicked.connect(self._show_chat_panel)
@@ -471,6 +488,10 @@ class WaypointsModeLayout(QMainWindow):
             for btn in self.waypoint_btns:
                 btn.setEnabled(False)
 
+    def _auto_start_voice(self):
+        self.chat_widget.voice_btn.setChecked(True)
+        self.chat_widget._toggle_voice()
+
     def _update_clock(self):
         from datetime import datetime
         self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
@@ -478,12 +499,12 @@ class WaypointsModeLayout(QMainWindow):
     def _show_log_panel(self):
         self.log_panel.show()
         self.chat_widget.hide()
-        self.tab_live_badge.show()
+        self.live_badge.show()
 
     def _show_chat_panel(self):
         self.log_panel.hide()
         self.chat_widget.show()
-        self.tab_live_badge.hide()
+        self.live_badge.hide()
         self.chat_widget.focus_input()
 
     def get_current_map_path(self):
@@ -719,16 +740,13 @@ class WaypointsModeLayout(QMainWindow):
         )
         
     def voice_navigate_to_waypoint(self, slot: str):
-        """Called when the VoiceEngine emits waypoint_command(slot)."""
-        print(f'[DEBUG] voice_navigate_to_waypoint CALLED slot={slot!r}')
         self.log(f'[Voice] Command received: Đi tới {slot}')
-        print(f'[DEBUG] voice_navigate_to_waypoint called, slot={slot!r}, waypoints keys={list(self.waypoints.keys())}, nav_available={self.ros_node.nav_server_available}')
         if slot not in self.waypoints:
             msg = f'Vị trí {slot} chưa được lưu'
             self.log(f'[Voice] {msg}')
-            self._voice.speak(msg)
+            self.chat_widget._voice_engine.speak(msg)
             return
-        self._voice.speak(f'Đang đi tới {slot}')
+        self.chat_widget._voice_engine.speak(f'Đang đi tới {slot}')
         self.navigate_to_waypoint(slot)
 
     def _on_voice_transcript(self, text: str):
@@ -769,7 +787,6 @@ class WaypointsModeLayout(QMainWindow):
         self.close()
     
     def closeEvent(self, event):
-        self._voice.stop()
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
         if self.ros_node:

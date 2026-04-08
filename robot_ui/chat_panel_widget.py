@@ -27,8 +27,6 @@ _NAV_INTENT_RE = re.compile(
     r'đi (?:tới|đến)|tới|đến)\s+',
     re.IGNORECASE
 )
-
-# Phrases that ask HOW to get somewhere (triggers confirmation flow)
 _NAV_QUESTION_RE = re.compile(
     r'(?:làm thế nào|làm sao|đường đến|cách đến|cách tới|hướng dẫn.*đến|hướng dẫn.*tới)',
     re.IGNORECASE
@@ -40,8 +38,10 @@ _DENY_RE    = re.compile(r'^(không|khong|thôi|thoi|no|nope)$', re.IGNORECASE)
 
 
 def _normalize(text: str) -> str:
-    """Lowercase + remove Vietnamese diacritics for fuzzy comparison."""
+    """Lowercase + remove Vietnamese diacritics + collapse room numbers (x5.12 → x512)."""
     text = text.lower()
+    # collapse dotted room numbers: x5.12 → x512, x5.4 → x54
+    text = re.sub(r'([a-z])(\d+)\.(\d+)', r'\1\2\3', text)
     nfkd = unicodedata.normalize('NFKD', text)
     return ''.join(c for c in nfkd if not unicodedata.combining(c))
 
@@ -55,6 +55,12 @@ def _token_overlap(query: str, candidate: str) -> float:
     # exact token match
     exact = len(q_tokens & c_tokens) / len(q_tokens)
     if exact >= 0.5:
+        # boost if numeric parts also match (e.g. "x512" vs "x5.12")
+        q_nums = set(re.sub(r'[^0-9]', '', t) for t in q_tokens if re.search(r'\d', t))
+        c_nums = set(re.sub(r'[^0-9]', '', t) for t in c_tokens if re.search(r'\d', t))
+        if q_nums and c_nums:
+            num_score = len(q_nums & c_nums) / len(q_nums)
+            return exact + num_score * 0.5  # numeric match adds up to 0.5 bonus
         return exact
     # substring: count query tokens that appear inside any candidate token
     substr = sum(1 for qt in q_tokens if any(qt in ct or ct in qt for ct in c_tokens))

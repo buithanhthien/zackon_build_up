@@ -15,7 +15,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 EDGE_TTS_VOICE  = "vi-VN-HoaiMyNeural"
 EDGE_TTS_RATE   = "+30%"
-MIC_DEVICE_NAME = "USB2.0 Device"  # matches both "USB2.0 Device" and "USB2.0 Device Mono"
+MIC_DEVICE_PRIORITY = ["SN6140 Analog", "USB2.0 Device", "default"]  # try in order
 STT_LANGUAGE    = "vi-VN"
 
 WAKE_TRIGGERS = ["ê mày", "e mày", "e may", "ê dách con", "e dách con", "start", "hey zackon", "alo alo"]
@@ -52,13 +52,14 @@ class VoiceState:
     SPEAKING  = "[<<] SPEAKING"
 
 
-def _find_mic_index(name: str | None) -> int | None:
-    if name is None:
-        return None
-    return next(
-        (i for i, n in enumerate(sr.Microphone.list_microphone_names()) if name.lower() in n.lower()),
-        None
-    )
+def _find_mic_index(names: list[str]) -> int | None:
+    """Find first available mic from priority list."""
+    available = sr.Microphone.list_microphone_names()
+    for name in names:
+        idx = next((i for i, n in enumerate(available) if name.lower() in n.lower()), None)
+        if idx is not None:
+            return idx
+    return None  # fallback to default
 
 
 @contextmanager
@@ -182,7 +183,10 @@ class VoiceEngine(QObject):
                 os.unlink(tmp_path)
 
     def _listen_loop(self):
-        mic_index = _find_mic_index(MIC_DEVICE_NAME)
+        mic_index = _find_mic_index(MIC_DEVICE_PRIORITY)
+        available = sr.Microphone.list_microphone_names()
+        name = available[mic_index] if mic_index is not None else "default"
+        print(f"[VoiceEngine] Using microphone: [{mic_index}] {name}")
         mic = sr.Microphone(device_index=mic_index)
         with _suppress_stderr():
             try:

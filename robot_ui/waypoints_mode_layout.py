@@ -434,6 +434,11 @@ class WaypointsModeLayout(QMainWindow):
         log_layout.setContentsMargins(16, 12, 16, 12)
         log_layout.setSpacing(6)
 
+        log_header = QLabel("SYSTEM LOG")
+        log_header.setFont(QFont("DM Sans", 11, QFont.Weight.Bold))
+        log_header.setStyleSheet("color: #00c853; padding: 4px 0;")
+        log_layout.addWidget(log_header)
+
         self.log_text = QTextEdit()
         self.log_text.setObjectName("log-text")
         self.log_text.setReadOnly(True)
@@ -442,35 +447,16 @@ class WaypointsModeLayout(QMainWindow):
 
         self.chat_widget = ChatPanel()
         self.chat_widget.waypoint_command.connect(self.voice_navigate_to_waypoint)
-        self.chat_widget.hide()
 
-        # ── Panel tab bar ─────────────────────────────────────────────────────
-        tab_bar = QWidget()
-        tab_bar.setFixedHeight(36)
-        tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
-        tab_layout = QHBoxLayout(tab_bar)
-        tab_layout.setContentsMargins(12, 0, 12, 0)
-        tab_layout.setSpacing(0)
-        self.tab_log  = QPushButton("SYSTEM LOG")
-        self.tab_chat = QPushButton("AI CHAT")
-        for tab in [self.tab_log, self.tab_chat]:
-            tab.setObjectName("panel-tab")
-            tab.setFont(QFont("DM Sans", 11))
-            tab.setCheckable(True)
-            tab.setAutoExclusive(True)
-            tab_layout.addWidget(tab)
-        tab_layout.addStretch()
-        self.live_badge = QLabel("● LIVE")
-        self.live_badge.setStyleSheet("color: #00c853; font-size: 11px; padding-right: 4px;")
-        self.live_badge.setFont(QFont("DM Sans", 11))
-        tab_layout.addWidget(self.live_badge)
-        self.tab_log.setChecked(True)
-        self.tab_log.clicked.connect(self._show_log_panel)
-        self.tab_chat.clicked.connect(self._show_chat_panel)
+        # Horizontal splitter for log and chat
+        panels_splitter = QWidget()
+        panels_layout = QHBoxLayout(panels_splitter)
+        panels_layout.setContentsMargins(0, 0, 0, 0)
+        panels_layout.setSpacing(8)
+        panels_layout.addWidget(self.log_panel, 1)
+        panels_layout.addWidget(self.chat_widget, 1)
 
-        right_layout.addWidget(tab_bar)
-        right_layout.addWidget(self.log_panel, 1)
-        right_layout.addWidget(self.chat_widget, 1)
+        right_layout.addWidget(panels_splitter, 1)
 
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
@@ -489,22 +475,11 @@ class WaypointsModeLayout(QMainWindow):
                 btn.setEnabled(False)
 
     def _auto_start_voice(self):
-        self.chat_widget._toggle_voice()
+        self.chat_widget._voice_enabled = True
 
     def _update_clock(self):
         from datetime import datetime
         self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
-
-    def _show_log_panel(self):
-        self.log_panel.show()
-        self.chat_widget.hide()
-        self.live_badge.show()
-
-    def _show_chat_panel(self):
-        self.log_panel.hide()
-        self.chat_widget.show()
-        self.live_badge.hide()
-        self.chat_widget.focus_input()
 
     def get_current_map_path(self):
         nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'

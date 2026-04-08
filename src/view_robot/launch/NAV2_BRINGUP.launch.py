@@ -21,7 +21,7 @@ def generate_launch_description():
     # File Config & Map for navigation 
     # Need to change map file name here when you change the environment to test 
     nav2_params_file = PathJoinSubstitution([pkg_dir, 'config', 'nav2_params.yaml'])
-    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'X5_19032026.yaml'])
+    map_file_path = PathJoinSubstitution([pkg_dir, 'maps', 'X5_08042026.yaml'])
 
     # Hardware Params
     lidar_frame_arg = DeclareLaunchArgument('lidar_frame', default_value='lidar_link')

@@ -175,181 +175,274 @@ bt_navigator:
 
 #####################ROTATION SHIM CONTROLLER WITH MPPI#####################
 #Robot cannot run smoothly. Sometimes it meet some interrupt although /cmd_vel send data 20Hz continously  --> Need to improve
+
+# Full configuration with detailed comments based on Nav2 official documentation
+# https://docs.nav2.org/configuration/packages/configuring-rotation-shim-controller.html
+# https://docs.nav2.org/configuration/packages/configuring-mppic.html
+
 controller_server:
   ros__parameters:
-    controller_frequency: 20.0
-    odom_topic: /odometry/filtered
+    controller_frequency: 20.0                    # Controller update rate [Hz], 20 Hz is good for indoor AMR
+    odom_topic: /odometry/filtered                # Use EKF/filtered odometry for stable feedback
+    
     # These thresholds help prevent tiny cmd_vel from being treated as zero
-    # min_x_velocity_threshold: 0.01
-    # min_theta_velocity_threshold: 0.3
+    # Useful to reduce small oscillation near goal / narrow corridor
+    # min_x_velocity_threshold: 0.01              # Minimum linear velocity threshold [m/s]
+    # min_theta_velocity_threshold: 0.3           # Minimum angular velocity threshold [rad/s]
 
-    progress_checker_plugins: ["progress_checker"]
-    goal_checker_plugins: ["goal_checker"]
-    controller_plugins: ["FollowPath"]
+    progress_checker_plugins: ["progress_checker"]   # Plugin for stuck detection
+    goal_checker_plugins: ["goal_checker"]           # Plugin for goal tolerance check
+    controller_plugins: ["FollowPath"]               # Active controller list
 
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.5
-      movement_time_allowance: 20.0
+      required_movement_radius: 0.5               # Robot must move at least 0.5 m
+      movement_time_allowance: 20.0               # Max allowed no-progress time [s]
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
-      stateful: true
+      xy_goal_tolerance: 0.25                     # Goal position tolerance [m]
+      yaw_goal_tolerance: 0.25                    # Final yaw tolerance [rad]
+      stateful: true                              # Remember goal reached state
 
     # --- Wrapper controller: rotate-in-place when needed ---
     FollowPath:
       plugin: "nav2_rotation_shim_controller::RotationShimController"
+      # Wrapper controller: handles initial heading alignment before MPPI
+      # Very useful for diff-drive robots to rotate in place when path heading differs significantly
 
       # IMPORTANT: must be a STRING param
       primary_controller: "nav2_mppi_controller::MPPIController"
+      # Internal controller plugin to use for actual control behavior after rotating to heading
 
       # If robot heading differs from path heading more than this -> rotate in place first
-      angular_dist_threshold: 0.785 #1.57 #0.785            # rad (~45 deg)
+      angular_dist_threshold: 0.785               # rad (~45 deg) - Maximum angular distance away from path heading to trigger rotation
+      # Recommended for corridor startup and docking
 
       # How far ahead on the path to sample desired heading
-      forward_sampling_distance: 0.5           # meters
+      forward_sampling_distance: 0.5              # meters - Forward distance along path to select sampling point for path heading approximation
+      # Use path heading 0.5 m ahead to reduce sharp angle noise
+      # This distance should not be larger than the path handler's prune distance
 
       # Once within this heading error, hand off to MPPI
-      angular_disengage_threshold: 0.3925 #0.05 #0.3925      # rad (~22.5 deg)
+      angular_disengage_threshold: 0.3925         # rad (~22.5 deg) - Threshold to path's heading before disengagement
+      # Smaller value = more precise heading before MPPI starts
+      # Prior to Jazzy, disengagement occurs at angular_dist_threshold instead
 
       # Rotate-in-place behavior
-      rotate_to_heading_angular_vel: 0.8 #1.2       # rad/s (tune)
-      max_angular_accel: 12.0                   # rad/s^2
-      simulate_ahead_time: 1.0                 # seconds
-      use_path_orientations: false
-      closed_loop: true
+      rotate_to_heading_angular_vel: 1.2 #0.8          # rad/s - Angular rotational velocity to rotate to the path heading
+      # Safe angular speed for indoor navigation
+
+      max_angular_accel: 12.0                     # rad/s^2 - Maximum angular acceleration for rotation to heading
+      # Fast turning response, can reduce if wheel slip occurs
+
+      simulate_ahead_time: 1.0                    # seconds - Time to forward simulate a rotation command to check for collisions
+      # If collision found, forwards control back to primary controller plugin
+
+      use_path_orientations: false                # If false, use geometric tangent direction of path
+      # If true, use orientations of path points to compute heading instead of computing from relative locations
+      # Use for feasible planners like Smac Planner which generate feasible paths with orientations
+
+      closed_loop: true                           # true = use odometry feedback, recommended
+      # If false, uses last commanded velocity as next iteration's current velocity
+      # If true, uses odometry to estimate robot's current speed - important that source is high-rate and low-latency
 
       # Optional: rotate at goal after reaching XY tolerance
-      rotate_to_goal_heading: true            # set true if you want final yaw alignment
-      rotate_to_heading_once: true
+      rotate_to_goal_heading: true                # Set true if you want final yaw alignment
+      # Excellent for docking station / charger alignment
+      # If true, rotationShimController takes back control when in XY tolerance of goal
 
-      # --- Primary controller: MPPI ---
+      rotate_to_heading_once: true                # Rotate only once at path start
+      # If true, rotationShimController will only rotate to heading once on new goal, not each time path is set
+
+      # --- Primary controller: MPPI (Model Predictive Path Integral Controller) ---
+      # A predictive controller using sampling based approach to select optimal trajectories
+      # Optimizes between successive iterations with plugin-based objective functions
       # primary_controller:
       #   plugin: "nav2_mppi_controller::MPPIController"
       # odom_topic: /odometry/filtered
+
       # Time horizon
-      model_dt: 0.05
-      time_steps: 40              # start smaller for stability
-      batch_size: 2000 #2000            # start smaller then increase
-      iteration_count: 1
+      model_dt: 0.05                              # Length of each time step's dt timestep, in seconds
+      # Prediction step = 50 ms
+      # Generally should be set to duration of your control frequency (20hz = 0.05s)
+      # May be set lower but not larger
+
+      time_steps: 40                              # Number of time steps (points) in candidate trajectories
+      # Total horizon = time_steps * model_dt = 2 s
+      # Start smaller for stability
+
+      batch_size: 2000                            # Count of randomly sampled candidate trajectories
+      # Number of sampled trajectories from current optimal control sequence
+      # Larger = better optimization but more CPU
+      # 1000 @ 50 Hz or 2000 @ 30 Hz produces good results
+
+      iteration_count: 1                          # Iteration count in MPPI algorithm
+      # 1 is usually enough for real-time MPPI
+      # Recommended to remain as 1 and instead prefer larger batch sizes
 
       # DiffDrive limits
-      motion_model: "DiffDrive"
-      vx_max: 2.0 #0.5
-      vx_min: -0.6 #-0.20                 # start forward-only
-      vy_max: 0.0 #0.0                 # IMPORTANT for DiffDrive
-      wz_max: 3.0 #0.6                 # start conservative
+      motion_model: "DiffDrive"                   # Desired motion model: "DiffDrive", "Omni", or "Ackermann"
+      # Correct model for 2-wheel differential robot
+      # DiffDrive: forward/reverse and angular velocities
+      # Omni: adds lateral motion; Ackermann: adds minimum curvature constraints
+
+      vx_max: 2.0                                 # Target maximum forward velocity [m/s]
+      vx_min: -0.6                                # Maximum reverse velocity [m/s]
+      # Allow reverse motion, useful for recovery / docking
+
+      vy_max: 0.0                                 # IMPORTANT for DiffDrive - must stay 0
+      # Target maximum lateral velocity, if using Omni motion model [m/s]
+
+      wz_max: 3.0                                 # Maximum rotational velocity [rad/s]
 
       # Sampling noise (DiffDrive)
-      vx_std: 0.5 #0.2
-      vy_std: 0.0                # IMPORTANT
-      wz_std: 0.5 #0.2
+      vx_std: 0.5                                 # Sampling standard deviation for Vx - linear velocity exploration noise
+      vy_std: 0.0                                 # IMPORTANT - must remain 0 for diff-drive
+      wz_std: 0.5                                 # Sampling standard deviation for Wz - angular exploration noise
 
-      #acceleration limits
-      ax_max: 12.0 #6.0
-      ax_min: -12.0 #-6.0
-      ay_max: 0.0
-      az_max: 6.0
+      # Acceleration limits
+      ax_max: 12.0                                # Maximum forward acceleration [m/s^2]
+      ax_min: -12.0                               # Maximum deceleration along X-axis [m/s^2]
+      ay_max: 0.0                                 # Maximum lateral acceleration (Omni only) [m/s^2]
+      az_max: 6.0                                 # Maximum angular acceleration [rad/s^2]
 
       # Cost / behavior
-      temperature: 0.35
-      gamma: 0.015
-      regenerate_noises: false
-      visualize: false   #true
-      publish_optimal_trajectory: false
-      publish_critics_stats: false
+      temperature: 0.35                           # Selectiveness of trajectories by their costs
+      # Lower = more aggressive best trajectory selection
+      # 0 means use control with best cost, huge value leads to taking mean of all trajectories
+
+      gamma: 0.015                                # Trade-off between smoothness (high) and low energy (low)
+      # Smoothness / control effort penalty
+      # Complex parameter that likely won't need to be changed from default
+
+      regenerate_noises: false                    # Whether to regenerate noises each iteration
+      # false = more stable repeated sampling
+      # Reduces compute jittering at run-time
+
+      visualize: false                            # Turn true only for debugging in RViz
+      # When enabled, candidate trajectories colored by cost (green to red, magenta for collisions)
+      # Can slow down controller substantially
+
+      publish_optimal_trajectory: false           # Whether to publish optimal trajectory computed by MPC
+      # For visualization, debugging, or injection by lower-level control systems
+
+      publish_critics_stats: false                # Disable extra topics to save bandwidth / CPU
 
       TrajectoryVisualizer:
-        trajectory_step: 5
-        time_step: 3
+        trajectory_step: 5                        # Step between trajectories to visualize (downsample candidate pool)
+        time_step: 3                              # Step between points on trajectories to visualize (downsample density)
       
       TrajectoryValidator:
         plugin: "mppi::DefaultOptimalTrajectoryValidator"
-        collision_lookahead_time: 2.0
-        consider_footprint: true
+        # Plugin to validate final optimal trajectories for validity and collision-free paths
+        collision_lookahead_time: 2.0             # Time [s] to look ahead for potential collisions when validating
+        consider_footprint: true                  # Whether to consider robot's footprint (else uses center point of circular robot)
 
+      # MPPI Critics - Plugin-based objective functions for trajectory scoring
       critics:
         [
-          "ConstraintCritic",
-          "CostCritic",
-          "GoalCritic",
-          "GoalAngleCritic",
-          "PathAlignCritic",
-          "PathFollowCritic",
-          "PathAngleCritic",
-          "PreferForwardCritic",
-          "ObstaclesCritic"
+          "ConstraintCritic",                     # Penalizes trajectories outside dynamic/kinematic constraints
+          "CostCritic",                           # Incentivizes navigating away from obstacles using costmap values
+          "GoalCritic",                           # Incentivizes navigating spatially towards goal
+          "GoalAngleCritic",                      # Incentivizes achieving goal pose angle
+          "PathAlignCritic",                      # Incentivizes aligning with global path
+          "PathFollowCritic",                     # Incentivizes making progress along path (drives robot forward)
+          "PathAngleCritic",                      # Penalizes high relative angles to path for sharp turns
+          "PreferForwardCritic",                  # Incentivizes forward motion over reversing
+          "ObstaclesCritic"                       # Incentivizes navigating away from obstacles using distances
         ]
   
       ObstaclesCritic:
         enabled: true
-        cost_power: 2
-        repulsion_weight:  4.0 #1.2
-        critical_weight: 20.0 #20.0
-        consider_footprint: true
-        collision_cost: 100000.0
-        collision_margin_distance: 0.4 #old is 0.4
+        cost_power: 2                             # Power order to apply to term
+        repulsion_weight: 4.0                     # Weight for generally preferring routes in lower cost space
+        # Separated from critical term for fine tuning obstacle behaviors with path alignment
+        # Applied within inflation_radius distance from obstacles
+        # Higher inflation radius should correspond to reduced repulsion_weight
+
+        critical_weight: 20.0                     # Weight for near collisions closer than collision_margin_distance
+        # Prevents near collisions as method of virtually inflating footprint
+        # Should not be used to generally influence obstacle avoidance
+
+        consider_footprint: true                  # Whether to use point cost (circular) or compute SE2 footprint cost
+        collision_cost: 100000.0                  # Cost to apply to true collision in trajectory
+        collision_margin_distance: 0.4            # Margin distance [m] from collision to apply severe penalty
+        # Similar to footprint inflation. Between 0.05-0.2 is reasonable
+        # Will highly influence controller not to enter spaces more confined than this
 
       ConstraintCritic:
         enabled: true
-        cost_weight: 4.0
-        cost_power: 1
+        cost_weight: 4.0                          # Weight to apply to critic term
+        cost_power: 1                             # Power order to apply to term
 
       CostCritic:
         enabled: true
-        cost_weight: 3.5
-        cost_power: 1
-        consider_footprint: true
-        collision_cost: 1000000.0
-        critical_cost: 300.0
-        near_goal_distance: 1.0
-        trajectory_point_step: 2
+        cost_weight: 3.5                          # Weight to apply to critic
+        cost_power: 1                             # Power order to apply to term
+        consider_footprint: true                  # Whether to use point cost or compute SE2 footprint cost
+        collision_cost: 1000000.0                 # Cost to apply to true collision in trajectory
+        critical_cost: 300.0                      # Cost to apply to pose with cost higher than near_collision_cost
+        near_goal_distance: 1.0                   # Distance [m] near goal to stop applying preferential obstacle term
+        # Allows robot to smoothly converge to goal pose in close proximity to obstacles
+        trajectory_point_step: 2                  # Step to take in trajectories for evaluation
+        # Since trajectories are extremely dense, unnecessary to evaluate each point
 
       PathAlignCritic:
         enabled: true
-        cost_weight: 10.0 #10
-        cost_power: 1
-        threshold_to_consider: 0.5
-        offset_from_furthest: 15
-        use_path_orientations: true       
-        trajectory_point_step: 4
+        cost_weight: 10.0                         # Weight to apply to critic term
+        cost_power: 1                             # Power order to apply to term
+        threshold_to_consider: 0.5                # Distance [m] between robot and goal to STOP considering path alignment
+        # Allows goal critics to take over
+        offset_from_furthest: 15                  # Checks that candidate trajectories are sufficiently far along path
+        # Ensures path alignment only considered when actually tracking path
+        # Prevents awkward initialization motions
+        use_path_orientations: true               # Whether to consider path's orientations in alignment
+        # Useful with feasible smac planners to incentivize directional changes where planner requests
+        # If plans don't contain orientation info (e.g. navfn), keep as false
+        trajectory_point_step: 4                  # Step to take in trajectories for evaluation
 
       PathFollowCritic:
         enabled: true
-        cost_weight: 5.0 #5.0
-        cost_power: 1
-        threshold_to_consider: 1.0
-        offset_from_furthest: 5
+        cost_weight: 5.0                          # Weight to apply to critic term
+        cost_power: 1                             # Power order to apply to term
+        threshold_to_consider: 1.0                # Distance [m] between robot and goal to STOP considering path following
+        # Allows goal critics to take over
+        # Wise to match prediction horizon for clean hand-off with goal critic
+        offset_from_furthest: 5                   # Number of path points after furthest one any trajectory achieves
+        # To drive path tracking relative to
 
       PathAngleCritic:
         enabled: true
-        cost_weight: 2.0
-        cost_power: 1
-        threshold_to_consider: 0.5
-        max_angle_to_furthest: 1.0
-        offset_from_furthest: 4
-        forward_preference: true
-        mode: 0 # 0: path angle, 1: goal angle
+        cost_weight: 2.0                          # Weight to apply to critic term
+        cost_power: 1                             # Power order to apply to term
+        threshold_to_consider: 0.5                # Distance [m] between robot and goal to STOP considering path angles
+        max_angle_to_furthest: 1.0                # Angular distance [rad] above which path angle cost starts
+        offset_from_furthest: 4                   # Number of path points after furthest to compute path angle relative to
+        forward_preference: true                  # Penalizes high path angles relative to robot's orientation
+        mode: 0                                   # 0: Forward Preference (penalize high path angles)
+        # 1: No directional preference (penalize high angles relative to robot or mirrored orientation)
+        # 2: Consider feasible path orientation (when using feasible paths with orientation info)
 
       GoalCritic:
         enabled: true
-        cost_weight: 5.0
-        cost_power: 1
-        threshold_to_consider: 1.0
+        cost_weight: 5.0                          # Weight to apply to critic term
+        cost_power: 1                             # Power order to apply to term
+        threshold_to_consider: 1.0                # Minimal distance [m] above which goal distance cost considered
+        # Wise to match prediction horizon for clean hand-off with path follower critic
 
       GoalAngleCritic:
         enabled: true
-        cost_weight: 3.0
-        cost_power: 1
-        threshold_to_consider: 0.5
+        cost_weight: 3.0                          # Weight to apply to critic term
+        cost_power: 1                             # Power order to apply to term
+        threshold_to_consider: 0.5                # Minimal distance [m] above which angle goal cost considered
 
       PreferForwardCritic:
         enabled: true
-        cost_weight: 5.0 #5.0
-        cost_power: 1
-        threshold_to_consider: 0.5
+        cost_weight: 5.0                          # Weight to apply to critic term
+        cost_power: 1                             # Power order to apply to term
+        threshold_to_consider: 0.5                # Distance [m] between robot and goal to STOP considering preferring forward
+
 
 ####################################DWB CONTROLLER################################
 # controller_server:
@@ -594,14 +687,14 @@ global_costmap:
 # file & provide full path to map below. If CLI map configuration or launch default is provided, that will be used.
 map_server:
   ros__parameters:
-    yaml_filename: "/home/khoaiuh/zackon_build_up/src/view_robot/maps/X5_19032026.yaml"
+    yaml_filename: "/home/khoaiuh/zackon_build_up/src/view_robot/maps/X5_08042026.yaml"
     use_sim_time: False
     introspection_mode: "disabled"
 
 keepout_filter_mask_server:
   ros__parameters:
     topic_name: "keepout_filter_mask"
-    # yaml_filename: "/home/khoaiuh/zackon_build_up/src/view_robot/maps/X5_19032026.yaml"
+    # yaml_filename: "/home/khoaiuh/zackon_build_up/src/view_robot/maps/X5_08042026.yaml"
 
 keepout_costmap_filter_info_server:
   ros__parameters:
@@ -614,7 +707,7 @@ keepout_costmap_filter_info_server:
 speed_filter_mask_server:
   ros__parameters:
     topic_name: "speed_filter_mask"
-    # yaml_filename: "/home/khoaiuh/zackon_build_up/src/view_robot/maps/X5_19032026.yaml"
+    # yaml_filename: "/home/khoaiuh/zackon_build_up/src/view_robot/maps/X5_08042026.yaml"
 
 speed_costmap_filter_info_server:
   ros__parameters:

@@ -15,7 +15,8 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 EDGE_TTS_VOICE  = "vi-VN-HoaiMyNeural"
 EDGE_TTS_RATE   = "+30%"
-MIC_DEVICE_PRIORITY = ["SN6140 Analog", "USB2.0 Device", "default"]  # try in order
+MIC_DEVICE_PRIORITY = ["USB2.0 Device", "SN6140 Analog", "default"]  # try in order
+MIC_SAMPLE_RATE = 48000  # USB2.0 Device native rate
 STT_LANGUAGE    = "vi-VN"
 
 WAKE_TRIGGERS = ["ê mày", "e mày", "e may", "ê dách con", "e dách con", "start", "hey zackon", "alo alo"]
@@ -113,10 +114,34 @@ class VoiceEngine(QObject):
 
         self._tts_queue = queue.Queue()
         self._state     = VoiceState.IDLE
+        self._listen_now = threading.Event()
         threading.Thread(target=self._tts_worker, daemon=True).start()
 
     def set_voice(self, edge_voice: str) -> None:
         self._edge_voice = edge_voice
+
+    def listen_once(self):
+        """Immediately enter LISTENING mode (button-triggered, no wake word needed)."""
+        if not self._running:
+            self.start()
+        self._listen_now.set()
+
+    def _listen_once_thread(self):
+        mic_index = _find_mic_index(MIC_DEVICE_PRIORITY)
+        mic = sr.Microphone(device_index=mic_index, sample_rate=MIC_SAMPLE_RATE)
+        with _suppress_stderr():
+            try:
+                source = mic.__enter__()
+            except Exception as e:
+                print(f"[VoiceEngine] listen_once mic error: {e}")
+                return
+        try:
+            self._handle_command(source)
+        finally:
+            try:
+                mic.__exit__(None, None, None)
+            except Exception:
+                pass
 
     def start(self):
         with self._state_lock:
@@ -187,7 +212,7 @@ class VoiceEngine(QObject):
         available = sr.Microphone.list_microphone_names()
         name = available[mic_index] if mic_index is not None else "default"
         print(f"[VoiceEngine] Using microphone: [{mic_index}] {name}")
-        mic = sr.Microphone(device_index=mic_index)
+        mic = sr.Microphone(device_index=mic_index, sample_rate=MIC_SAMPLE_RATE)
         with _suppress_stderr():
             try:
                 source = mic.__enter__()
@@ -213,6 +238,10 @@ class VoiceEngine(QObject):
             self._running = False
 
     def _process_wake_word(self, source):
+        if self._listen_now.is_set():
+            self._listen_now.clear()
+            self._handle_command(source)
+            return
         try:
             audio = self.recognizer.listen(source, timeout=2.0, phrase_time_limit=3.0)
             text  = self.recognizer.recognize_google(audio, language=STT_LANGUAGE).lower()
@@ -275,10 +304,13 @@ class VoiceEngine(QObject):
         wps = self._load_waypoints()
         keys = list(wps.keys())
 
+        def _norm(s: str) -> str:
+            return re.sub(r'([a-z])(\d+)[.,](\d+)', r'\1\2\3', s.lower())
+
         def _matches(remainder: str, key: str) -> bool:
-            if remainder == key.lower():
-                return True
-            return any(remainder == a.lower() for a in wps[key].get("aliases", []))
+            r = _norm(remainder)
+            if r == _norm(key): return True
+            return any(r == _norm(a) for a in wps[key].get("aliases", []))
 
         for prefix in WAYPOINT_PREFIXES:
             if not text.startswith(prefix):

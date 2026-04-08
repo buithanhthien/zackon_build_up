@@ -21,10 +21,10 @@ _LOCATION_PATTERNS = re.compile(
     re.IGNORECASE
 )
 
-# Trigger phrases that signal navigation intent — order matters (longer first)
+# Trigger phrases that signal navigation intent (diacritic-normalized at match time)
 _NAV_INTENT_RE = re.compile(
-    r'^(?:dẫn tôi (?:tới|đến|toi)|đưa tôi (?:tới|đến|toi)|tôi muốn (?:tới|đến|đi tới|đi đến)|'
-    r'đi (?:tới|đến)|tới|đến)\s+',
+    r'^(?:dan toi (?:toi|den)|dua toi (?:toi|den)|toi muon (?:toi|den|di toi|di den)|'
+    r'di (?:toi|den)|toi|den)\s+',
     re.IGNORECASE
 )
 _NAV_QUESTION_RE = re.compile(
@@ -38,10 +38,12 @@ _DENY_RE    = re.compile(r'^(không|khong|thôi|thoi|no|nope)$', re.IGNORECASE)
 
 
 def _normalize(text: str) -> str:
-    """Lowercase + remove Vietnamese diacritics + collapse room numbers (x5.12 → x512)."""
+    """Lowercase + remove Vietnamese diacritics + collapse room numbers (x5.12 / x5,12 → x512)."""
     text = text.lower()
-    # collapse dotted room numbers: x5.12 → x512, x5.4 → x54
-    text = re.sub(r'([a-z])(\d+)\.(\d+)', r'\1\2\3', text)
+    # collapse dotted/comma room numbers: x5.12 → x512, x5,12 → x512
+    text = re.sub(r'([a-z])(\d+)[.,](\d+)', r'\1\2\3', text)
+    # replace đ/Đ before NFKD strip (it's a base letter, not a combining mark)
+    text = text.replace('đ', 'd').replace('Đ', 'D')
     nfkd = unicodedata.normalize('NFKD', text)
     return ''.join(c for c in nfkd if not unicodedata.combining(c))
 
@@ -76,13 +78,31 @@ def _resolve_destination(remainder: str) -> str | None:
     except Exception:
         return None
 
+    norm = _normalize(remainder)
+    # Merge split room tokens: "x 511" → "x511", "x 5 11" → "x511"
+    norm = re.sub(r'\b([a-z])\s+(\d[\d\s]*\d|\d)\b', lambda m: m.group(1) + m.group(2).replace(' ', ''), norm)
+
+    tokens = norm.split()
+    # Build queries: room token first, then 1-3 token windows, then full text
+    queries = []
+    room_token = next((t for t in tokens if re.match(r'^[a-z]\d{2,}$', t)), None)
+    if room_token:
+        queries.append(room_token)
+    for size in (3, 2):
+        for i in range(len(tokens) - size + 1):
+            queries.append(' '.join(tokens[i:i+size]))
+    queries.append(norm)
+
     best_key, best_score = None, 0.0
-    for key, data in waypoints.items():
-        candidates = [key] + (data.get('aliases', []) if isinstance(data, dict) else [])
-        for c in candidates:
-            score = _token_overlap(remainder, c)
-            if score > best_score:
-                best_score, best_key = score, key
+    for query in queries:
+        for key, data in waypoints.items():
+            candidates = [key] + (data.get('aliases', []) if isinstance(data, dict) else [])
+            for c in candidates:
+                score = _token_overlap(query, c)
+                if score > best_score:
+                    best_score, best_key = score, key
+        if best_score >= 0.5:
+            break
 
     return best_key if best_score >= 0.5 else None
 
@@ -344,11 +364,12 @@ class ChatPanel(QWidget):
         input_layout.setContentsMargins(16, 10, 16, 10)
         input_layout.setSpacing(10)
 
-        self.voice_btn = QPushButton("[MIC]")
+        self.voice_btn = QPushButton("🎤")
         self.voice_btn.setObjectName("voice-btn")
-        self.voice_btn.setCheckable(True)
+        self.voice_btn.setCheckable(False)
         self.voice_btn.setFixedSize(44, 44)
-        self.voice_btn.clicked.connect(self._toggle_voice)
+        self.voice_btn.setToolTip("Click to speak")
+        self.voice_btn.clicked.connect(self._on_listen_btn_clicked)
 
         self.chat_input = QLineEdit()
         self.chat_input.setObjectName("chat-input")
@@ -465,15 +486,17 @@ class ChatPanel(QWidget):
                 self._pending_nav = None  # user said something else, cancel
 
         # --- Direct navigation intent ---
-        nav_match = _NAV_INTENT_RE.match(text)
-        remainder = text[nav_match.end():] if nav_match else text
+        nav_match = _NAV_INTENT_RE.match(_normalize(text))
+        remainder = _normalize(text)[nav_match.end():] if nav_match else text
         dest = _resolve_destination(remainder)
+        # Also try full text when no nav prefix matched (handles complex sentences)
+        if not dest and not nav_match:
+            dest = _resolve_destination(text)
         if dest:
             reply = f"Đang dẫn bạn tới {dest}!"
             self._add_bubble(reply, "assistant")
             if self._voice_enabled:
                 self._voice_engine.speak(reply)
-            print(f'[DEBUG] ChatPanel id={id(self)} emitting waypoint_command: {dest!r}')
             self.waypoint_command.emit(dest)
             return
 
@@ -542,15 +565,21 @@ class ChatPanel(QWidget):
         self.chat_input.setFocus()
 
     def _toggle_voice(self):
-        self._voice_enabled = self.voice_btn.isChecked()
-        if self._voice_enabled:
-            self.voice_status_label.show()
-            self._voice_engine.start()
-        else:
-            self.voice_status_label.hide()
-            self._voice_engine.stop()
+        """Keep for external callers (startup/waypoints auto-start). Starts background engine."""
+        self._voice_enabled = True
+        self._voice_engine.start()
+
+    def _on_listen_btn_clicked(self):
+        """Button press → immediately enter LISTENING (no wake word)."""
+        self._voice_enabled = True
+        self.voice_status_label.show()
+        self._voice_engine.listen_once()
 
     def _on_voice_state_changed(self, state):
+        if state == VoiceState.IDLE:
+            self.voice_status_label.hide()
+            return
+        self.voice_status_label.show()
         self.voice_status_label.setText(state)
         if "LISTENING" in state:
             self.voice_status_label.setStyleSheet("color:#00e5ff;padding:0 20px;background-color:#080a0d;")

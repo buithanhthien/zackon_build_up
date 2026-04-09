@@ -1,4 +1,3 @@
-import json
 import os
 import queue
 import re
@@ -20,19 +19,6 @@ MIC_DEVICE_PRIORITY = [
 MIC_FORCE_INDEX = None
 MIC_SAMPLE_RATE = 16000
 STT_LANGUAGE    = "vi-VN"
-
-WAYPOINT_PREFIXES = [
-    "đi tới vị trí số", "đi đến vị trí số", "di tới vị trí số", "di đến vị trí số",
-    "đi tới vị trí", "đi đến vị trí", "di tới vị trí", "di đến vị trí",
-    "đi tới số", "đi đến số", "di tới số", "di đến số",
-    "tới vị trí số", "đến vị trí số", "tới vị trí", "đến vị trí",
-    "tới số", "đến số",
-    "đi tới", "đi đến", "di tới", "di đến",
-]
-VI_DIGITS = {
-    "một": "1", "hai": "2", "ba": "3", "bốn": "4", "năm": "5",
-    "sáu": "6", "bảy": "7", "tám": "8", "chín": "9", "mười": "10",
-}
 
 
 class VoiceState:
@@ -58,7 +44,6 @@ def _suppress_stderr():
 class VoiceEngine(QObject):
     state_changed    = pyqtSignal(str)
     transcript_ready = pyqtSignal(str)
-    waypoint_command = pyqtSignal(str)
     ui_command       = pyqtSignal(str)
 
     def __init__(self):
@@ -133,11 +118,7 @@ class VoiceEngine(QObject):
             try:
                 text = self.recognizer.recognize_google(audio, language=STT_LANGUAGE)
                 print(f"[VoiceEngine] recognized: '{text}'")
-                slot = self._check_waypoint_command(text.lower())
-                if slot is not None:
-                    self.waypoint_command.emit(slot)
-                else:
-                    self.transcript_ready.emit(text)
+                self.transcript_ready.emit(text)
             except sr.UnknownValueError:
                 print(f"[VoiceEngine] could not understand audio")
             except Exception as e:
@@ -205,38 +186,3 @@ class VoiceEngine(QObject):
                     time.sleep(0.05)
             finally:
                 os.unlink(tmp_path)
-
-    def _load_waypoints(self) -> dict:
-        try:
-            wp_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'waypoints.json')
-            with open(wp_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return {}
-
-    def _check_waypoint_command(self, text: str) -> str | None:
-        text = text.strip()
-        wps = self._load_waypoints()
-        keys = list(wps.keys())
-
-        def _norm(s: str) -> str:
-            return re.sub(r'([a-z])(\d+)[.,](\d+)', r'\1\2\3', s.lower())
-
-        def _matches(remainder: str, key: str) -> bool:
-            r = _norm(remainder)
-            if r == _norm(key):
-                return True
-            return any(r == _norm(a) for a in wps[key].get("aliases", []))
-
-        for prefix in WAYPOINT_PREFIXES:
-            if not text.startswith(prefix):
-                continue
-            remainder = text[len(prefix):].strip()
-            if remainder.isdigit():
-                return remainder
-            if remainder in VI_DIGITS:
-                return VI_DIGITS[remainder]
-            matched = next((k for k in keys if _matches(remainder, k)), None)
-            if matched:
-                return matched
-        return None

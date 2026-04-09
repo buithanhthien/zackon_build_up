@@ -176,11 +176,8 @@ class WaypointsModeLayout(QMainWindow):
         self.current_sequence_index = 0
         self.init_ui()
 
-        # ── Voice engine — use ChatPanel's internal engine (same as startup_layout) ──
-        self.chat_widget._voice_engine.waypoint_command.connect(self.voice_navigate_to_waypoint)
-        self.log("[Voice] Listening — say \"Đi tới <số>\" to navigate")
+        self.log("[Voice] Listening — speak to navigate")
 
-        # Auto-start voice after event loop is ready (avoids JACK/heap init race)
         QTimer.singleShot(500, self._auto_start_voice)
         
         self.timer = QTimer()

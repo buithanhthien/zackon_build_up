@@ -40,7 +40,6 @@ require.txt
 **/.vscode/settings.json
 
 # ===== Runtime / app data =====
-robot_ui/waypoints.json
 
 src/micro_ros_setup/
 src/uros/

@@ -13,6 +13,7 @@
 
 # ===== Virtual environments =====
 venv/
+.venv/
 .env/
 
 # ===== Machine-specific config =====

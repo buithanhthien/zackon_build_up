@@ -233,7 +233,7 @@ controller_server:
       rotate_to_heading_angular_vel: 1.2 #0.8          # rad/s - Angular rotational velocity to rotate to the path heading
       # Safe angular speed for indoor navigation
 
-      max_angular_accel: 12.0                     # rad/s^2 - Maximum angular acceleration for rotation to heading
+      max_angular_accel: 16.0                     # rad/s^2 - Maximum angular acceleration for rotation to heading
       # Fast turning response, can reduce if wheel slip occurs
 
       simulate_ahead_time: 1.0                    # seconds - Time to forward simulate a rotation command to check for collisions
@@ -252,7 +252,7 @@ controller_server:
       # Excellent for docking station / charger alignment
       # If true, rotationShimController takes back control when in XY tolerance of goal
 
-      rotate_to_heading_once: true                # Rotate only once at path start
+      rotate_to_heading_once: false                # Rotate only once at path start
       # If true, rotationShimController will only rotate to heading once on new goal, not each time path is set
 
       # --- Primary controller: MPPI (Model Predictive Path Integral Controller) ---
@@ -299,13 +299,13 @@ controller_server:
       # Sampling noise (DiffDrive)
       vx_std: 0.5                                 # Sampling standard deviation for Vx - linear velocity exploration noise
       vy_std: 0.0                                 # IMPORTANT - must remain 0 for diff-drive
-      wz_std: 0.5                                 # Sampling standard deviation for Wz - angular exploration noise
+      wz_std: 0.8                                 # Sampling standard deviation for Wz - angular exploration noise
 
       # Acceleration limits
       ax_max: 12.0                                # Maximum forward acceleration [m/s^2]
       ax_min: -12.0                               # Maximum deceleration along X-axis [m/s^2]
       ay_max: 0.0                                 # Maximum lateral acceleration (Omni only) [m/s^2]
-      az_max: 6.0                                 # Maximum angular acceleration [rad/s^2]
+      az_max: 12.0                                 # Maximum angular acceleration [rad/s^2]
 
       # Cost / behavior
       temperature: 0.35                           # Selectiveness of trajectories by their costs

@@ -233,7 +233,7 @@ class RobotUI(QMainWindow):
             PoseWithCovarianceStamped, '/amcl_pose', self._amcl_callback, 10
         )
         self._ros_spin_timer = QTimer()
-        self._ros_spin_timer.timeout.connect(lambda: rclpy.spin_once(self._ros_node, timeout_sec=0))
+        self._ros_spin_timer.timeout.connect(self._ros_spin_once)
         self._ros_spin_timer.start(100)
 
         self.init_ui()
@@ -242,6 +242,13 @@ class RobotUI(QMainWindow):
         self.chat_panel._voice_enabled = True
         if not skip_micro_ros:
             self.start_micro_ros()
+
+    def _ros_spin_once(self):
+        try:
+            if rclpy.ok():
+                rclpy.spin_once(self._ros_node, timeout_sec=0)
+        except Exception:
+            self._ros_spin_timer.stop()
 
     def _amcl_callback(self, msg):
         self._latest_pose = msg.pose.pose
@@ -597,7 +604,7 @@ class RobotUI(QMainWindow):
         self._reestimate_pulse_timer.timeout.connect(self._pulse_reestimate)
         self._pulse_state = False
 
-        self.update_status()    # ══════════════════════════════════════════════════════════════════════════
+        QTimer.singleShot(0, self.update_status)    # ══════════════════════════════════════════════════════════════════════════
     #  Existing UI helpers (unchanged)
     # ══════════════════════════════════════════════════════════════════════════
 
@@ -689,10 +696,10 @@ class RobotUI(QMainWindow):
     def mode_changed(self, mode):
         self.log(f"Mode changed to {mode}")
         if mode == "Tracking":
-            subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
+            subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
             self.close()
         elif mode == "Waypoints":
-            subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py'])
+            subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py'])
             self.close()
         elif mode == "Nav2":
             try:
@@ -730,7 +737,7 @@ class RobotUI(QMainWindow):
 
     def start_new_map(self):
         self.log("Switching to New Map mode")
-        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
         self.close()
 
     def start_docking(self):
@@ -847,7 +854,7 @@ class RobotUI(QMainWindow):
 
     def _voice_go_to_waypoint(self, slot: str):
         self.log(f"[Voice] Navigating to waypoint {slot}")
-        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
                           '--go-to', slot])
         self.close()
 

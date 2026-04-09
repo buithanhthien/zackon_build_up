@@ -116,7 +116,7 @@ class VoiceEngine(QObject):
             print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
             self._set_state(VoiceState.LISTENING)
             try:
-                audio = self.recognizer.listen(source, timeout=5.0, phrase_time_limit=15.0)
+                audio = self.recognizer.listen(source, timeout=10.0, phrase_time_limit=20.0)
                 print(f"[VoiceEngine] audio captured, sending to Google STT...")
             except sr.WaitTimeoutError:
                 print(f"[VoiceEngine] timeout — no speech detected")

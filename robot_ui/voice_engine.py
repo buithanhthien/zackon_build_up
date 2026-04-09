@@ -12,7 +12,14 @@ import speech_recognition as sr
 from PyQt6.QtCore import QObject, pyqtSignal
 from vieneu import Vieneu
 
-MIC_DEVICE_PRIORITY = ["pipewire", "sysdefault", "USB2.0 Device", "SN6140 Analog", "DMIC16kHz", "DMIC"]
+MIC_DEVICE_PRIORITY = [
+    "pipewire",       # PipeWire virtual device (modern Linux audio server)
+    "sysdefault",     # ALSA system default device
+    "USB2.0 Device",  # Generic USB microphone/webcam mic
+    "SN6140 Analog",  # Realtek onboard analog mic (common on mini PCs)
+    "DMIC16kHz",      # Digital mic array at 16kHz (Intel/AMD laptops)
+    "DMIC",           # Generic digital mic array
+]
 MIC_SAMPLE_RATE = 16000
 STT_LANGUAGE    = "vi-VN"
 

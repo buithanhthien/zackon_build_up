@@ -757,7 +757,7 @@ class WaypointsModeLayout(QMainWindow):
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
-        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def closeEvent(self, event):

@@ -13,13 +13,11 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from vieneu import Vieneu
 
 MIC_DEVICE_PRIORITY = [
-    "pipewire",       # PipeWire virtual device (modern Linux audio server)
-    "sysdefault",     # ALSA system default device
-    "USB2.0 Device",  # Generic USB microphone/webcam mic
-    "SN6140 Analog",  # Realtek onboard analog mic (common on mini PCs)
-    "DMIC16kHz",      # Digital mic array at 16kHz (Intel/AMD laptops)
-    "DMIC",           # Generic digital mic array
+    "pipewire",       # PipeWire routes all physical mics (USB, 3.5mm)
+    "sysdefault",
+    "default",
 ]
+MIC_FORCE_INDEX = None
 MIC_SAMPLE_RATE = 16000
 STT_LANGUAGE    = "vi-VN"
 
@@ -69,7 +67,8 @@ class VoiceEngine(QObject):
         self._stop_flag  = threading.Event()
 
         self.recognizer = sr.Recognizer()
-        self.recognizer.dynamic_energy_threshold = True
+        self.recognizer.dynamic_energy_threshold = False
+        self.recognizer.energy_threshold = 500
         self.recognizer.pause_threshold  = 1.5
 
         self._tts_queue = queue.Queue()
@@ -87,41 +86,49 @@ class VoiceEngine(QObject):
 
     def _listen_thread(self):
         available = sr.Microphone.list_microphone_names()
-        candidates = []
-        for name in MIC_DEVICE_PRIORITY:
-            idx = next((i for i, n in enumerate(available) if name.lower() in n.lower()), None)
-            if idx is not None:
-                candidates.append(idx)
-        candidates.append(None)  # system default as final fallback
+        if MIC_FORCE_INDEX is not None:
+            candidates = [MIC_FORCE_INDEX, None]
+        else:
+            candidates = []
+            for name in MIC_DEVICE_PRIORITY:
+                idx = next((i for i, n in enumerate(available) if name.lower() in n.lower()), None)
+                if idx is not None:
+                    candidates.append(idx)
+            candidates.append(None)  # system default as final fallback
 
-        source = None
         mic = None
         for idx in candidates:
             try:
-                mic = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
+                m = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
                 with _suppress_stderr():
-                    source = mic.__enter__()
+                    src = m.__enter__()
+                    if src.stream is None:
+                        raise RuntimeError("stream is None")
+                    m.__exit__(None, None, None)
+                mic = m
                 print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
                 break
             except Exception as e:
                 print(f"[VoiceEngine] mic index={idx} failed: {e}")
-                source = None
 
-        if source is None:
+        if mic is None:
             print("[VoiceEngine] no usable microphone found")
             self.state_changed.emit("")
             return
+
         try:
-            self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-            print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
-            self._set_state(VoiceState.LISTENING)
-            try:
-                audio = self.recognizer.listen(source, timeout=10.0, phrase_time_limit=20.0)
-                print(f"[VoiceEngine] audio captured, sending to Google STT...")
-            except sr.WaitTimeoutError:
-                print(f"[VoiceEngine] timeout — no speech detected")
-                self.state_changed.emit("")
-                return
+            with mic as source:
+                with _suppress_stderr():
+                    self.recognizer.adjust_for_ambient_noise(source, duration=1)
+                print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
+                self._set_state(VoiceState.LISTENING)
+                try:
+                    audio = self.recognizer.listen(source, timeout=10.0, phrase_time_limit=15.0)
+                    print(f"[VoiceEngine] audio captured, sending to Google STT...")
+                except sr.WaitTimeoutError:
+                    print(f"[VoiceEngine] timeout — no speech detected")
+                    self.state_changed.emit("")
+                    return
             self._set_state(VoiceState.THINKING)
             try:
                 text = self.recognizer.recognize_google(audio, language=STT_LANGUAGE)
@@ -137,10 +144,6 @@ class VoiceEngine(QObject):
                 print(f"[VoiceEngine] STT error: {e}")
         finally:
             self.state_changed.emit("")
-            try:
-                mic.__exit__(None, None, None)
-            except Exception:
-                pass
 
     def stop_speaking(self):
         self._stop_flag.set()

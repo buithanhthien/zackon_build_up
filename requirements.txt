@@ -1,5 +1,4 @@
 PyQt6
 openai
-edge-tts
 SpeechRecognition
-PyAudio
+vieneu

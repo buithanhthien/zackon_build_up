@@ -633,8 +633,10 @@ class WaypointsModeLayout(QMainWindow):
 
     def _goal_result_callback(self, future):
         status = future.result().status
+        print(f"[Nav] _goal_result_callback fired — status={status} (SUCCEEDED={GoalStatus.STATUS_SUCCEEDED})")
         if status == GoalStatus.STATUS_SUCCEEDED:
             self.log(f'Reached {self._current_nav_target}')
+            print(f"[Nav] Goal SUCCEEDED — calling _announce_arrival('{self._current_nav_target}')")
             self._announce_arrival(self._current_nav_target)
 
         if self.running_sequence and self.current_sequence_index < len(self.selected_sequence) - 1:
@@ -651,20 +653,8 @@ class WaypointsModeLayout(QMainWindow):
             self.log('Sequence completed')
 
     def _announce_arrival(self, target: str):
-        prompt = f'Robot vừa đến {target}. Thông báo ngắn gọn 1 câu, thân thiện, tự nhiên, không lặp lại câu cũ.'
-        worker = _AIChatWorker([
-            {"role": "system", "content": "Bạn là ZACKON, robot trợ lý. Trả lời bằng tiếng Việt, ngắn gọn 1 câu."},
-            {"role": "user", "content": prompt},
-        ])
-        thread = QThread()
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
-        worker.response_ready.connect(lambda text: self.chat_widget._voice_engine.speak(text))
-        worker.finished.connect(thread.quit)
-        worker.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        thread.start()
-        self._announce_thread = thread
+        print(f"[Announce] _announce_arrival called with target='{target}'")
+        self.chat_widget._voice_engine.speak("Đã tới nơi rồi")
     
     def run_sequence(self):
         if not self.selected_sequence:

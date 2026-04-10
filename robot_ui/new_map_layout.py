@@ -8,6 +8,7 @@ from PyQt6.QtGui import QFont
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
+from chat_panel_widget import ChatPanel
 
 STYLESHEET = """
     QMainWindow, QWidget {
@@ -145,8 +146,8 @@ class NewMapUI(QMainWindow):
         left_layout.addWidget(wordmark)
 
         mono = QFont("JetBrains Mono", 18)
-        self.btn_cancel = QPushButton("Cancel")
-        self.btn_back   = QPushButton("Back")
+        self.btn_cancel = QPushButton("Hủy")
+        self.btn_back   = QPushButton("Quay lại")
 
         for btn in [self.btn_cancel, self.btn_back]:
             btn.setObjectName("action-btn")
@@ -198,7 +199,7 @@ class NewMapUI(QMainWindow):
         info.setWordWrap(True)
         content_layout.addWidget(info)
 
-        self.btn_start = QPushButton("Start Mapping")
+        self.btn_start = QPushButton("Bắt đầu lập bản đồ")
         self.btn_start.setObjectName("primary-btn")
         self.btn_start.setFont(QFont("JetBrains Mono", 18))
         self.btn_start.clicked.connect(self.start_mapping)
@@ -213,11 +214,11 @@ class NewMapUI(QMainWindow):
         save_row = QHBoxLayout()
         self.map_name_input = QLineEdit()
         self.map_name_input.setObjectName("map-input")
-        self.map_name_input.setPlaceholderText("Enter map name...")
+        self.map_name_input.setPlaceholderText("Tên bản đồ...")
         self.map_name_input.setFont(QFont("JetBrains Mono", 16))
         save_row.addWidget(self.map_name_input)
 
-        self.btn_apply = QPushButton("Apply")
+        self.btn_apply = QPushButton("Áp dụng")
         self.btn_apply.setObjectName("apply-btn")
         self.btn_apply.setFont(QFont("JetBrains Mono", 16))
         self.btn_apply.setFixedWidth(120)
@@ -252,7 +253,34 @@ class NewMapUI(QMainWindow):
         self.log_text.setFont(QFont("Fira Code", 13))
         log_layout.addWidget(self.log_text)
 
+        self.chat_widget = ChatPanel()
+        self.chat_widget.hide()
+
+        tab_bar = QWidget()
+        tab_bar.setFixedHeight(36)
+        tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
+        tab_layout = QHBoxLayout(tab_bar)
+        tab_layout.setContentsMargins(12, 0, 12, 0)
+        tab_layout.setSpacing(0)
+        tab_log  = QPushButton("SYSTEM LOG")
+        tab_chat = QPushButton("AI CHAT")
+        for tab in [tab_log, tab_chat]:
+            tab.setObjectName("panel-tab")
+            tab.setFont(QFont("DM Sans", 11))
+            tab.setCheckable(True)
+            tab.setAutoExclusive(True)
+            tab_layout.addWidget(tab)
+        tab_layout.addStretch()
+        self.tab_live_badge = QLabel("● LIVE")
+        self.tab_live_badge.setStyleSheet("color: #00c853; font-size: 11px; padding-right: 4px;")
+        tab_layout.addWidget(self.tab_live_badge)
+        tab_log.setChecked(True)
+        tab_log.clicked.connect(lambda: (log_panel.show(), self.chat_widget.hide(), self.tab_live_badge.show()))
+        tab_chat.clicked.connect(lambda: (log_panel.hide(), self.chat_widget.show(), self.tab_live_badge.hide(), self.chat_widget.focus_input()))
+
+        right_layout.addWidget(tab_bar)
         right_layout.addWidget(log_panel, 1)
+        right_layout.addWidget(self.chat_widget, 1)
 
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
@@ -347,6 +375,7 @@ class NewMapUI(QMainWindow):
                 self.mapping_process.terminate()
             except:
                 pass
+        self.chat_widget.cleanup()
         event.accept()
 
 

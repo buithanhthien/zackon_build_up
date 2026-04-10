@@ -1,0 +1,240 @@
+{
+    "truong": {
+        "ten_day_du": "Đại học Công nghiệp Thành phố Hồ Chí Minh",
+        "viet_tat": "IUH",
+        "ten_tieng_anh": "Industrial University of Ho Chi Minh City",
+        "website": "https://www.iuh.edu.vn",
+        "email_chinh": "dhcn@iuh.edu.vn",
+        "dien_thoai": "(028) 3894 0390",
+        "lich_su": "Tiền thân là Trường Huấn nghiệp Gò Vấp do các tu sĩ dòng Don Bosco thành lập 11/11/1956. Năm 2004 được nâng cấp thành Trường Đại học Công nghiệp TP.HCM theo Quyết định số 214/2004/QĐ-TTg.",
+        "tam_nhin": "Trở thành Trường đại học hàng đầu của Việt Nam, tiên phong trong lĩnh vực giáo dục và nghiên cứu ứng dụng, chuyển giao công nghệ và đổi mới sáng tạo.",
+        "su_mang": "Cung cấp nguồn nhân lực chất lượng cao, có năng lực, phẩm chất và hội nhập quốc tế nhằm đóng góp cho sự phát triển kinh tế xã hội của đất nước.",
+        "gia_tri_cot_loi": "Đổi mới - Đoàn kết - Nhân văn",
+        "co_so_vat_chat": "Trên 500 giảng đường và phòng học, trên 350 phòng thí nghiệm và xưởng thực hành.",
+        "thanh_tuu": [
+            "Lần đầu có 3 ngành vào bảng xếp hạng QS (nhóm 101-150)",
+            "Lần đầu bước vào kiểm định QAA của Vương quốc Anh",
+            "Thúc đẩy đào tạo nhân lực số trong lĩnh vực fintech, blockchain và AI"
+        ]
+    },
+    "co_so": {
+        "tru_so_chinh": {
+            "dia_chi": "Số 12 Nguyễn Văn Bảo, Phường Hạnh Thông, Thành phố Hồ Chí Minh",
+            "dien_thoai": "(028) 3894 0390",
+            "email": "dhcn@iuh.edu.vn"
+        },
+        "co_so_pham_van_chieu": {
+            "dia_chi": "Đường số 53, Phạm Văn Chiêu, Phường An Hội Tây, TP.HCM",
+            "dien_thoai": "(028) 3894 0390"
+        },
+        "co_so_nguyen_van_dung": {
+            "dia_chi": "Số 10 Nguyễn Văn Dung, Phường An Nhơn, TP.HCM",
+            "dien_thoai": "(028) 3894 0390"
+        },
+        "co_so_nhon_trach": {
+            "dia_chi": "Hẻm 1640 đường Hùng Vương, ấp Vũng Gấm, xã Phước An, tỉnh Đồng Nai"
+        },
+        "phan_hieu_quang_ngai": {
+            "dia_chi": "Số 938 đường Quang Trung, phường Cẩm Thành, tỉnh Quảng Ngãi",
+            "dien_thoai": "(0255) 2222 135",
+            "website": "http://qn.iuh.edu.vn"
+        },
+        "co_so_thanh_hoa": {
+            "dia_chi": "Phường Quảng Phú, thành phố Thanh Hóa, tỉnh Thanh Hóa",
+            "dien_thoai": "(0237) 3675 092",
+            "website": "http://th.iuh.edu.vn"
+        }
+    },
+    "lien_he": {
+        "phong_dao_tao": "phongdaotao@iuh.edu.vn",
+        "tuyen_sinh": "tuyensinh@iuh.edu.vn",
+        "phong_to_chuc_hanh_chinh": "ptchc@iuh.edu.vn",
+        "phong_tai_chinh_ke_toan": "ptckt@iuh.edu.vn",
+        "portal_sinh_vien": "https://sv.iuh.edu.vn",
+        "portal_giang_vien": "https://eoffice.iuh.edu.vn",
+        "cuu_sinh_vien": "https://cuusinhvien.iuh.edu.vn"
+    },
+    "khoa_cong_nghe_dien": {
+        "ten": "Khoa Công nghệ Điện (FEET)",
+        "viet_tat": "FEET",
+        "website": "https://feet.iuh.edu.vn/home.html",
+        "trang_giang_vien": "https://feet.iuh.edu.vn/giangvien.html",
+        "ban_lanh_dao": {
+            "truong_khoa": "TS. Trần Thanh Ngọc",
+            "pho_truong_khoa": [
+                "PGS.TS Dương Thanh Long",
+                "TS. Bạch Thanh Quý"
+            ]
+        },
+        "chuong_trinh_dao_tao": [
+            "Đào tạo Tiến sĩ",
+            "Đào tạo Thạc sĩ",
+            "Đào tạo Đại học",
+            "Đào tạo Văn bằng 2 (VHVL)",
+            "Đào tạo ngắn hạn"
+        ],
+        "nghien_cuu_va_khoa_hoc": {
+            "mo_ta": "Khoa có hoạt động NCKH, công bố bài báo khoa học, đề tài NCKH, chuyển giao công nghệ, xuất bản sách giáo trình.",
+            "lien_ket": {
+                "hoat_dong_khcn": "https://feet.iuh.edu.vn/news.html@256@Hoat-dong-KH-CN",
+                "cong_bo_bai_bao": "https://feet.iuh.edu.vn/congbokhoahoc.html@257@Cong-bo-bai-bao-khoa-hoc",
+                "de_tai_nckh": "https://feet.iuh.edu.vn/detai.html@300@De-tai-NCKH"
+            }
+        },
+        "lien_he_truc_tiep": {
+            "email": "feet@iuh.edu.vn",
+            "dien_thoai": "(028) 3894 0390 (Ext: 174-175-200)",
+            "dia_chi_cu_the": "Số 12 Nguyễn Văn Bảo, Phường 4, Q. Gò Vấp, TP.HCM - Khoa Công nghệ Điện, Tầng 5, Nhà X",
+            "so_luot_truy_cap_website": "26,228,309 (tính đến 2026)"
+        },
+        "sinh_vien": {
+            "thong_bao_hoc_vu": "https://feet.iuh.edu.vn/news.html@264@Thong-bao-hoc-vu",
+            "dang_ky_khoa_luan": "https://phuoccse.com/feet/aunsinhvien/login",
+            "bieu_mau": "https://feet.iuh.edu.vn/bieumau.html@266@Bieu-mau-sinh-vien",
+            "hoc_bong_du_hoc": "https://feet.iuh.edu.vn/news.html@356@Hoc-bong-du-hoc",
+            "cuu_sinh_vien_tieu_bieu": "https://feet.iuh.edu.vn/news.html@370@Cuu-sinh-vien-tieu-bieu",
+            "chuyen_trang_viec_lam": "https://htsv.iuh.edu.vn/vieclam",
+            "cong_sinh_vien": "https://sv.iuh.edu.vn"
+        },
+        "chuyen_nganh": [
+            {
+                "ten": "Công nghệ kỹ thuật Điều khiển và Tự động hóa",
+                "chuyen_nganh_con": [
+                    "Chuyên ngành Robot và hệ thống điều khiển thông minh"
+                ],
+                "mo_ta": "Đào tạo kỹ sư về tự động hóa, robot, hệ thống điều khiển thông minh."
+            },
+            {
+                "ten": "Công nghệ kỹ thuật Điện, Điện tử",
+                "mo_ta": "Đào tạo kỹ sư điện, thiết bị điện, hệ thống điện."
+            },
+            {
+                "ten": "Công nghệ kỹ thuật Điện tử - Viễn thông",
+                "mo_ta": "Đào tạo kỹ sư điện tử, viễn thông."
+            }
+        ],
+        "hoat_dong_tieu_bieu": [
+            "Cuộc thi Mitsubishi Electric Automation Cup (MECA) 2026 – Tổ chức vòng chung kết cấp trường",
+            "Tọa đàm phân chuyên ngành Robot và hệ thống điều khiển thông minh (DH K20)",
+            "Sinh viên IUH trình bày sản phẩm công nghệ trước sự chứng kiến của Tổng Bí thư",
+            "Hội thảo AI trong hệ thống điện thông minh của ABB",
+            "Thực tập sinh 03 tháng tại Đài Loan cho sinh viên FEET",
+            "Giải thưởng Khoa học và Công nghệ dành cho sinh viên 2026",
+            "Seminar nâng cao chất lượng giảng dạy các môn điện kỹ thuật"
+        ],
+        "bo_mon": [
+            {
+                "ten": "Bộ môn Cơ sở ngành",
+                "truong_bo_mon": "PGS.TS Châu Minh Thuyên",
+                "giang_vien": [
+                    "GS. Dương Ngọc Huyền",
+                    "ThS. Hoàng Thị Hồng",
+                    "ThS. Lê Ngọc Tuân",
+                    "ThS. Lê Đức Thuận",
+                    "ThS. Ngô Đình Nghĩa",
+                    "TS. Nguyễn Hoài Thương",
+                    "ThS. Nguyễn Huy Khiêm",
+                    "ThS. Nguyễn Mạnh Hoàn",
+                    "ThS. Nguyễn Ngọc Ấn",
+                    "ThS. Nguyễn Quân",
+                    "ThS. Nguyễn Thanh Thảo",
+                    "ThS. Phạm Quốc Khanh",
+                    "ThS. Phạm Thị Lệ Diễm",
+                    "ThS. Phan Thị Bích Thảo",
+                    "TS. Phan Xuân Lễ",
+                    "TS. Trần Tấn Tài",
+                    "ThS. Đinh Thị Thanh Thảo"
+                ]
+            },
+            {
+                "ten": "Bộ môn Cung cấp & Hệ thống điện",
+                "giang_vien": [
+                    "TS. Nguyễn Thanh Thuận (Trưởng bộ môn)",
+                    "ThS. Lâm Tấn Công",
+                    "ThS. Lê Hoàng Chương",
+                    "ThS. Nguyễn Hoài Phong",
+                    "ThS. Nguyễn Hữu Toản",
+                    "ThS. Nguyễn Ngọc Anh",
+                    "ThS. Nguyễn Ngọc Thiêm",
+                    "ThS. Phạm Quốc Nghiệp",
+                    "CN. Phan Lâm Vũ",
+                    "ThS. Phan Thị Hạnh Trinh",
+                    "ThS. Trần Thị Giang Thanh",
+                    "ThS. Trịnh Hữu Trường",
+                    "ThS. Võ Tấn Lộc",
+                    "ThS. Võ Trung Kiên",
+                    "ThS. Vũ Hoàng Hải"
+                ]
+            },
+            {
+                "ten": "Bộ môn Thiết bị điện",
+                "truong_bo_mon": "TS. Phạm Công Duy",
+                "pho_truong_khoa_kiem_nhiem": "TS. Bạch Thanh Quý (Phó trưởng Khoa)",
+                "giang_vien": [
+                    "ThS. Dương Hữu Phước",
+                    "ThS. Huỳnh Gia Thịnh",
+                    "TS. Lê Văn Đại",
+                    "ThS. Lưu Tuấn Kiêt",
+                    "ThS. Nguyễn Thế Anh",
+                    "ThS. Phạm Ái Quốc",
+                    "ThS. Phạm Hoàng Đạt",
+                    "ThS. Phạm Hồng Công",
+                    "TS. Phạm Thúy Ngọc",
+                    "ThS. Trương Công Bình",
+                    "ThS. Văn Thị Kiều Nhi",
+                    "ThS. Đào Văn Dương"
+                ]
+            },
+            {
+                "ten": "Bộ môn Tự động hóa",
+                "truong_bo_mon": "TS. Ngô Thanh Quyền",
+                "giang_vien": [
+                    "TS. Bốc Minh Hùng",
+                    "ThS. Bùi Thị Cẩm Quỳnh",
+                    "TS. Dương Miên Ka",
+                    "ThS. Hà Chí Kiên",
+                    "TS. Hoàng Thị Tú Uyên",
+                    "TS. Hoàng Đình Khôi",
+                    "TS. Lâm Bình Minh",
+                    "ThS. Lê Long Hồ",
+                    "ThS. Lê Ngọc Hội",
+                    "ThS. Nguyễn Anh Tuấn",
+                    "TS. Nguyễn Chí Cường",
+                    "ThS. Nguyễn Hoanh",
+                    "ThS. Nguyễn Ngọc Anh Tuấn",
+                    "ThS. Nguyễn Thành Phúc",
+                    "ThS. Nguyễn Thị Diệu An",
+                    "ThS. Nguyễn Trung Dũng",
+                    "TS. Nguyễn Văn Thọ",
+                    "ThS. Nguyễn Đức Toàn",
+                    "ThS. Phan Minh Thân",
+                    "ThS. Võ Thị Ánh Tuyết",
+                    "ThS. Võ Trung Thư",
+                    "ThS. Vũ Đức Vạn"
+                ]
+            }
+        ],
+        "lien_ket": {
+            "tuyen_sinh_tien_si": "https://feet.iuh.edu.vn/news.html@366@Tuyen-sinh-tien-si",
+            "tuyen_sinh_thac_si": "https://feet.iuh.edu.vn/news.html@359@Tuyen-sinh-thac-si",
+            "tuyen_sinh_dai_hoc": "https://feet.iuh.edu.vn/news.html@358@Tuyen-sinh-dai-hoc",
+            "phong_thi_nghiem": "https://feet.iuh.edu.vn/news.html@367@Phong-TH-TN-khoa-CN-Dien",
+            "ket_noi_doanh_nghiep": "https://feet.iuh.edu.vn/news.html@296@Thong-tin-hop-tac",
+            "tuyen_dung": "https://feet.iuh.edu.vn/news.html@297@Thong-tin-tuyen-dung"
+        }
+    },
+    "robot_zackon": {
+        "mo_ta": "Robot ZACKON là robot tự hành được phát triển bởi sinh viên Đại học Công nghiệp TP.HCM (IUH), sử dụng nền tảng ROS 2.",
+        "cong_nghe": [
+            "ROS 2",
+            "Nav2 (điều hướng tự động)",
+            "SLAM (lập bản đồ đồng thời định vị)",
+            "AMCL (định vị xác suất)",
+            "YOLOv8 (nhận diện người)",
+            "STM32 (vi điều khiển)",
+            "LiDAR (cảm biến khoảng cách)",
+            "Camera RGB"
+        ],
+        "lien_quan_den_khoa": "Dự án do sinh viên và giảng viên Khoa Công nghệ Điện (FEET) phát triển."
+    }
+}

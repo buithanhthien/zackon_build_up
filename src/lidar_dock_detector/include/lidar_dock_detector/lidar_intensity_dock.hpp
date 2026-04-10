@@ -59,16 +59,26 @@ private:
     double y;
   };
 
+  struct ReflectorCluster {
+    double x;
+    double y;
+    double beta;
+    int    peak_idx;
+  };
+
   void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
 
   std::vector<Reflector> detectReflectors(
     const sensor_msgs::msg::LaserScan & scan) const;
 
+  std::vector<ReflectorCluster> clusterReflectors(
+    const std::vector<Reflector> & reflectors) const;
+
   double computeInceptionAngle(double Li, double Lj, double theta_rad) const;
 
   bool computeDockPose(
-    const Reflector & left_tape,
-    const Reflector & right_tape,
+    const ReflectorCluster & left_tape,
+    const ReflectorCluster & right_tape,
     double tape_dist,
     double lrf_offset,
     geometry_msgs::msg::PoseStamped & pose_out) const;
@@ -100,6 +110,7 @@ private:
   double docking_threshold_;           // Distance (m) from dock pose at which isDocked() returns true
   bool   use_external_detection_pose_; // If true, skip LiDAR detection and accept pose from an external node
   bool   rotate_to_dock_;              // If true, staging faces away from dock for forward approach; robot rotates and backs in (requires dock_direction: backward)
+  int    cluster_beam_gap_;            // Max beam index gap to merge adjacent reflector peaks into one cluster
 
   // ── PHASE C: Near-range stopping parameters ──
   // These parameters enable robust docking completion when the 2-reflector pair becomes unstable at very close range.

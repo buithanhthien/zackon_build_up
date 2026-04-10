@@ -53,6 +53,7 @@ void LidarIntensityDock::configure(
   declare("docking_threshold",           0.32);
   declare("use_external_detection_pose", false);
   declare("rotate_to_dock",             false);
+  declare("cluster_beam_gap",           3);
   
   // ── PHASE C: Near-range stopping parameters ──
   declare("use_near_range_stop",              true);
@@ -90,6 +91,7 @@ void LidarIntensityDock::configure(
   docking_threshold_           = get_d("docking_threshold");
   use_external_detection_pose_ = get_b("use_external_detection_pose");
   rotate_to_dock_              = get_b("rotate_to_dock");
+  cluster_beam_gap_            = get_i("cluster_beam_gap");
 
   // ── PHASE C: Load near-range parameters ──
   use_near_range_stop_              = get_b("use_near_range_stop");
@@ -462,19 +464,20 @@ void LidarIntensityDock::scanCallback(
   }
 
   auto reflectors = detectReflectors(*msg);
+  auto clusters   = clusterReflectors(reflectors);
 
   geometry_msgs::msg::PoseStamped detected;
   detected.header = msg->header;
 
   bool found = false;
 
-  if (reflectors.size() == 2u) {
-    const Reflector & right =
-      (reflectors[0].peak_idx < reflectors[1].peak_idx)
-      ? reflectors[0] : reflectors[1];
-    const Reflector & left =
-      (reflectors[0].peak_idx < reflectors[1].peak_idx)
-      ? reflectors[1] : reflectors[0];
+  if (clusters.size() == 2u) {
+    const ReflectorCluster & right =
+      (clusters[0].peak_idx < clusters[1].peak_idx)
+      ? clusters[0] : clusters[1];
+    const ReflectorCluster & left =
+      (clusters[0].peak_idx < clusters[1].peak_idx)
+      ? clusters[1] : clusters[0];
 
     found = computeDockPose(left, right, tape_distance_, lrf_forward_offset_, detected);
   }
@@ -581,6 +584,60 @@ LidarIntensityDock::detectReflectors(
 }
 
 // ─────────────────────────────────────────────
+// clusterReflectors()
+// ─────────────────────────────────────────────
+// Groups adjacent Reflector peaks (within cluster_beam_gap_ beam indices) into
+// clusters. Each cluster's centroid (x, y) and average beta are used downstream
+// instead of a single peak beam, giving a more stable tape centre estimate.
+
+std::vector<LidarIntensityDock::ReflectorCluster>
+LidarIntensityDock::clusterReflectors(
+  const std::vector<Reflector> & reflectors) const
+{
+  std::vector<ReflectorCluster> clusters;
+  if (reflectors.empty()) { return clusters; }
+
+  // Sort by beam index so adjacency check is sequential
+  std::vector<const Reflector *> sorted;
+  sorted.reserve(reflectors.size());
+  for (const auto & r : reflectors) { sorted.push_back(&r); }
+  std::sort(sorted.begin(), sorted.end(),
+    [](const Reflector * a, const Reflector * b) { return a->peak_idx < b->peak_idx; });
+
+  // Greedy merge: if next peak is within cluster_beam_gap_ of current cluster's last peak, merge
+  std::vector<std::vector<const Reflector *>> groups;
+  groups.push_back({sorted[0]});
+
+  for (size_t i = 1; i < sorted.size(); ++i) {
+    int last_idx = groups.back().back()->peak_idx;
+    if (sorted[i]->peak_idx - last_idx <= cluster_beam_gap_) {
+      groups.back().push_back(sorted[i]);
+    } else {
+      groups.push_back({sorted[i]});
+    }
+  }
+
+  // Compute centroid and average beta per group
+  for (const auto & group : groups) {
+    ReflectorCluster c;
+    c.x = 0.0; c.y = 0.0; c.beta = 0.0;
+    for (const auto * r : group) {
+      c.x    += r->x;
+      c.y    += r->y;
+      c.beta += r->beta;
+    }
+    double n = static_cast<double>(group.size());
+    c.x    /= n;
+    c.y    /= n;
+    c.beta /= n;
+    c.peak_idx = group[group.size() / 2]->peak_idx;  // median index as representative
+    clusters.push_back(c);
+  }
+
+  return clusters;
+}
+
+// ─────────────────────────────────────────────
 // Inception angle - Eq.(3a)
 // ─────────────────────────────────────────────
 // Computes beta: the angle of incidence of the LiDAR beam on the reflective tape surface.
@@ -612,8 +669,8 @@ double LidarIntensityDock::computeInceptionAngle(
 // ─────────────────────────────────────────────
 
 bool LidarIntensityDock::computeDockPose(
-  const Reflector & left_tape,
-  const Reflector & right_tape,
+  const ReflectorCluster & left_tape,
+  const ReflectorCluster & right_tape,
   double tape_dist,
   double lrf_offset,
   geometry_msgs::msg::PoseStamped & pose_out) const

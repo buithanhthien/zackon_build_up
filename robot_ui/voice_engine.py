@@ -1,36 +1,50 @@
-import threading
-import time
-import re
+import json
 import os
-import asyncio
+import queue
+import re
 import subprocess
 import tempfile
+import threading
+import time
 from contextlib import contextmanager
+
 import speech_recognition as sr
-import edge_tts
 from PyQt6.QtCore import QObject, pyqtSignal
+from vieneu import Vieneu
 
-# ── TTS voice ─────────────────────────────────────────────────────────────────
-#   vi-VN-HoaiMyNeural  – Vietnamese female  ← current
-#   vi-VN-NamMinhNeural – Vietnamese male
-# Set to None to fall back to offline espeak-ng.
-EDGE_TTS_VOICE = "vi-VN-HoaiMyNeural"
+MIC_DEVICE_PRIORITY = [
+    "pipewire",       # PipeWire virtual device (modern Linux audio server)
+    "sysdefault",     # ALSA system default device
+    "USB2.0 Device",  # Generic USB microphone/webcam mic
+    "SN6140 Analog",  # Realtek onboard analog mic (common on mini PCs)
+    "DMIC16kHz",      # Digital mic array at 16kHz (Intel/AMD laptops)
+    "DMIC",           # Generic digital mic array
+]
+MIC_SAMPLE_RATE = 16000
+STT_LANGUAGE    = "vi-VN"
 
-# ── Wake word ─────────────────────────────────────────────────────────────────
-# Aliases cover common Google STT transcriptions of "Ê mày".
-WAKE_WORD = "sủa tao nghe"
-WAKE_ALIASES = [WAKE_WORD, "sửa tao nghe", 
-                "sủa tào nghe", 
-                "sủa ta nghe", 
-                "sủa tao nghen", 
-                "ủa tao nghe"]
+WAYPOINT_PREFIXES = [
+    "đi tới vị trí số", "đi đến vị trí số", "di tới vị trí số", "di đến vị trí số",
+    "đi tới vị trí", "đi đến vị trí", "di tới vị trí", "di đến vị trí",
+    "đi tới số", "đi đến số", "di tới số", "di đến số",
+    "tới vị trí số", "đến vị trí số", "tới vị trí", "đến vị trí",
+    "tới số", "đến số",
+    "đi tới", "đi đến", "di tới", "di đến",
+]
+VI_DIGITS = {
+    "một": "1", "hai": "2", "ba": "3", "bốn": "4", "năm": "5",
+    "sáu": "6", "bảy": "7", "tám": "8", "chín": "9", "mười": "10",
+}
 
-# ─────────────────────────────────────────────────────────────────────────────
+
+class VoiceState:
+    LISTENING = "[>>] LISTENING"
+    THINKING  = "[..] THINKING"
+    SPEAKING  = "[<<] SPEAKING"
 
 
 @contextmanager
-def suppress_stderr():
-    """Redirect C-level stderr to /dev/null (suppresses ALSA noise)."""
+def _suppress_stderr():
     null_fd = os.open(os.devnull, os.O_RDWR)
     save_fd = os.dup(2)
     os.dup2(null_fd, 2)
@@ -42,168 +56,184 @@ def suppress_stderr():
         os.close(save_fd)
 
 
-class VoiceState:
-    IDLE      = "🔴 IDLE"
-    LISTENING = "🟢 LISTENING"
-    THINKING  = "⏳ THINKING"
-    SPEAKING  = "🔊 SPEAKING"
-
 
 class VoiceEngine(QObject):
-    state_changed    = pyqtSignal(str)   # emits VoiceState constants
-    transcript_ready = pyqtSignal(str)   # emits transcribed user text
+    state_changed    = pyqtSignal(str)
+    transcript_ready = pyqtSignal(str)
+    waypoint_command = pyqtSignal(str)
+    ui_command       = pyqtSignal(str)
 
-    def __init__(self, wake_word: str = WAKE_WORD,
-                 edge_voice: str | None = EDGE_TTS_VOICE):
+    def __init__(self):
         super().__init__()
-        self.wake_word   = wake_word.lower()
-        self._edge_voice = edge_voice          # e.g. "vi-VN-HoaiMyNeural"
-        self._espeak_lang = "vi-vn-x-central"  # offline fallback lang
-        self._espeak_rate = 160                # words per minute
+        self._play_lock  = threading.Lock()
+        self._stop_flag  = threading.Event()
 
         self.recognizer = sr.Recognizer()
         self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.energy_threshold = 400
-        self.recognizer.pause_threshold  = 0.8
+        self.recognizer.pause_threshold  = 1.5
 
-        print(f"[VoiceEngine] Active voice: "
-              f"{self._edge_voice or 'espeak-ng/' + self._espeak_lang}")
+        self._tts_queue = queue.Queue()
+        self._tts_engine = None
+        threading.Thread(target=self._tts_worker, daemon=True).start()
 
-        self._running          = False
-        self._listening_thread = None
-        self._state_lock       = threading.Lock()
-        self._current_state    = VoiceState.IDLE
+    def _init_tts(self):
+        if self._tts_engine is None:
+            print("[TTS] Initializing VieNeu-TTS...")
+            self._tts_engine = Vieneu()
+            print("[TTS] VieNeu-TTS ready")
 
-        with suppress_stderr():
-            self._microphone = sr.Microphone()
+    def listen_once(self):
+        threading.Thread(target=self._listen_thread, daemon=True).start()
 
-    # ── Public API ────────────────────────────────────────────────────────────
+    def _listen_thread(self):
+        available = sr.Microphone.list_microphone_names()
+        candidates = []
+        for name in MIC_DEVICE_PRIORITY:
+            idx = next((i for i, n in enumerate(available) if name.lower() in n.lower()), None)
+            if idx is not None:
+                candidates.append(idx)
+        candidates.append(None)  # system default as final fallback
 
-    def set_voice(self, edge_voice: str) -> None:
-        """Switch the edge-tts neural voice at runtime.
-        e.g. 'vi-VN-HoaiMyNeural' or 'vi-VN-NamMinhNeural'."""
-        self._edge_voice = edge_voice
-        print(f"[VoiceEngine] Voice changed to: {edge_voice}")
+        source = None
+        mic = None
+        for idx in candidates:
+            try:
+                mic = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
+                with _suppress_stderr():
+                    source = mic.__enter__()
+                print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
+                break
+            except Exception as e:
+                print(f"[VoiceEngine] mic index={idx} failed: {e}")
+                source = None
 
-    def start(self):
-        with self._state_lock:
-            if self._running:
+        if source is None:
+            print("[VoiceEngine] no usable microphone found")
+            self.state_changed.emit("")
+            return
+        try:
+            self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
+            self._set_state(VoiceState.LISTENING)
+            try:
+                audio = self.recognizer.listen(source, timeout=5.0, phrase_time_limit=15.0)
+                print(f"[VoiceEngine] audio captured, sending to Google STT...")
+            except sr.WaitTimeoutError:
+                print(f"[VoiceEngine] timeout — no speech detected")
+                self.state_changed.emit("")
                 return
-            self._running = True
-        self._set_state(VoiceState.IDLE)
-        self._listening_thread = threading.Thread(
-            target=self._listen_loop, daemon=True)
-        self._listening_thread.start()
+            self._set_state(VoiceState.THINKING)
+            try:
+                text = self.recognizer.recognize_google(audio, language=STT_LANGUAGE)
+                print(f"[VoiceEngine] recognized: '{text}'")
+                slot = self._check_waypoint_command(text.lower())
+                if slot is not None:
+                    self.waypoint_command.emit(slot)
+                else:
+                    self.transcript_ready.emit(text)
+            except sr.UnknownValueError:
+                print(f"[VoiceEngine] could not understand audio")
+            except Exception as e:
+                print(f"[VoiceEngine] STT error: {e}")
+        finally:
+            self.state_changed.emit("")
+            try:
+                mic.__exit__(None, None, None)
+            except Exception:
+                pass
 
-    def stop(self):
-        with self._state_lock:
-            self._running = False
-            self._set_state(VoiceState.IDLE)
+    def stop_speaking(self):
+        self._stop_flag.set()
+        try:
+            while True:
+                self._tts_queue.get_nowait()
+                self._tts_queue.task_done()
+        except queue.Empty:
+            pass
 
     def speak(self, text: str):
-        """Speak AI response text (strips action tags, runs async)."""
-        clean = re.sub(r'<[^>]+>', '', text).strip()
-        if not clean:
-            return
-        self._set_state(VoiceState.SPEAKING)
-        threading.Thread(target=self._speak_blocking,
-                         args=(clean,), daemon=True).start()
-
-    # ── TTS ───────────────────────────────────────────────────────────────────
-
-    def _speak_blocking(self, text: str):
-        if self._edge_voice:
-            self._speak_edge(text)
-        else:
-            self._speak_espeak(text)
-
-    def _speak_edge(self, text: str):
-        """Primary TTS: Microsoft Edge neural voice via edge-tts + mpg123."""
-        tmp = None
-        try:
-            tmp = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
-            tmp.close()
-            asyncio.run(edge_tts.Communicate(text, self._edge_voice).save(tmp.name))
-            subprocess.run(['mpg123', '-q', tmp.name],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           check=True)
-        except FileNotFoundError:
-            print("[VoiceEngine] mpg123 not found — sudo apt install mpg123")
-        except Exception as e:
-            print(f"[VoiceEngine] edge-tts error: {e}  →  falling back to espeak-ng")
-            self._speak_espeak(text)
-        finally:
-            if tmp and os.path.exists(tmp.name):
-                os.remove(tmp.name)
-            if self._running:
-                self._set_state(VoiceState.IDLE)
-
-    def _speak_espeak(self, text: str):
-        """Offline fallback TTS: espeak-ng subprocess."""
-        try:
-            subprocess.run(
-                ['espeak-ng', '-v', self._espeak_lang,
-                 '-s', str(self._espeak_rate), '-a', '200', '--', text],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                check=True)
-        except FileNotFoundError:
-            print("[VoiceEngine] espeak-ng not found — sudo apt install espeak-ng")
-        except subprocess.CalledProcessError as e:
-            print(f"[VoiceEngine] espeak-ng error (exit {e.returncode})")
-        except Exception as e:
-            print(f"[VoiceEngine] TTS error: {e}")
-        finally:
-            if self._running:
-                self._set_state(VoiceState.IDLE)
-
-    # ── STT / listen loop ─────────────────────────────────────────────────────
+        text = re.sub(r'<[^>]+>', '', text)
+        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        text = re.sub(r'\*([^*]+)\*', r'\1', text)
+        text = text.replace('"', '').replace('"', '').replace('"', '')
+        text = re.sub(r'\.(?=[a-zA-Z])', ' chấm ', text)
+        text = text.strip()
+        if text:
+            self._tts_queue.put(text)
 
     def _set_state(self, state: str):
-        self._current_state = state
         self.state_changed.emit(state)
 
-    def _listen_loop(self):
-        with suppress_stderr():
-            mic = sr.Microphone()
-            source = mic.__enter__()
-        try:
-            self.recognizer.adjust_for_ambient_noise(source, duration=1.0)
-            while self._running:
-                if self._current_state != VoiceState.IDLE:
-                    time.sleep(0.1)
-                    continue
-                try:
-                    audio = self.recognizer.listen(
-                        source, timeout=2.0, phrase_time_limit=3.0)
-                    try:
-                        text = self.recognizer.recognize_google(
-                            audio, language='vi-VN').lower()
-                        print(f"[VoiceEngine] Heard: '{text}'")
-                        all_wake = [self.wake_word] + WAKE_ALIASES
-                        if any(w in text for w in all_wake):
-                            self._handle_wake_word(source)
-                    except sr.UnknownValueError:
-                        pass
-                    except sr.RequestError as e:
-                        print(f"[VoiceEngine] STT error: {e}")
-                except sr.WaitTimeoutError:
-                    pass
-                except Exception as e:
-                    print(f"[VoiceEngine] Listen error: {e}")
-                    time.sleep(1)
-        finally:
-            mic.__exit__(None, None, None)
+    def _tts_worker(self):
+        while True:
+            text = self._tts_queue.get()
+            self._stop_flag.clear()
+            
+            if self._tts_engine is None:
+                self._init_tts()
+            
+            try:
+                audio = self._tts_engine.infer(text=text)
+                if audio is not None and len(audio) > 0 and not self._stop_flag.is_set():
+                    self._set_state(VoiceState.SPEAKING)
+                    self._play_wav(audio)
+            except Exception as e:
+                print(f"[TTS] synthesis failed: {e}")
+            
+            self._tts_queue.task_done()
+            if self._tts_queue.empty():
+                self._set_state("")
 
-    def _handle_wake_word(self, source):
-        self._set_state(VoiceState.LISTENING)
+    def _play_wav(self, audio):
+        with self._play_lock:
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+                self._tts_engine.save(audio, f.name)
+                tmp_path = f.name
+            try:
+                proc = subprocess.Popen(
+                    ['aplay', '-q', tmp_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                while proc.poll() is None:
+                    if self._stop_flag.is_set():
+                        proc.kill()
+                        break
+                    time.sleep(0.05)
+            finally:
+                os.unlink(tmp_path)
+
+    def _load_waypoints(self) -> dict:
         try:
-            audio = self.recognizer.listen(
-                source, timeout=4.0, phrase_time_limit=10.0)
-            self._set_state(VoiceState.THINKING)
-            text = self.recognizer.recognize_google(audio, language='vi-VN')
-            self.transcript_ready.emit(text)
-        except (sr.WaitTimeoutError, sr.UnknownValueError):
-            self._set_state(VoiceState.IDLE)
-        except Exception as e:
-            print(f"[VoiceEngine] Command STT error: {e}")
-            self._set_state(VoiceState.IDLE)
+            wp_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'waypoints.json')
+            with open(wp_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _check_waypoint_command(self, text: str) -> str | None:
+        text = text.strip()
+        wps = self._load_waypoints()
+        keys = list(wps.keys())
+
+        def _norm(s: str) -> str:
+            return re.sub(r'([a-z])(\d+)[.,](\d+)', r'\1\2\3', s.lower())
+
+        def _matches(remainder: str, key: str) -> bool:
+            r = _norm(remainder)
+            if r == _norm(key):
+                return True
+            return any(r == _norm(a) for a in wps[key].get("aliases", []))
+
+        for prefix in WAYPOINT_PREFIXES:
+            if not text.startswith(prefix):
+                continue
+            remainder = text[len(prefix):].strip()
+            if remainder.isdigit():
+                return remainder
+            if remainder in VI_DIGITS:
+                return VI_DIGITS[remainder]
+            matched = next((k for k in keys if _matches(remainder, k)), None)
+            if matched:
+                return matched
+        return None

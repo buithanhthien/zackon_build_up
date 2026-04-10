@@ -165,6 +165,7 @@ void LidarIntensityDock::deactivate() {
 // ─────────────────────────────────────────────
 // ChargingDock interface
 // ─────────────────────────────────────────────
+// Vi tri Pre-dock before detecting tape 
 
 geometry_msgs::msg::PoseStamped
 LidarIntensityDock::getStagingPose(

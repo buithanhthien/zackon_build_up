@@ -13,10 +13,11 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from vieneu import Vieneu
 
 MIC_DEVICE_PRIORITY = [
-    "pipewire",       # PipeWire routes all physical mics (USB, 3.5mm)
+    "pipewire",       # PipeWire routes all physical mics (USB, 3.5mm jack)
     "sysdefault",
     "default",
 ]
+MIC_JACK_KEYWORDS = ["sn6140", "analog", "hd-audio generic"]  # 3.5mm jack identifiers
 MIC_FORCE_INDEX = None
 MIC_SAMPLE_RATE = 16000
 STT_LANGUAGE    = "vi-VN"
@@ -86,6 +87,14 @@ class VoiceEngine(QObject):
 
     def _listen_thread(self):
         available = sr.Microphone.list_microphone_names()
+
+        # Log jack mic availability
+        jack_idx = next((i for i, n in enumerate(available)
+                         if any(k in n.lower() for k in MIC_JACK_KEYWORDS)), None)
+        if jack_idx is not None:
+            print(f"[VoiceEngine] 3.5mm jack mic detected: index={jack_idx} ({available[jack_idx]})")
+        else:
+            print("[VoiceEngine] 3.5mm jack mic NOT detected")
         if MIC_FORCE_INDEX is not None:
             candidates = [MIC_FORCE_INDEX, None]
         else:

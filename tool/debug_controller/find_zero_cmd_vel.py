@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from datetime import datetime
 
-log_file = '/home/khoaiuh/zackon_build_up/tool/debug_controller/cmd_vel_log_3.txt'
+log_file = '/home/khoaiuh/zackon_build_up/tool/debug_controller/cmd_vel_log_4.txt'
 
 prev_time = None
 with open(log_file, 'r') as f:

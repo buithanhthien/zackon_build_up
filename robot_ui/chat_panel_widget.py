@@ -239,7 +239,6 @@ class ChatPanel(QWidget):
         self._voice_engine = VoiceEngine()
         self._voice_engine.state_changed.connect(self._on_voice_state_changed)
         self._voice_engine.transcript_ready.connect(self._on_voice_transcript)
-        self._voice_engine.waypoint_command.connect(self.waypoint_command.emit)
         self._pose_provider = None
         self._pending_response = None
 

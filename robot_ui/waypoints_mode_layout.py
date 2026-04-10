@@ -12,12 +12,13 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
-# from nav2_msgs.action import NavigateToPose
 from nav2_msgs.action import NavigateToPose
+from action_msgs.msg import GoalStatus
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
-from chat_panel_widget import ChatPanel
+from chat_panel_widget import ChatPanel, _AIChatWorker
+from PyQt6.QtCore import QThread
 
 
 class WaypointsNode(Node):
@@ -174,13 +175,12 @@ class WaypointsModeLayout(QMainWindow):
         self.selected_sequence = []
         self.running_sequence = False
         self.current_sequence_index = 0
+        self._current_nav_target = None
+        self._announce_thread = None
         self.init_ui()
 
-        # ── Voice engine — use ChatPanel's internal engine (same as startup_layout) ──
-        self.chat_widget._voice_engine.waypoint_command.connect(self.voice_navigate_to_waypoint)
-        self.log("[Voice] Listening — say \"Đi tới <số>\" to navigate")
+        self.log("[Voice] Listening — speak to navigate")
 
-        # Auto-start voice after event loop is ready (avoids JACK/heap init race)
         QTimer.singleShot(500, self._auto_start_voice)
         
         self.timer = QTimer()
@@ -615,6 +615,7 @@ class WaypointsModeLayout(QMainWindow):
         goal_msg.pose.pose.orientation.w = wp['qw']
         
         send_goal_future = self.ros_node.nav_client.send_goal_async(goal_msg)
+        self._current_nav_target = str(slot_num)
         send_goal_future.add_done_callback(lambda future: self._goal_response_callback(future, slot_num))
         
     def _goal_response_callback(self, future, slot_num):
@@ -622,21 +623,25 @@ class WaypointsModeLayout(QMainWindow):
         if goal_handle.accepted:
             self.ros_node.current_goal_handle = goal_handle
             self.log(f'Navigating to slot {slot_num}')
-            
-            if self.running_sequence:
-                result_future = goal_handle.get_result_async()
-                result_future.add_done_callback(self._goal_result_callback)
+            result_future = goal_handle.get_result_async()
+            result_future.add_done_callback(self._goal_result_callback)
         else:
             self.log(f'Goal to slot {slot_num} rejected')
             self.ros_node.current_goal_handle = None
             if self.running_sequence:
                 self.running_sequence = False
-    
+
     def _goal_result_callback(self, future):
+        status = future.result().status
+        print(f"[Nav] _goal_result_callback fired — status={status} (SUCCEEDED={GoalStatus.STATUS_SUCCEEDED})")
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self.log(f'Reached {self._current_nav_target}')
+            print(f"[Nav] Goal SUCCEEDED — calling _announce_arrival('{self._current_nav_target}')")
+            self._announce_arrival(self._current_nav_target)
+
         if self.running_sequence and self.current_sequence_index < len(self.selected_sequence) - 1:
             self.current_sequence_index += 1
             next_slot = self.selected_sequence[self.current_sequence_index]
-            
             current_slot = self.selected_sequence[self.current_sequence_index - 1]
             if next_slot == current_slot:
                 self.log(f'Already at slot {next_slot}, skipping...')
@@ -646,6 +651,10 @@ class WaypointsModeLayout(QMainWindow):
         else:
             self.running_sequence = False
             self.log('Sequence completed')
+
+    def _announce_arrival(self, target: str):
+        print(f"[Announce] _announce_arrival called with target='{target}'")
+        self.chat_widget._voice_engine.speak("Đã tới nơi rồi")
     
     def run_sequence(self):
         if not self.selected_sequence:
@@ -757,7 +766,7 @@ class WaypointsModeLayout(QMainWindow):
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
-        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def closeEvent(self, event):

@@ -351,7 +351,7 @@ class NewMapUI(QMainWindow):
             except:
                 self.mapping_process.kill()
                 self.log("SLAM process killed")
-        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
     def log(self, message):

@@ -355,7 +355,7 @@ class TrackingModeUI(QMainWindow):
             subprocess.run(['pkill', '-f', 'system.launch.py'])
             self.launch_process.terminate()
             self.log("Stopped tracking system")
-        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
         
     def log(self, message):

@@ -47,6 +47,18 @@ install(TARGETS lidar_dock_detector
   RUNTIME DESTINATION bin
 )
 
+add_executable(debug_dock_pose_node src/debug_dock_pose_node.cpp)
+ament_target_dependencies(debug_dock_pose_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+)
+
+install(TARGETS
+  debug_dock_pose_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(DIRECTORY include/
   DESTINATION include
 )

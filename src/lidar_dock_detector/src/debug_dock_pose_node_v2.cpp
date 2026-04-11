@@ -551,18 +551,29 @@ bool computeDockPose(
     nx = n2x;
     ny = n2y;
   }
-
-  // 6) Orientation: x-axis of dock pose points outward toward robot
   double yaw = std::atan2(ny, nx);
 
-  // 7) Position:
-  // midpoint is on tape line.
-  // If dock origin should lie behind the tape line (closer to wall),
-  // shift opposite to the outward normal.
+  // RPLidar frame correction:
+  // 1) invert x
+  // 2) rotate orientation by 180 deg around z
+  yaw += M_PI;
+
+  // normalize yaw to [-pi, pi]
+  while (yaw > M_PI) {
+    yaw -= 2.0 * M_PI;
+  }
+  while (yaw < -M_PI) {
+    yaw += 2.0 * M_PI;
+  }
+
   double d = std::abs(dock_offset);
 
-  pose_out.pose.position.x = mx - d * nx;
-  pose_out.pose.position.y = my - d * ny;
+  double px = mx - d * nx;
+  double py = my - d * ny;
+
+  // apply x sign correction
+  pose_out.pose.position.x = -px + 0.51;
+  pose_out.pose.position.y = py;
   pose_out.pose.position.z = 0.0;
 
   pose_out.pose.orientation.x = 0.0;

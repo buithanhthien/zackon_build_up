@@ -43,9 +43,14 @@ void LidarIntensityDock::configure(
   declare("tape_distance",               0.375);
   declare("rubber_width",                0.32);
   declare("reflector_width",             0.048);
-  declare("i_peak",                      46.0);
-  declare("i_valley",                    21.0);
-  declare("valley_search_range",         19);
+  
+  // NEW: Cluster-based detection parameters
+  declare("intensity_cluster_threshold", 45.0);
+  declare("min_cluster_points",          5);
+  declare("max_cluster_range_span",      0.03);
+  declare("min_cluster_angle_width",     0.01);
+  declare("max_cluster_angle_width",     0.12);
+  
   declare("max_detect_range",            3.0);
   declare("max_fail_count",              5);
   declare("staging_x_offset",           0.8);
@@ -81,9 +86,14 @@ void LidarIntensityDock::configure(
   tape_distance_               = get_d("tape_distance");
   rubber_width_                = get_d("rubber_width");
   reflector_width_             = get_d("reflector_width");
-  i_peak_                      = static_cast<float>(get_d("i_peak"));
-  i_valley_                    = static_cast<float>(get_d("i_valley"));
-  valley_search_range_         = get_i("valley_search_range");
+  
+  // NEW: Cluster-based detection parameters
+  intensity_cluster_threshold_ = static_cast<float>(get_d("intensity_cluster_threshold"));
+  min_cluster_points_          = get_i("min_cluster_points");
+  max_cluster_range_span_      = get_d("max_cluster_range_span");
+  min_cluster_angle_width_     = get_d("min_cluster_angle_width");
+  max_cluster_angle_width_     = get_d("max_cluster_angle_width");
+  
   max_detect_range_            = get_d("max_detect_range");
   max_fail_count_              = get_i("max_fail_count");
   staging_x_offset_            = get_d("staging_x_offset");
@@ -103,12 +113,12 @@ void LidarIntensityDock::configure(
 
   RCLCPP_INFO(node->get_logger(),
     "[%s] Configured: scan=%s base=%s lrf_offset=%.3f tape=%.3f "
-    "i_peak=%.0f i_valley=%.0f max_range=%.1f max_fail=%d "
+    "cluster_thresh=%.0f min_pts=%d max_range=%.1f max_fail=%d "
     "staging_x=%.3f staging_yaw=%.3f use_ext=%s "
     "near_range=%s entry_dist=%.2f sector_deg=%.1f stop_thresh=%.3f stable_cnt=%d stat=%s",
     name_.c_str(), scan_topic_.c_str(), base_frame_.c_str(),
     lrf_forward_offset_, tape_distance_,
-    static_cast<double>(i_peak_), static_cast<double>(i_valley_),
+    static_cast<double>(intensity_cluster_threshold_), min_cluster_points_,
     max_detect_range_, max_fail_count_,
     staging_x_offset_, staging_yaw_offset_,
     use_external_detection_pose_ ? "true" : "false",
@@ -296,6 +306,7 @@ bool LidarIntensityDock::getRefinedPose(
 //   • Switches to direct range at close range (robust to reflector loss)
 //   • Debounces near-range detection to avoid false positives from noise
 // ─────────────────────────────────────────────────────────────────────────────
+
 bool LidarIntensityDock::isDocked()
 {
   if (!use_external_detection_pose_) {
@@ -498,7 +509,7 @@ void LidarIntensityDock::scanCallback(
 }
 
 // ─────────────────────────────────────────────
-// detectReflectors()
+// detectReflectors() - NEW: Cluster-based detection
 // ─────────────────────────────────────────────
 
 std::vector<LidarIntensityDock::Reflector>
@@ -506,79 +517,134 @@ LidarIntensityDock::detectReflectors(
   const sensor_msgs::msg::LaserScan & scan) const
 {
   std::vector<Reflector> result;
+
   const size_t N = scan.ranges.size();
-  if (scan.intensities.size() != N) { return result; }
+  if (scan.intensities.size() != N) {
+    return result;
+  }
 
-  const double theta = scan.angle_increment;
+  int i = 0;
 
-  // Geometric max range from Eq.(8a), capped by configured max_detect_range_
-  const double max_range_geom = std::min(rubber_width_, reflector_width_) / (2.0 * std::sin(theta / 2.0));
-  const double max_range = std::min(max_range_geom, max_detect_range_);
+  while (i < static_cast<int>(N)) {
 
-  const int margin = valley_search_range_ + 2;
-
-  for (int i = margin; i < static_cast<int>(N) - margin; ++i) {
-    // Skip beams filtered out by scan_front_filter (set to range_max)
-    if (scan.ranges[i] >= scan.range_max) { continue; }
-
-    const float I_i = scan.intensities[i];
-    if (I_i < i_peak_) { continue; }
-
-    bool is_max = true;
-    for (int k = i - 1; k >= std::max(0, i - valley_search_range_); --k) {
-      if (scan.intensities[k] > I_i) { is_max = false; break; }
-    }
-    if (!is_max) { continue; }
-    for (int k = i + 1; k <= std::min(static_cast<int>(N) - 1, i + valley_search_range_); ++k) {
-      if (scan.intensities[k] > I_i) { is_max = false; break; }
-    }
-    if (!is_max) { continue; }
-
-    // Left valley
-    int   vl_idx = i - 1;
-    float vl_val = scan.intensities[vl_idx];
-    for (int k = i - 2; k >= std::max(0, i - valley_search_range_); --k) {
-      if (scan.intensities[k] < vl_val) { vl_val = scan.intensities[k]; vl_idx = k; }
+    // ===== Skip until a bright point is found =====
+    while (i < static_cast<int>(N) &&
+           scan.intensities[i] < intensity_cluster_threshold_) {
+      i++;
     }
 
-    // Right valley
-    int   vr_idx = i + 1;
-    float vr_val = scan.intensities[vr_idx];
-    for (int k = i + 2; k <= std::min(static_cast<int>(N) - 1, i + valley_search_range_); ++k) {
-      if (scan.intensities[k] < vr_val) { vr_val = scan.intensities[k]; vr_idx = k; }
+    if (i >= static_cast<int>(N)) {
+      break;
     }
 
-    if (vl_val > i_valley_ || vr_val > i_valley_) { continue; }
+    // ===== Start cluster =====
+    int cluster_start = i;
 
-    const float r_i = scan.ranges[i];
-    if (!std::isfinite(r_i) || r_i < scan.range_min || r_i > scan.range_max) { continue; }
-    if (static_cast<double>(r_i) > max_range) { continue; }
+    std::vector<int> indices;
 
-    const float r_j = scan.ranges[i - 1];
-    if (!std::isfinite(r_j) || r_j < scan.range_min || r_j > scan.range_max) { continue; }
+    while (i < static_cast<int>(N) &&
+           scan.intensities[i] >= intensity_cluster_threshold_) {
+      indices.push_back(i);
+      i++;
+    }
 
-    double beta = computeInceptionAngle(
-      static_cast<double>(r_i), static_cast<double>(r_j), theta);
-    if (std::abs(beta) < 0.05) { continue; }
+    int cluster_end = i - 1;
 
-    double rplidar_angle = scan.angle_min + i * scan.angle_increment;
+    // ===== Check cluster size =====
+    if (static_cast<int>(indices.size()) < min_cluster_points_) {
+      continue;
+    }
+
+    // ===== Compute cluster properties =====
+    double sum_I = 0.0;
+    double sum_idx_I = 0.0;
+    double sum_range_I = 0.0;
+
+    double min_range = 1e9;
+    double max_range = -1e9;
+
+    float strongest_I = 0.0f;
+
+    for (int idx : indices) {
+      float I = scan.intensities[idx];
+      float r = scan.ranges[idx];
+
+      if (!std::isfinite(r) ||
+          r < scan.range_min ||
+          r > scan.range_max) {
+        continue;
+      }
+
+      sum_I += I;
+      sum_idx_I += static_cast<double>(idx) * I;
+      sum_range_I += static_cast<double>(r) * I;
+
+      min_range = std::min(min_range, static_cast<double>(r));
+      max_range = std::max(max_range, static_cast<double>(r));
+
+      strongest_I = std::max(strongest_I, I);
+    }
+
+    if (sum_I < 1e-6) {
+      continue;
+    }
+
+    // ===== Range consistency check =====
+    double range_span = max_range - min_range;
+
+    if (range_span > max_cluster_range_span_) {
+      continue;
+    }
+
+    // ===== Angular width check =====
+    double angle_start =
+      scan.angle_min + cluster_start * scan.angle_increment;
+
+    double angle_end =
+      scan.angle_min + cluster_end * scan.angle_increment;
+
+    double cluster_angle_width =
+      std::abs(angle_end - angle_start);
+
+    if (cluster_angle_width < min_cluster_angle_width_ ||
+        cluster_angle_width > max_cluster_angle_width_) {
+      continue;
+    }
+
+    // ===== Weighted center =====
+    double center_idx = sum_idx_I / sum_I;
+    double center_range = sum_range_I / sum_I;
+
+    // ===== Convert to x,y =====
+    double rplidar_angle =
+      scan.angle_min + center_idx * scan.angle_increment;
+
     double ros_angle = M_PI - rplidar_angle;
-    while (ros_angle >  M_PI) ros_angle -= 2 * M_PI;
-    while (ros_angle < -M_PI) ros_angle += 2 * M_PI;
 
+    while (ros_angle > M_PI) {
+      ros_angle -= 2.0 * M_PI;
+    }
+
+    while (ros_angle < -M_PI) {
+      ros_angle += 2.0 * M_PI;
+    }
+
+    double x = center_range * std::cos(ros_angle);
+    double y = center_range * std::sin(ros_angle);
+
+    // ===== Create reflector =====
     Reflector ref;
-    ref.peak_idx     = i;
-    ref.valley_l_idx = vl_idx;
-    ref.valley_r_idx = vr_idx;
-    ref.I_peak       = I_i;
-    ref.I_valley     = std::min(vl_val, vr_val);
-    ref.L_peak       = static_cast<double>(r_i);
-    ref.beta         = beta;
-    ref.x            = static_cast<double>(r_i) * std::cos(ros_angle);
-    ref.y            = static_cast<double>(r_i) * std::sin(ros_angle);
+    ref.peak_idx = static_cast<int>(std::round(center_idx));
+    ref.valley_l_idx = cluster_start;
+    ref.valley_r_idx = cluster_end;
+    ref.I_peak = strongest_I;
+    ref.I_valley = 0.0f;
+    ref.L_peak = center_range;
+    ref.beta = 0.0;   // optional for now
+    ref.x = x;
+    ref.y = y;
 
     result.push_back(ref);
-    i = vr_idx;
   }
 
   return result;
@@ -666,39 +732,85 @@ double LidarIntensityDock::computeInceptionAngle(
 }
 
 // ─────────────────────────────────────────────
-// Dock pose - Eq.(9)
+// Dock pose - NEW: Perpendicular-based computation
 // ─────────────────────────────────────────────
 
 bool LidarIntensityDock::computeDockPose(
   const ReflectorCluster & left_tape,
   const ReflectorCluster & right_tape,
   double tape_dist,
-  double lrf_offset,
+  double dock_offset,
   geometry_msgs::msg::PoseStamped & pose_out) const
 {
-  // Validate reflector pair spacing against configured tape_distance
-  double measured_dist = std::hypot(
-    left_tape.x - right_tape.x, left_tape.y - right_tape.y);
+  // 1) Check tape spacing
+  double dx = left_tape.x - right_tape.x;
+  double dy = left_tape.y - right_tape.y;
+  double measured_dist = std::hypot(dx, dy);
+
   if (std::abs(measured_dist - tape_dist) > tape_dist * 0.2) {
     return false;  // geometry inconsistent — likely false positive pair
   }
 
-  double theta_L = std::atan2(left_tape.y,  left_tape.x);
-  double theta_R = std::atan2(right_tape.y, right_tape.x);
+  // 2) Midpoint of two tapes
+  double mx = 0.5 * (left_tape.x + right_tape.x);
+  double my = 0.5 * (left_tape.y + right_tape.y);
 
-  double phi_L = M_PI / 2.0 - left_tape.beta  - theta_L;
-  double phi_R = M_PI / 2.0 - right_tape.beta - theta_R;
-  double phi_m = (phi_L + phi_R) / 2.0;
+  // 3) Tangent direction along tape line
+  double tx = dx / measured_dist;
+  double ty = dy / measured_dist;
 
-  // Midpoint of two tapes + LiDAR forward offset (single compensation point)
-  pose_out.pose.position.x = (left_tape.x + right_tape.x) / 2.0 + lrf_offset;
-  pose_out.pose.position.y = (left_tape.y + right_tape.y) / 2.0;
+  // 4) Two candidate normals
+  double n1x = -ty;
+  double n1y =  tx;
+
+  double n2x =  ty;
+  double n2y = -tx;
+
+  // 5) Choose the normal pointing toward lidar/robot
+  // Lidar origin is (0,0), so vector from midpoint to lidar is (-mx, -my)
+  double vx = -mx;
+  double vy = -my;
+
+  double dot1 = n1x * vx + n1y * vy;
+  double dot2 = n2x * vx + n2y * vy;
+
+  double nx, ny;
+  if (dot1 >= dot2) {
+    nx = n1x;
+    ny = n1y;
+  } else {
+    nx = n2x;
+    ny = n2y;
+  }
+  double yaw = std::atan2(ny, nx);
+
+  // RPLidar frame correction:
+  // 1) invert x
+  // 2) rotate orientation by 180 deg around z
+  yaw += M_PI;
+
+  // normalize yaw to [-pi, pi]
+  while (yaw > M_PI) {
+    yaw -= 2.0 * M_PI;
+  }
+  while (yaw < -M_PI) {
+    yaw += 2.0 * M_PI;
+  }
+
+  double d = std::abs(dock_offset);
+
+  double px = mx - d * nx;
+  double py = my - d * ny;
+
+  // apply x sign correction
+  pose_out.pose.position.x = -px + 0.51;
+  pose_out.pose.position.y = py;
   pose_out.pose.position.z = 0.0;
 
   pose_out.pose.orientation.x = 0.0;
   pose_out.pose.orientation.y = 0.0;
-  pose_out.pose.orientation.z = std::sin(phi_m / 2.0);
-  pose_out.pose.orientation.w = std::cos(phi_m / 2.0);
+  pose_out.pose.orientation.z = std::sin(yaw / 2.0);
+  pose_out.pose.orientation.w = std::cos(yaw / 2.0);
 
   return true;
 }

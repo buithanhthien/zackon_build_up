@@ -40,7 +40,7 @@ docking_server:
       lrf_tilt_alpha_deg: 0.0                               # LRF tilt angle (deg) — compensates range if sensor is mounted at an angle; 0.0 = flat
       
       # lrf_forward_offset: 0.35                            # OLD: forward offset for FRONT lidar
-      lrf_forward_offset: 0.35                             # NEW: NEGATIVE offset for REAR lidar (behind base_link)
+      lrf_forward_offset: -0.35                             # NEW: NEGATIVE offset for REAR lidar (behind base_link)
       
       tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes on the dock
       rubber_width: 0.32                                    # Width (m) of the rubber/backing strip; used to compute the geometric max detection range
@@ -48,12 +48,18 @@ docking_server:
       
       # ── PHASE B: Tuned for REAR lidar reflective statistics (observed peak-valley pair: 46-21) ──
       # i_peak: 43.0                                        # OLD: front lidar threshold
-      i_peak: 46.0                                          # NEW: rear lidar peak threshold (tuned from observation)
-      # i_valley: 29.0                                      # OLD: front lidar valley threshold
-      i_valley: 21.0                                        # NEW: rear lidar valley threshold (tuned from observation)
+      # i_peak: 46.0                                        # OLD: peak-valley detection method
+      # i_valley: 21.0                                      # OLD: peak-valley detection method
+      # valley_search_range: 19                             # OLD: peak-valley detection method
       
-      valley_search_range: 19                               # Number of beams to scan left/right from a peak candidate when searching for valley neighbours
-      max_detect_range: 1.5                                 # Maximum range (m) beyond which a detected reflector is discarded as too far
+      # ── NEW: Cluster-based detection parameters ──
+      intensity_cluster_threshold: 45.0                     # Minimum intensity to be part of a bright cluster
+      min_cluster_points: 5                                 # Minimum number of consecutive bright points to form a valid cluster
+      max_cluster_range_span: 0.03                          # Maximum range variation (m) within a cluster (3 cm)
+      min_cluster_angle_width: 0.01                         # Minimum angular width (rad) of a valid cluster
+      max_cluster_angle_width: 0.12                         # Maximum angular width (rad) of a valid cluster
+      
+      max_detect_range: 3.0                                 # Maximum range (m) beyond which a detected reflector is discarded as too far
       max_fail_count: 5                                     # Consecutive scan failures before dock_detected_ is cleared (debounce guard)
       cluster_beam_gap: 3                                   # Max beam index gap to merge adjacent reflector peaks into one cluster (improves tape centroid stability)
       staging_x_offset: 0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock

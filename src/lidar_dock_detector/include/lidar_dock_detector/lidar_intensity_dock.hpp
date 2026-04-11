@@ -100,9 +100,14 @@ private:
   double tape_distance_;               // Expected centre-to-centre distance (m) between the two reflective tapes
   double rubber_width_;                // Width (m) of the rubber/backing strip that holds each tape (used for pose geometry)
   double reflector_width_;             // Width (m) of a single reflective tape strip (used for inception-angle correction)
-  float  i_peak_;                      // Minimum intensity threshold to classify a beam as a reflector peak
-  float  i_valley_;                    // Maximum intensity threshold to classify a beam as a valley (non-reflective) neighbour
-  int    valley_search_range_;         // Number of beams to scan left/right from a peak candidate when looking for valleys
+  
+  // NEW: Cluster-based detection parameters
+  float  intensity_cluster_threshold_; // Minimum intensity to be part of a bright cluster
+  int    min_cluster_points_;          // Minimum number of consecutive bright points to form a valid cluster
+  double max_cluster_range_span_;      // Maximum range variation (m) within a cluster
+  double min_cluster_angle_width_;     // Minimum angular width (rad) of a valid cluster
+  double max_cluster_angle_width_;     // Maximum angular width (rad) of a valid cluster
+  
   double max_detect_range_;            // Maximum range (m) beyond which a detected reflector is discarded
   int    max_fail_count_;              // Consecutive scan failures allowed before dock_detected_ is cleared
   double staging_x_offset_;            // Longitudinal offset (m) from dock pose to the staging pose (negative = behind dock)

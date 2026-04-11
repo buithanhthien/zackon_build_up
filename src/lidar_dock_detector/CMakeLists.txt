@@ -7,9 +7,12 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav2_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -54,8 +57,33 @@ ament_target_dependencies(debug_dock_pose_node
   geometry_msgs
 )
 
+add_executable(debug_dock_pose_node_v2 src/debug_dock_pose_node_v2.cpp)
+ament_target_dependencies(debug_dock_pose_node_v2
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+)
+
+add_executable(custom_range_dock_node src/custom_range_dock.cpp src/custom_range_dock_main.cpp)
+target_include_directories(custom_range_dock_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(custom_range_dock_node
+  rclcpp
+  rclcpp_action
+  sensor_msgs
+  geometry_msgs
+  nav2_msgs
+  visualization_msgs
+  tf2_ros
+  tf2_geometry_msgs
+)
+
 install(TARGETS
   debug_dock_pose_node
+  debug_dock_pose_node_v2
+  custom_range_dock_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

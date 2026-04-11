@@ -33,12 +33,14 @@ public:
     dock_pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
       "/debug_dock_pose_lidar", rclcpp::SystemDefaultsQoS());
 
-    RCLCPP_INFO(this->get_logger(),
+    RCLCPP_INFO(
+      this->get_logger(),
       "[debug_dock_pose_node] Listening to %s", scan_topic_.c_str());
   }
 
 private:
-  struct Reflector {
+  struct Reflector
+  {
     int    peak_idx;
     int    valley_l_idx;
     int    valley_r_idx;
@@ -50,13 +52,40 @@ private:
     double y;
   };
 
+  struct DetectStats
+  {
+    int reject_peak = 0;
+    int reject_local_max = 0;
+    int reject_valley = 0;
+    int reject_range = 0;
+    int reject_beta = 0;
+    int accepted = 0;
+
+    float strongest_peak_left = 0.0f;
+    float strongest_peak_right = 0.0f;
+  };
+
   void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
   {
-    auto reflectors = detectReflectors(*msg);
+    DetectStats stats;
+    auto reflectors = detectReflectors(*msg, stats);
 
     RCLCPP_INFO_THROTTLE(
       this->get_logger(), *this->get_clock(), 1000,
-      "[debug_dock_pose_node] reflectors.size() = %zu", reflectors.size());
+      "[debug_dock_pose_node] reflectors.size() = %zu",
+      reflectors.size());
+
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "[DEBUG FILTER] accept=%d peak_rej=%d local_rej=%d valley_rej=%d range_rej=%d beta_rej=%d left_peak=%.1f right_peak=%.1f",
+      stats.accepted,
+      stats.reject_peak,
+      stats.reject_local_max,
+      stats.reject_valley,
+      stats.reject_range,
+      stats.reject_beta,
+      stats.strongest_peak_left,
+      stats.strongest_peak_right);
 
     for (size_t k = 0; k < reflectors.size(); ++k) {
       const auto & r = reflectors[k];
@@ -100,11 +129,15 @@ private:
   }
 
   std::vector<Reflector> detectReflectors(
-    const sensor_msgs::msg::LaserScan & scan) const
+    const sensor_msgs::msg::LaserScan & scan,
+    DetectStats & stats) const
   {
     std::vector<Reflector> result;
     const size_t N = scan.ranges.size();
-    if (scan.intensities.size() != N) { return result; }
+
+    if (scan.intensities.size() != N) {
+      return result;
+    }
 
     const double theta = scan.angle_increment;
 
@@ -116,53 +149,129 @@ private:
     const int margin = valley_search_range_ + 2;
 
     for (int i = margin; i < static_cast<int>(N) - margin; ++i) {
-      if (scan.ranges[i] >= scan.range_max) { continue; }
+      if (scan.ranges[i] >= scan.range_max) {
+        continue;
+      }
 
       const float I_i = scan.intensities[i];
-      if (I_i < i_peak_) { continue; }
+
+      // Debug strongest raw peaks on left / right side
+      {
+        double dbg_angle = scan.angle_min + i * scan.angle_increment;
+        double dbg_ros_angle = M_PI - dbg_angle;
+
+        while (dbg_ros_angle > M_PI) {
+          dbg_ros_angle -= 2 * M_PI;
+        }
+        while (dbg_ros_angle < -M_PI) {
+          dbg_ros_angle += 2 * M_PI;
+        }
+
+        const float dbg_r = scan.ranges[i];
+        if (std::isfinite(dbg_r) &&
+            dbg_r >= scan.range_min &&
+            dbg_r <= scan.range_max)
+        {
+          double dbg_y = static_cast<double>(dbg_r) * std::sin(dbg_ros_angle);
+
+          if (dbg_y >= 0.0) {
+            stats.strongest_peak_left =
+              std::max(stats.strongest_peak_left, I_i);
+          } else {
+            stats.strongest_peak_right =
+              std::max(stats.strongest_peak_right, I_i);
+          }
+        }
+      }
+
+      if (I_i < i_peak_) {
+        stats.reject_peak++;
+        continue;
+      }
 
       bool is_max = true;
+
       for (int k = i - 1; k >= std::max(0, i - valley_search_range_); --k) {
-        if (scan.intensities[k] > I_i) { is_max = false; break; }
+        if (scan.intensities[k] > I_i) {
+          is_max = false;
+          break;
+        }
       }
-      if (!is_max) { continue; }
+      if (!is_max) {
+        stats.reject_local_max++;
+        continue;
+      }
 
       for (int k = i + 1; k <= std::min(static_cast<int>(N) - 1, i + valley_search_range_); ++k) {
-        if (scan.intensities[k] > I_i) { is_max = false; break; }
+        if (scan.intensities[k] > I_i) {
+          is_max = false;
+          break;
+        }
       }
-      if (!is_max) { continue; }
+      if (!is_max) {
+        stats.reject_local_max++;
+        continue;
+      }
 
       // Left valley
-      int   vl_idx = i - 1;
+      int vl_idx = i - 1;
       float vl_val = scan.intensities[vl_idx];
       for (int k = i - 2; k >= std::max(0, i - valley_search_range_); --k) {
-        if (scan.intensities[k] < vl_val) { vl_val = scan.intensities[k]; vl_idx = k; }
+        if (scan.intensities[k] < vl_val) {
+          vl_val = scan.intensities[k];
+          vl_idx = k;
+        }
       }
 
       // Right valley
-      int   vr_idx = i + 1;
+      int vr_idx = i + 1;
       float vr_val = scan.intensities[vr_idx];
       for (int k = i + 2; k <= std::min(static_cast<int>(N) - 1, i + valley_search_range_); ++k) {
-        if (scan.intensities[k] < vr_val) { vr_val = scan.intensities[k]; vr_idx = k; }
+        if (scan.intensities[k] < vr_val) {
+          vr_val = scan.intensities[k];
+          vr_idx = k;
+        }
       }
 
-      if (vl_val > i_valley_ || vr_val > i_valley_) { continue; }
+      if (vl_val > i_valley_ || vr_val > i_valley_) {
+        stats.reject_valley++;
+        continue;
+      }
 
       const float r_i = scan.ranges[i];
-      if (!std::isfinite(r_i) || r_i < scan.range_min || r_i > scan.range_max) { continue; }
-      if (static_cast<double>(r_i) > max_range) { continue; }
+      if (!std::isfinite(r_i) || r_i < scan.range_min || r_i > scan.range_max) {
+        stats.reject_range++;
+        continue;
+      }
+
+      if (static_cast<double>(r_i) > max_range) {
+        stats.reject_range++;
+        continue;
+      }
 
       const float r_j = scan.ranges[i - 1];
-      if (!std::isfinite(r_j) || r_j < scan.range_min || r_j > scan.range_max) { continue; }
+      if (!std::isfinite(r_j) || r_j < scan.range_min || r_j > scan.range_max) {
+        stats.reject_range++;
+        continue;
+      }
 
       double beta = computeInceptionAngle(
         static_cast<double>(r_i), static_cast<double>(r_j), theta);
-      if (std::abs(beta) < 0.05) { continue; }
+
+      if (std::abs(beta) < 0.05) {
+        stats.reject_beta++;
+        continue;
+      }
 
       double rplidar_angle = scan.angle_min + i * scan.angle_increment;
       double ros_angle = M_PI - rplidar_angle;
-      while (ros_angle >  M_PI) ros_angle -= 2 * M_PI;
-      while (ros_angle < -M_PI) ros_angle += 2 * M_PI;
+
+      while (ros_angle > M_PI) {
+        ros_angle -= 2 * M_PI;
+      }
+      while (ros_angle < -M_PI) {
+        ros_angle += 2 * M_PI;
+      }
 
       Reflector ref;
       ref.peak_idx     = i;
@@ -176,6 +285,9 @@ private:
       ref.y            = static_cast<double>(r_i) * std::sin(ros_angle);
 
       result.push_back(ref);
+      stats.accepted++;
+
+      // Skip forward to avoid counting the same reflector multiple times
       i = vr_idx;
     }
 
@@ -186,7 +298,9 @@ private:
     double Li, double Lj, double theta_rad) const
   {
     double denom = Lj * std::cos(theta_rad) - Li;
-    if (std::abs(denom) < 1e-6) { return 0.0; }
+    if (std::abs(denom) < 1e-6) {
+      return 0.0;
+    }
     return std::atan(Lj * std::sin(theta_rad) / denom);
   }
 
@@ -198,7 +312,8 @@ private:
     geometry_msgs::msg::PoseStamped & pose_out) const
   {
     double measured_dist = std::hypot(
-      left_tape.x - right_tape.x, left_tape.y - right_tape.y);
+      left_tape.x - right_tape.x,
+      left_tape.y - right_tape.y);
 
     if (std::abs(measured_dist - tape_dist) > tape_dist * 0.2) {
       RCLCPP_WARN(
@@ -208,10 +323,10 @@ private:
       return false;
     }
 
-    double theta_L = std::atan2(left_tape.y,  left_tape.x);
+    double theta_L = std::atan2(left_tape.y, left_tape.x);
     double theta_R = std::atan2(right_tape.y, right_tape.x);
 
-    double phi_L = M_PI / 2.0 - left_tape.beta  - theta_L;
+    double phi_L = M_PI / 2.0 - left_tape.beta - theta_L;
     double phi_R = M_PI / 2.0 - right_tape.beta - theta_R;
     double phi_m = (phi_L + phi_R) / 2.0;
 
@@ -234,9 +349,9 @@ private:
   double tape_distance_;
   double rubber_width_;
   double reflector_width_;
-  float  i_peak_;
-  float  i_valley_;
-  int    valley_search_range_;
+  float i_peak_;
+  float i_valley_;
+  int valley_search_range_;
   double max_detect_range_;
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;

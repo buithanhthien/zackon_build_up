@@ -20,7 +20,7 @@ venv/
 config.py
 
 # ===== Dependencies list (machine-generated) =====
-require.txt
+# require.txt  # typo — kept for reference but not active
 
 # ===== CMake generated files inside packages =====
 **/CMakeFiles/
@@ -47,3 +47,12 @@ src/tf2_frame/frames_2026-04-01_09.01.43.pdf
 src/tf2_frame/frames_2026-04-01_09.01.43.gv
 
 .env
+
+# ===== Debug logs =====
+tool/debug_controller/*.txt
+
+# ===== ML model weights (large binary files) =====
+*.pt
+*.pth
+*.onnx
+

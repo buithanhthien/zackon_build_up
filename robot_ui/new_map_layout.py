@@ -296,6 +296,11 @@ class NewMapUI(QMainWindow):
         
     def start_mapping(self):
         try:
+            # Kill any leftover nav2/AMCL/map_server processes that may still publish old map
+            for proc in ['nav2', 'amcl', 'map_server', 'lifecycle_manager', 'MAP_NAVIGATION']:
+                subprocess.run(['pkill', '-f', proc], check=False)
+            self.log("Killed leftover navigation processes")
+
             self.mapping_process = subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
                 'source ~/zackon_build_up/install/setup.bash && ros2 launch view_robot_pkg MAP_GENERATING.launch.py; exec bash'

@@ -7,8 +7,17 @@ import threading
 import time
 from contextlib import contextmanager
 
+_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+if os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 import speech_recognition as sr
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 from vieneu import Vieneu
 
 MIC_DEVICE_PRIORITY = [
@@ -144,6 +153,7 @@ class VoiceEngine(QObject):
         except queue.Empty:
             pass
 
+    @pyqtSlot(str)
     def speak(self, text: str):
         text = re.sub(r'<[^>]+>', '', text)
         text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)

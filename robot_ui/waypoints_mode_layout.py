@@ -6,7 +6,8 @@ import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                               QLabel, QGridLayout, QTextEdit, QApplication, QMainWindow, QSizePolicy,
                               QDialog, QLineEdit)
-from PyQt6.QtCore import Qt, QTimer, QPointF
+from PyQt6.QtCore import Qt, QTimer, QPointF, QMetaObject, Q_ARG
+from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform, QFontDatabase
 import rclpy
 from rclpy.node import Node
@@ -634,27 +635,29 @@ class WaypointsModeLayout(QMainWindow):
     def _goal_result_callback(self, future):
         status = future.result().status
         print(f"[Nav] _goal_result_callback fired — status={status} (SUCCEEDED={GoalStatus.STATUS_SUCCEEDED})")
-        if status == GoalStatus.STATUS_SUCCEEDED:
-            self.log(f'Reached {self._current_nav_target}')
-            print(f"[Nav] Goal SUCCEEDED — calling _announce_arrival('{self._current_nav_target}')")
-            self._announce_arrival(self._current_nav_target)
+        if status != GoalStatus.STATUS_SUCCEEDED:
+            self.log(f'[NAV] Goal did not succeed (status={status}) — sequence stopped')
+            self.running_sequence = False
+            return
+
+        self.log(f'Reached {self._current_nav_target}')
+        self._announce_arrival(self._current_nav_target)
 
         if self.running_sequence and self.current_sequence_index < len(self.selected_sequence) - 1:
             self.current_sequence_index += 1
-            next_slot = self.selected_sequence[self.current_sequence_index]
-            current_slot = self.selected_sequence[self.current_sequence_index - 1]
-            if next_slot == current_slot:
-                self.log(f'Already at slot {next_slot}, skipping...')
-                self._goal_result_callback(future)
-            else:
-                self.navigate_to_waypoint(next_slot)
+            self.navigate_to_waypoint(self.selected_sequence[self.current_sequence_index])
         else:
             self.running_sequence = False
             self.log('Sequence completed')
 
     def _announce_arrival(self, target: str):
         print(f"[Announce] _announce_arrival called with target='{target}'")
-        self.chat_widget._voice_engine.speak("Đã tới nơi rồi")
+        QMetaObject.invokeMethod(
+            self.chat_widget._voice_engine,
+            "speak",
+            Qt.ConnectionType.QueuedConnection,
+            Q_ARG(str, "Đã tới nơi rồi")
+        )
     
     def run_sequence(self):
         if not self.selected_sequence:
@@ -722,15 +725,23 @@ class WaypointsModeLayout(QMainWindow):
             f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
         )
         
-    def voice_navigate_to_waypoint(self, slot: str):
-        self.log(f'[Voice] Command received: Đi tới {slot}')
-        if slot not in self.waypoints:
-            msg = f'Vị trí {slot} chưa được lưu'
+    def voice_navigate_to_waypoint(self, slots: str):
+        slot_list = [s.strip() for s in slots.split(',') if s.strip()]
+        # case-insensitive key resolution
+        key_map = {k.lower(): k for k in self.waypoints}
+        resolved = [key_map.get(s.lower()) for s in slot_list]
+        missing = [slot_list[i] for i, r in enumerate(resolved) if r is None]
+        if missing:
+            msg = f'Vị trí chưa được lưu: {", ".join(missing)}'
             self.log(f'[Voice] {msg}')
             self.chat_widget._voice_engine.speak(msg)
             return
-        self.chat_widget._voice_engine.speak(f'Đang đi tới {slot}')
-        self.navigate_to_waypoint(slot)
+        self.log(f'[Voice] Tour: {resolved}')
+        self.chat_widget._voice_engine.speak(f'Bắt đầu tham quan {len(resolved)} địa điểm')
+        self.selected_sequence = resolved
+        self.running_sequence = True
+        self.current_sequence_index = 0
+        self.navigate_to_waypoint(resolved[0])
 
     def _on_voice_transcript(self, text: str):
         """Forward unrecognized voice input to the AI chat panel."""
@@ -748,6 +759,9 @@ class WaypointsModeLayout(QMainWindow):
             name = dialog.get_name()
             if not name:
                 self.log('[WARN] Waypoint name cannot be empty')
+                return
+            if name in self.waypoints:
+                self.log(f'[WARN] Waypoint "{name}" already exists — choose a different name')
                 return
             pose = self.ros_node.current_pose
             self.waypoints[name] = {
@@ -789,6 +803,6 @@ if __name__ == '__main__':
     if '--go-to' in sys.argv:
         idx = sys.argv.index('--go-to')
         if idx + 1 < len(sys.argv):
-            slot = sys.argv[idx + 1]
-            QTimer.singleShot(1500, lambda: window.navigate_to_waypoint(slot))
+            slots = sys.argv[idx + 1]
+            QTimer.singleShot(1500, lambda: window.voice_navigate_to_waypoint(slots))
     sys.exit(app.exec())

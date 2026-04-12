@@ -852,10 +852,10 @@ class RobotUI(QMainWindow):
         except Exception as e:
             self.log(f"[ERROR] Failed to open Developer Mode: {e}. Is 'claude' installed?")
 
-    def _voice_go_to_waypoint(self, slot: str):
-        self.log(f"[Voice] Navigating to waypoint {slot}")
+    def _voice_go_to_waypoint(self, slots: str):
+        self.log(f"[Voice] Navigating to waypoint(s) {slots}")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
-                          '--go-to', slot])
+                          '--go-to', slots])
         self.close()
 
     def _on_voice_ui_command(self, command: str):

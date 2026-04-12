@@ -297,9 +297,9 @@ controller_server:
       wz_max: 3.0                                 # Maximum rotational velocity [rad/s]
 
       # Sampling noise (DiffDrive)
-      vx_std: 0.5                                 # Sampling standard deviation for Vx - linear velocity exploration noise
+      vx_std: 0.2                                 # Sampling standard deviation for Vx - linear velocity exploration noise
       vy_std: 0.0                                 # IMPORTANT - must remain 0 for diff-drive
-      wz_std: 0.8                                 # Sampling standard deviation for Wz - angular exploration noise
+      wz_std: 0.4                                 # Sampling standard deviation for Wz - angular exploration noise
 
       # Acceleration limits
       ax_max: 12.0                                # Maximum forward acceleration [m/s^2]

@@ -20,6 +20,28 @@ _LOCATION_PATTERNS = re.compile(
 )
 _ACTION_TAG_RE = re.compile(r'<(STATUS_CHECK|HELP|DOCK|LOCALIZE)>')
 _NAVIGATE_TAG_RE = re.compile(r'<NAVIGATE:([^>]+)>')
+_TOUR_TAG_RE = re.compile(r'<TOUR:([^>]+)>')
+_TOUR_PATTERN = re.compile(
+    r'(tham quan|tour|dẫn.*tất cả|đi.*tất cả|các phòng trọng điểm|phòng trọng điểm)',
+    re.IGNORECASE
+)
+_FULL_TOUR_PATTERN = re.compile(
+    r'(một vòng|tham quan khoa|tham quan toàn|tham quan hết|dẫn.*vòng|xung quanh)',
+    re.IGNORECASE
+)
+_MULTI_NAV_PATTERN = re.compile(
+    r'(sau đó|rồi|tiếp theo|và sau đó)',
+    re.IGNORECASE
+)
+_REVERSE_NAV_PATTERN = re.compile(
+    r'(sau khi)',
+    re.IGNORECASE
+)
+_NO_EXEC_PATTERN = re.compile(
+    r'\b(không|chỉ|just|only|answer|trả lời|cho biết|là gì|có không|bao nhiêu)\b',
+    re.IGNORECASE
+)
+_TOUR_WAYPOINTS = ['x5.4', 'x5.10', 'X5.11', 'x5.12']
 
 _WAYPOINTS = None
 
@@ -121,6 +143,7 @@ SYSTEM_PROMPT = (
     "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn và thân thiện.\n"
     "Không sử dụng dấu ngoặc kép (\") trong câu trả lời.\n\n"
     "Hãy trả lời ngắn gọn trong 2 đến 3 câu"
+    "Các phòng trọng điểm của khoa điện bao gòm: X5.4 - phòng thí nghiệm robot và đièu khiển thông minh, X5.10 - phòng thực hành plc mitsu, X5.11 - phòng SCADA, X5.12 - phòng lập trình plc siemen\n"
 
     "## Kiến trúc hệ thống\n"
     "Giao diện chính (startup_layout) có thanh bên trái với các nút:\n"
@@ -163,7 +186,8 @@ SYSTEM_PROMPT = (
     "- <STATUS_CHECK>: kiểm tra trạng thái STM32 và LiDAR\n"
     "- <LOCALIZE>: chạy lại định vị (Định vị lại)\n"
     "- <DOCK>: gửi robot về trạm sạc\n"
-    "- <NAVIGATE:key>: điều hướng đến địa điểm, trong đó key là tên chính xác của địa điểm trong waypoints.json (ví dụ: <NAVIGATE:x5.4>, <NAVIGATE:X5.11>). Chỉ dùng key có trong danh sách địa điểm. QUAN TRỌNG: Luôn kèm theo câu trả lời tự nhiên TRƯỚC thẻ, ví dụ: 'Đang dẫn bạn tới phòng X5.4! <NAVIGATE:x5.4>'\n"
+    "- <NAVIGATE:key>: điều hướng đến MỘT địa điểm. key là tên chính xác trong waypoints.json. Ví dụ: 'Đang dẫn bạn tới X5.4! <NAVIGATE:x5.4>'\n"
+    "- <TOUR:key1,key2,key3,...>: điều hướng lần lượt qua NHIỀU địa điểm theo thứ tự. Dùng khi người dùng muốn đi nhiều nơi. Ví dụ: 'Bắt đầu tham quan! <TOUR:x5.11,x5.4,x5.12>'\n"
     "- <HELP>: hiển thị hướng dẫn sử dụng\n"
 
     "## Danh sách địa điểm đã lưu (dùng key chính xác trong <NAVIGATE:key>)\n"
@@ -288,9 +312,9 @@ class ChatPanel(QWidget):
 
         self.voice_btn = QPushButton("🎤")
         self.voice_btn.setObjectName("voice-btn")
-        self.voice_btn.setCheckable(False)
+        self.voice_btn.setCheckable(True)
         self.voice_btn.setFixedSize(44, 44)
-        self.voice_btn.setToolTip("Click to speak")
+        self.voice_btn.setToolTip("Click to toggle voice")
         self.voice_btn.clicked.connect(self._on_listen_btn_clicked)
 
         self.chat_input = QLineEdit()
@@ -374,8 +398,45 @@ class ChatPanel(QWidget):
             return
         self.chat_input.clear()
         self._add_bubble(text, "user")
-        
         print(f"[CHAT] User: {text}")
+
+        if _FULL_TOUR_PATTERN.search(text) and not _NO_EXEC_PATTERN.search(text):
+            wps = _load_waypoints()
+            all_keys = [k for k in wps if wps[k].get('x', 0) != 0 or wps[k].get('y', 0) != 0]
+            # put x5.4 at the end as return point
+            home = next((k for k in all_keys if k.lower() == 'x5.4'), None)
+            if home:
+                all_keys = [k for k in all_keys if k.lower() != 'x5.4'] + [home]
+            reply = f"Đang dẫn bạn tham quan toàn bộ khoa điện, sau đó quay về X5.4!"
+            self._chat_history.append({"role": "user", "content": text})
+            self._chat_history.append({"role": "assistant", "content": reply})
+            if self._voice_enabled:
+                self._voice_engine.speak(reply)
+            self._show_response(reply, [], all_keys)
+            return
+
+        if _TOUR_PATTERN.search(text) and not _NO_EXEC_PATTERN.search(text):
+            reply = "Đang dẫn bạn tham quan lần lượt các phòng trọng điểm của khoa điện!"
+            self._chat_history.append({"role": "user", "content": text})
+            self._chat_history.append({"role": "assistant", "content": reply})
+            if self._voice_enabled:
+                self._voice_engine.speak(reply)
+            self._show_response(reply, [], _TOUR_WAYPOINTS)
+            return
+
+        if (_MULTI_NAV_PATTERN.search(text) or _REVERSE_NAV_PATTERN.search(text)) and not _NO_EXEC_PATTERN.search(text):
+            wps = _load_waypoints()
+            found = [k for k in wps if re.search(re.escape(k), text, re.IGNORECASE)]
+            if len(found) >= 2:
+                if _REVERSE_NAV_PATTERN.search(text):
+                    found = list(reversed(found))
+                reply = f"Đang dẫn bạn lần lượt tới {', '.join(found)}!"
+                self._chat_history.append({"role": "user", "content": text})
+                self._chat_history.append({"role": "assistant", "content": reply})
+                if self._voice_enabled:
+                    self._voice_engine.speak(reply)
+                self._show_response(reply, [], found)
+                return
 
         self._chat_history.append({"role": "user", "content": text})
 
@@ -407,50 +468,78 @@ class ChatPanel(QWidget):
     def _strip_tags(reply):
         tags = _ACTION_TAG_RE.findall(reply)
         nav_keys = _NAVIGATE_TAG_RE.findall(reply)
+        tour_match = _TOUR_TAG_RE.search(reply)
+        tour_keys = [k.strip() for k in tour_match.group(1).split(',')] if tour_match else []
         clean = _ACTION_TAG_RE.sub('', reply)
-        clean = _NAVIGATE_TAG_RE.sub('', clean).strip()
-        return clean, tags, nav_keys
+        clean = _NAVIGATE_TAG_RE.sub('', clean)
+        clean = _TOUR_TAG_RE.sub('', clean).strip()
+        return clean, tags, nav_keys, tour_keys
+
+    def _fallback_nav_key(self, text: str) -> list:
+        """If AI forgot the <NAVIGATE:key> tag, try to find a waypoint key in the text.
+        Skips numeric-only keys. Matches longest candidate first to avoid substring collisions."""
+        wps = _load_waypoints()
+        text_lower = text.lower()
+        # Build (candidate_str, key) pairs, skip pure-numeric keys, sort longest first
+        pairs = []
+        for key, data in wps.items():
+            if key.isdigit():
+                continue
+            aliases = data.get('aliases', []) if isinstance(data, dict) else []
+            for c in [key] + aliases:
+                pairs.append((c, key))
+        pairs.sort(key=lambda p: len(p[0]), reverse=True)
+        for c, key in pairs:
+            if c.lower() in text_lower:
+                return [key]
+        return []
 
     def _on_response(self, reply):
-        clean, tags, nav_keys = self._strip_tags(reply)
+        clean, tags, nav_keys, tour_keys = self._strip_tags(reply)
+
+        # Fallback: AI said it's navigating but forgot the tag
+        if not nav_keys and not tour_keys:
+            _NAV_INTENT = re.compile(
+                r'(đang dẫn|dẫn bạn|đi tới|điều hướng|navigate|going to)',
+                re.IGNORECASE
+            )
+            if _NAV_INTENT.search(clean):
+                nav_keys = self._fallback_nav_key(clean)
+                if nav_keys:
+                    print(f"[CHAT] Fallback nav key resolved: {nav_keys}")
+
         self._chat_history.append({"role": "assistant", "content": clean})
-        
         print(f"[CHAT] Assistant: {clean}")
         if nav_keys:
             print(f"[CHAT] Navigation triggered: {nav_keys}")
-        
-        # Show response immediately if voice disabled, or wait for TTS to start
+        if tour_keys:
+            print(f"[CHAT] Tour triggered: {tour_keys}")
         if self._voice_enabled:
-            self._pending_response = (clean, tags, nav_keys)
+            self._pending_response = (clean, tags, nav_keys, tour_keys)
             self._voice_engine.speak(clean)
         else:
-            self._show_response(clean, tags, nav_keys)
+            self._show_response(clean, tags, nav_keys, tour_keys)
 
-    def _show_response(self, clean, tags, nav_keys):
+    def _show_response(self, clean, tags, nav_keys, tour_keys=None):
         self._add_bubble(clean, "assistant")
-        
-        if nav_keys and self._voice_enabled:
-            QTimer.singleShot(100, lambda: self._emit_waypoint_after_speech(nav_keys))
-        elif nav_keys:
-            for key in nav_keys:
-                self.waypoint_command.emit(key.strip())
-        
+        all_keys = tour_keys if tour_keys else nav_keys
+        if all_keys and self._voice_enabled:
+            QTimer.singleShot(100, lambda: self._emit_waypoint_after_speech(all_keys))
+        elif all_keys:
+            self.waypoint_command.emit(",".join(k.strip() for k in all_keys))
         for tag in tags:
             self.action_tag.emit(tag)
-        
-        # Hide typing animation after showing response
         self.typing_label.hide()
         self._typing_timer.stop()
         self.send_btn.setEnabled(True)
         self.chat_input.setEnabled(True)
         self.chat_input.setFocus()
 
-    def _emit_waypoint_after_speech(self, nav_keys):
+    def _emit_waypoint_after_speech(self, keys):
         if self._voice_engine._tts_queue.empty():
-            for key in nav_keys:
-                self.waypoint_command.emit(key.strip())
+            self.waypoint_command.emit(",".join(k.strip() for k in keys))
         else:
-            QTimer.singleShot(500, lambda: self._emit_waypoint_after_speech(nav_keys))
+            QTimer.singleShot(500, lambda: self._emit_waypoint_after_speech(keys))
 
     def _on_error(self, error):
         self._add_bubble(f"[ERROR] {error}", "assistant")
@@ -463,6 +552,11 @@ class ChatPanel(QWidget):
         pass
 
     def _on_listen_btn_clicked(self):
+        if not self.voice_btn.isChecked():
+            self._voice_enabled = False
+            self._voice_engine.stop_speaking()
+            self.voice_status_label.hide()
+            return
         self._voice_enabled = True
         self.voice_status_label.show()
         self._voice_engine.listen_once()
@@ -470,9 +564,9 @@ class ChatPanel(QWidget):
     def _on_voice_state_changed(self, state):
         # Show response when TTS starts speaking
         if "SPEAKING" in state and self._pending_response:
-            clean, tags, nav_keys = self._pending_response
+            clean, tags, nav_keys, tour_keys = self._pending_response
             self._pending_response = None
-            self._show_response(clean, tags, nav_keys)
+            self._show_response(clean, tags, nav_keys, tour_keys)
         
         self.voice_status_label.show()
         self.voice_status_label.setText(state)

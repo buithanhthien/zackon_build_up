@@ -23,25 +23,30 @@ _NAVIGATE_TAG_RE = re.compile(r'<NAVIGATE:([^>]+)>')
 _TOUR_TAG_RE = re.compile(r'<TOUR:([^>]+)>')
 _TOUR_PATTERN = re.compile(
     r'(tham quan|tour|dẫn.*tất cả|đi.*tất cả|các phòng trọng điểm|phòng trọng điểm)',
-    re.IGNORECASE
+    re.IGNORECASEthì
 )
 _FULL_TOUR_PATTERN = re.compile(
-    r'(một vòng|tham quan khoa|tham quan toàn|tham quan hết|dẫn.*vòng|xung quanh)',
+    r'(một vòng|một vòng quanh|đi một vòng|đi hết một vòng|tham quan toàn bộ|tham quan tất cả|tham quan hết|tham quan cả khu|đi khắp nơi|đi xung quanh khu vực|dẫn tôi đi một vòng|dẫn đi tham quan toàn bộ)',
     re.IGNORECASE
 )
 _MULTI_NAV_PATTERN = re.compile(
-    r'(sau đó|rồi|tiếp theo|và sau đó)',
+    r'(sau đó|sau đấy|rồi|rồi thì|tiếp theo|kế tiếp|tiếp tục|tiếp đến|xong rồi|bước tiếp theo|và sau đó)',
     re.IGNORECASE
 )
 _REVERSE_NAV_PATTERN = re.compile(
-    r'(sau khi)',
+    r'(sau khi|trước khi|khi đã|khi xong|làm xong thì|xong thì|sau lúc)',
     re.IGNORECASE
 )
 _NO_EXEC_PATTERN = re.compile(
-    r'\b(không|chỉ|just|only|answer|trả lời|cho biết|là gì|có không|bao nhiêu)\b',
+    r'\b(không|chỉ|just|only|answer|trả lời|cho biết|là gì|có không|bao nhiêu|mấy|ở đâu|khi nào|tại sao|vì sao|có phải|có đúng|được không|đúng không|hay không)\b',
     re.IGNORECASE
 )
 _TOUR_WAYPOINTS = ['x5.4', 'x5.10', 'X5.11', 'x5.12']
+_RETURN_HERE_PATTERN = re.compile(
+    r'(quay lại đây|quay lại|quay về đây|quay về|trở về đây|trở về|về đây|về chỗ cũ|về chỗ ban đầu|về vị trí cũ|về vị trí ban đầu|rồi quay lại|sau đó quay lại|rồi trở về|xong thì quay về)',
+    re.IGNORECASE
+)
+_RETURN_HERE_WAYPOINT_KEY = '__return_here__'
 
 _WAYPOINTS = None
 
@@ -265,6 +270,7 @@ class ChatPanel(QWidget):
         self._voice_engine.transcript_ready.connect(self._on_voice_transcript)
         self._pose_provider = None
         self._pending_response = None
+        self._return_here_pose = None
 
         self._build_ui()
         self._add_bubble(
@@ -427,10 +433,21 @@ class ChatPanel(QWidget):
         if (_MULTI_NAV_PATTERN.search(text) or _REVERSE_NAV_PATTERN.search(text)) and not _NO_EXEC_PATTERN.search(text):
             wps = _load_waypoints()
             found = [k for k in wps if re.search(re.escape(k), text, re.IGNORECASE)]
+
+            # Snapshot current pose as return point if user said "quay lại đây"
+            return_here = _RETURN_HERE_PATTERN.search(text) and self._pose_provider
+            if return_here:
+                pose = self._pose_provider()
+                if pose:
+                    self._return_here_pose = (pose.position.x, pose.position.y)
+                    found.append(f'{_RETURN_HERE_WAYPOINT_KEY}:{pose.position.x:.4f},{pose.position.y:.4f}')
+
             if len(found) >= 2:
                 if _REVERSE_NAV_PATTERN.search(text):
                     found = list(reversed(found))
-                reply = f"Đang dẫn bạn lần lượt tới {', '.join(found)}!"
+                display = [k for k in found if k != _RETURN_HERE_WAYPOINT_KEY]
+                suffix = " rồi quay lại vị trí hiện tại của bạn" if return_here else ""
+                reply = f"Đang dẫn bạn lần lượt tới {', '.join(display)}{suffix}!"
                 self._chat_history.append({"role": "user", "content": text})
                 self._chat_history.append({"role": "assistant", "content": reply})
                 if self._voice_enabled:

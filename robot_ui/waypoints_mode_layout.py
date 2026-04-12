@@ -729,7 +729,20 @@ class WaypointsModeLayout(QMainWindow):
         slot_list = [s.strip() for s in slots.split(',') if s.strip()]
         # case-insensitive key resolution
         key_map = {k.lower(): k for k in self.waypoints}
-        resolved = [key_map.get(s.lower()) for s in slot_list]
+        resolved = []
+        for s in slot_list:
+            if s.startswith('__return_here__:'):
+                # Inject synthetic waypoint from encoded coordinates
+                _, coords = s.split(':', 1)
+                rx, ry = map(float, coords.split(','))
+                _RETURN_KEY = '__return_here__'
+                self.waypoints[_RETURN_KEY] = {
+                    'x': rx, 'y': ry, 'z': 0.0,
+                    'qx': 0.0, 'qy': 0.0, 'qz': 0.0, 'qw': 1.0,
+                }
+                resolved.append(_RETURN_KEY)
+            else:
+                resolved.append(key_map.get(s.lower()))
         missing = [slot_list[i] for i, r in enumerate(resolved) if r is None]
         if missing:
             msg = f'Vị trí chưa được lưu: {", ".join(missing)}'

@@ -64,6 +64,20 @@ ament_target_dependencies(debug_dock_pose_node_v2
   geometry_msgs
 )
 
+add_executable(debug_dock_pose_node_v3 src/debug_dock_pose_node_v3.cpp)
+ament_target_dependencies(debug_dock_pose_node_v3
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+)
+
+add_executable(debug_dock_pose_node_v4 src/debug_dock_pose_node_v4.cpp)
+ament_target_dependencies(debug_dock_pose_node_v4
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+)
+
 add_executable(custom_range_dock_node src/custom_range_dock.cpp src/custom_range_dock_main.cpp)
 target_include_directories(custom_range_dock_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -83,6 +97,8 @@ ament_target_dependencies(custom_range_dock_node
 install(TARGETS
   debug_dock_pose_node
   debug_dock_pose_node_v2
+  debug_dock_pose_node_v3
+  debug_dock_pose_node_v4
   custom_range_dock_node
   DESTINATION lib/${PROJECT_NAME}
 )

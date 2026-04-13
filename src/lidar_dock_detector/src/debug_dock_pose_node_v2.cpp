@@ -25,7 +25,7 @@ public:
     valley_search_range_ = 19;
     max_detect_range_    = 3.0;
     intensity_cluster_threshold_ = 45.0f;
-    min_cluster_points_ = 5;
+    min_cluster_points_ = 8; // 5 points at least to form a valid cluster
     max_cluster_range_span_ = 0.03;   // 3 cm
     min_cluster_angle_width_ = 0.01;  // rad
     max_cluster_angle_width_ = 0.12;  // rad
@@ -298,6 +298,7 @@ private:
 
   //   return result;
   // }
+  
   std::vector<Reflector> detectReflectors(
   const sensor_msgs::msg::LaserScan & scan,
   DetectStats & stats) const
@@ -500,6 +501,7 @@ private:
   //   return true;
   // }
   
+  // Old version
 bool computeDockPose(
   const Reflector & left_tape,
   const Reflector & right_tape,
@@ -572,7 +574,9 @@ bool computeDockPose(
   double py = my - d * ny;
 
   // apply x sign correction
-  pose_out.pose.position.x = -px + 0.51;
+  // pose_out.pose.position.x = -px + 0.51;
+  pose_out.pose.position.x = -px ;
+
   pose_out.pose.position.y = py;
   pose_out.pose.position.z = 0.0;
 
@@ -583,6 +587,8 @@ bool computeDockPose(
 
   return true;
 }
+
+
 
 private:
   std::string scan_topic_;
@@ -599,6 +605,7 @@ private:
   double max_cluster_range_span_;
   double min_cluster_angle_width_;
   double max_cluster_angle_width_;
+  
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr dock_pose_pub_;

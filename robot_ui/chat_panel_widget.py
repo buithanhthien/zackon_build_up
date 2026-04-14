@@ -319,7 +319,7 @@ class ChatPanel(QWidget):
         self.voice_btn = QPushButton("🎤")
         self.voice_btn.setObjectName("voice-btn")
         self.voice_btn.setCheckable(True)
-        self.voice_btn.setFixedSize(44, 44)
+        self.voice_btn.setFixedSize(64, 64)
         self.voice_btn.setToolTip("Click to toggle voice")
         self.voice_btn.clicked.connect(self._on_listen_btn_clicked)
 

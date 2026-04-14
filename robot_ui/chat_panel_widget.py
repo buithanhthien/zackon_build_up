@@ -23,7 +23,7 @@ _NAVIGATE_TAG_RE = re.compile(r'<NAVIGATE:([^>]+)>')
 _TOUR_TAG_RE = re.compile(r'<TOUR:([^>]+)>')
 _TOUR_PATTERN = re.compile(
     r'(tham quan|tour|dẫn.*tất cả|đi.*tất cả|các phòng trọng điểm|phòng trọng điểm)',
-    re.IGNORECASEthì
+    re.IGNORECASE
 )
 _FULL_TOUR_PATTERN = re.compile(
     r'(một vòng|một vòng quanh|đi một vòng|đi hết một vòng|tham quan toàn bộ|tham quan tất cả|tham quan hết|tham quan cả khu|đi khắp nơi|đi xung quanh khu vực|dẫn tôi đi một vòng|dẫn đi tham quan toàn bộ)',

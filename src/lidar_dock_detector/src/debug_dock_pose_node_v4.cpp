@@ -29,8 +29,8 @@ public:
     min_cluster_angle_width_ = 0.01;
     max_cluster_angle_width_ = 0.12;
 
-    max_peak_diff_ = 8.0f;
-    max_pose_jump_dist_ = 0.10;
+    max_peak_diff_ = 4.0f;
+    max_pose_jump_dist_ = 0.10; 
     max_pose_jump_yaw_rad_ = 15.0 * M_PI / 180.0;
 
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
@@ -77,7 +77,7 @@ private:
     const Reflector & left,
     const Reflector & right) const
   {
-    if (stats.strongest_peak_left <= 0.0f || stats.strongest_peak_right <= 0.0f) {
+    if (stats.strongest_peak_left <= 10.0f || stats.strongest_peak_right <= 10.0f) {
       RCLCPP_WARN(
         this->get_logger(),
         "[quality] Reject: one side peak is zero (left=%.1f right=%.1f)",
@@ -126,7 +126,7 @@ private:
       last_valid_pose_.pose.orientation.z,
       last_valid_pose_.pose.orientation.w);
 
-    double dyaw = yaw_new - yaw_old;
+    double dyaw = yaw_new - yaw_old; // do lech cua pose hien tai va pose truoc do 
     while (dyaw > M_PI) dyaw -= 2.0 * M_PI;
     while (dyaw < -M_PI) dyaw += 2.0 * M_PI;
 

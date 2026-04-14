@@ -53,20 +53,27 @@ void LidarIntensityDock::configure(
   
   declare("max_detect_range",            3.0);
   declare("max_fail_count",              5);
-  declare("staging_x_offset",           0.8);
-  declare("staging_yaw_offset",          3.14159);
+  // declare("staging_x_offset",           0.8);
+  declare("staging_x_offset",           0.6);
+
+  declare("staging_yaw_offset",          0.0);
   declare("docking_threshold",           0.32);
   declare("use_external_detection_pose", false);
   declare("rotate_to_dock",             false);
   declare("cluster_beam_gap",           3);
   
-  // ── PHASE C: Near-range stopping parameters ──
-  declare("use_near_range_stop",              true);
-  declare("near_range_entry_distance",        0.50);
-  declare("near_range_sector_half_angle_deg", 15.0);
-  declare("near_range_stop_threshold",        0.10);
-  declare("near_range_required_stable_count", 3);
-  declare("near_range_statistic",             std::string("median"));
+  // ── Quality constraint parameters ──
+  declare("max_peak_diff",                    4.0);
+  declare("max_pose_jump_dist",               0.10);
+  declare("max_pose_jump_yaw_deg",            15.0);
+  
+  // ── PHASE C: Near-range stopping parameters (COMMENTED OUT - kept for debug) ──
+  // declare("use_near_range_stop",              true);
+  // declare("near_range_entry_distance",        0.50);
+  // declare("near_range_sector_half_angle_deg", 15.0);
+  // declare("near_range_stop_threshold",        0.10);
+  // declare("near_range_required_stable_count", 3);
+  // declare("near_range_statistic",             std::string("median"));
 
   auto get_d = [&](const std::string & k) {
     return node->get_parameter(name_ + "." + k).as_double();
@@ -103,31 +110,32 @@ void LidarIntensityDock::configure(
   rotate_to_dock_              = get_b("rotate_to_dock");
   cluster_beam_gap_            = get_i("cluster_beam_gap");
 
-  // ── PHASE C: Load near-range parameters ──
-  use_near_range_stop_              = get_b("use_near_range_stop");
-  near_range_entry_distance_        = get_d("near_range_entry_distance");
-  near_range_sector_half_angle_rad_ = angles::from_degrees(get_d("near_range_sector_half_angle_deg"));
-  near_range_stop_threshold_        = get_d("near_range_stop_threshold");
-  near_range_required_stable_count_ = get_i("near_range_required_stable_count");
-  near_range_statistic_             = node->get_parameter(name_ + ".near_range_statistic").as_string();
+  // ── Quality constraint parameters ──
+  max_peak_diff_               = static_cast<float>(get_d("max_peak_diff"));
+  max_pose_jump_dist_          = get_d("max_pose_jump_dist");
+  max_pose_jump_yaw_rad_       = angles::from_degrees(get_d("max_pose_jump_yaw_deg"));
+
+  // ── PHASE C: Load near-range parameters (COMMENTED OUT) ──
+  // use_near_range_stop_              = get_b("use_near_range_stop");
+  // near_range_entry_distance_        = get_d("near_range_entry_distance");
+  // near_range_sector_half_angle_rad_ = angles::from_degrees(get_d("near_range_sector_half_angle_deg"));
+  // near_range_stop_threshold_        = get_d("near_range_stop_threshold");
+  // near_range_required_stable_count_ = get_i("near_range_required_stable_count");
+  // near_range_statistic_             = node->get_parameter(name_ + ".near_range_statistic").as_string();
 
   RCLCPP_INFO(node->get_logger(),
     "[%s] Configured: scan=%s base=%s lrf_offset=%.3f tape=%.3f "
     "cluster_thresh=%.0f min_pts=%d max_range=%.1f max_fail=%d "
     "staging_x=%.3f staging_yaw=%.3f use_ext=%s "
-    "near_range=%s entry_dist=%.2f sector_deg=%.1f stop_thresh=%.3f stable_cnt=%d stat=%s",
+    "quality: max_peak_diff=%.1f max_jump_dist=%.3f max_jump_yaw_deg=%.1f",
     name_.c_str(), scan_topic_.c_str(), base_frame_.c_str(),
     lrf_forward_offset_, tape_distance_,
     static_cast<double>(intensity_cluster_threshold_), min_cluster_points_,
     max_detect_range_, max_fail_count_,
     staging_x_offset_, staging_yaw_offset_,
     use_external_detection_pose_ ? "true" : "false",
-    use_near_range_stop_ ? "enabled" : "disabled",
-    near_range_entry_distance_,
-    angles::to_degrees(near_range_sector_half_angle_rad_),
-    near_range_stop_threshold_,
-    near_range_required_stable_count_,
-    near_range_statistic_.c_str());
+    static_cast<double>(max_peak_diff_), max_pose_jump_dist_,
+    angles::to_degrees(max_pose_jump_yaw_rad_));
 }
 
 void LidarIntensityDock::cleanup()  { scan_sub_.reset(); }
@@ -144,11 +152,12 @@ void LidarIntensityDock::activate()
     last_detected_pose_ = geometry_msgs::msg::PoseStamped{};  // stamp.sec == 0 sentinel
     refined_pose_latched_ = geometry_msgs::msg::PoseStamped{};
     has_refined_pose_latch_ = false;
-    near_range_stable_count_ = 0;  // NEW: reset near-range counter
+    has_last_valid_pose_ = false;  // NEW: reset quality-checked pose
+    // near_range_stable_count_ = 0;  // COMMENTED OUT
   }
   {
     std::lock_guard<std::mutex> lock(scan_mutex_);
-    last_scan_.reset();  // NEW: clear scan state
+    last_scan_.reset();
   }
   scan_sub_ = node->create_subscription<sensor_msgs::msg::LaserScan>(
     scan_topic_, rclcpp::SensorDataQoS(),
@@ -159,8 +168,8 @@ void LidarIntensityDock::activate()
     "/dock_pose_in_odom", rclcpp::SystemDefaultsQoS());
   dock_distance_pub_ = node->create_publisher<std_msgs::msg::Float32>(
     "/dock_distance", rclcpp::SystemDefaultsQoS());
-  dock_near_range_pub_ = node->create_publisher<std_msgs::msg::Float32>(  // NEW: near-range debug topic
-    "/dock_near_range", rclcpp::SystemDefaultsQoS());
+  // dock_near_range_pub_ = node->create_publisher<std_msgs::msg::Float32>(  // COMMENTED OUT
+  //   "/dock_near_range", rclcpp::SystemDefaultsQoS());
 
   RCLCPP_INFO(node->get_logger(), "[%s] Active - listening to %s",
     name_.c_str(), scan_topic_.c_str());
@@ -171,7 +180,7 @@ void LidarIntensityDock::deactivate() {
   detected_pose_pub_.reset(); 
   dock_pose_odom_pub_.reset(); 
   dock_distance_pub_.reset();
-  dock_near_range_pub_.reset();  // NEW: cleanup near-range publisher
+  // dock_near_range_pub_.reset();  // COMMENTED OUT
 }
 
 // ─────────────────────────────────────────────
@@ -248,214 +257,139 @@ bool LidarIntensityDock::getRefinedPose(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// isDocked() — PHASE C: Two-mode docking detection
+// isDocked() — NEW: Direct lidar range check
 // ─────────────────────────────────────────────────────────────────────────────
-// Called repeatedly by the Nav2 docking server after the approach phase
-// completes, to decide whether the robot has successfully reached the dock.
-//
-// Returns true  → docking server advances to the "wait for charging" phase.
-// Returns false → server keeps retrying / eventually times out with error 905.
-//
-// ── WHY THE OLD IMPLEMENTATION FAILS NEAR THE DOCK ──
-// The original isDocked() computes distance as:
-//   dx = dock_in_odom.pose.position.x - robot_tf.transform.translation.x
-//   dy = dock_in_odom.pose.position.y - robot_tf.transform.translation.y
-//   dist = hypot(dx, dy)
-//
-// Where:
-//   • dx, dy = 2D offset from robot's current position to the last detected dock pose
-//   • Both positions are in the "odom" frame (fixed odometry frame)
-//   • dist = 2D Euclidean distance between robot and dock
-//
-// Problem: When the robot gets very close to the dock:
-//   1. The 2-reflector pair often becomes unstable or disappears from the scan
-//      (beams too close, geometry breaks down, occlusion, etc.)
-//   2. detectReflectors() fails → dock_detected_ becomes false after max_fail_count_ misses
-//   3. Code falls back to refined_pose_latched_ (last good pose before detection was lost)
-//   4. But refined_pose_latched_ is FROZEN — it doesn't update as robot continues moving
-//   5. So dist becomes STALE and may never drop below docking_threshold_
-//   6. Result: docking fails with timeout error 905
-//
-// ── NEW TWO-MODE SOLUTION ──
-//
-// MODE 1 — REFLECTIVE-POSE MODE (medium range, reflectors visible)
-//   • If dock_detected_ == true (live reflector pair detected):
-//       → Use last_detected_pose_ (continuously updated)
-//   • If dock_detected_ == false but has_refined_pose_latch_ == true:
-//       → Use refined_pose_latched_ (last good pose before loss)
-//   • Transform pose to odom, compute dist = hypot(dx, dy)
-//   • If dist < docking_threshold_ (0.32m default) → return true
-//   • If dist < near_range_entry_distance_ (0.50m) and near-range mode enabled:
-//       → Switch to MODE 2
-//
-// MODE 2 — NEAR-RANGE DIRECT-RANGE MODE (very close, reflectors unstable)
-//   • Use latest rear lidar scan directly (last_scan_)
-//   • Extract ranges from a narrow angular sector around the rear direction
-//     (±near_range_sector_half_angle_rad_ around π rad in base_link frame)
-//   • Compute robust range estimate using configured statistic:
-//       - "min": minimum valid range in sector
-//       - "median": median of valid ranges
-//       - "trimmed_mean": mean after removing outliers
-//   • If range < near_range_stop_threshold_ (0.10m default):
-//       → Increment near_range_stable_count_
-//       → If count >= near_range_required_stable_count_ (3 cycles) → return true
-//   • Else: reset counter
-//
-// This hybrid approach:
-//   • Uses reflective detection at medium range (accurate pose estimation)
-//   • Switches to direct range at close range (robust to reflector loss)
-//   • Debounces near-range detection to avoid false positives from noise
+// Uses minimum range from rear lidar scan to determine if robot is docked.
+// This is more reliable than pose-based distance because:
+//   • Direct sensor measurement (no TF/odometry errors)
+//   • Verifiable by checking /scan_rear_lidar_filter topic
+//   • Dock is near wall, so min_range will be very small when docked
 // ─────────────────────────────────────────────────────────────────────────────
 
 bool LidarIntensityDock::isDocked()
 {
-  if (!use_external_detection_pose_) {
-    std::lock_guard<std::mutex> lock(pose_mutex_);
-
-    // ── Require at least one valid detection before attempting docking check ──
-    if (last_detected_pose_.header.stamp.sec == 0) { 
-      return false; 
-    }
-
-    // ── Pick best available reference pose ──
-    geometry_msgs::msg::PoseStamped ref;
-    if (dock_detected_) {
-      ref = last_detected_pose_;  // Live detection available
-    } else if (has_refined_pose_latch_) {
-      ref = refined_pose_latched_;  // Fallback to last good pose
-    } else {
-      return false;  // No pose available
-    }
-
-    try {
-      // ── Transform dock pose to odom frame ──
-      ref.header.stamp = rclcpp::Time(0);  // Use latest available transform
-      geometry_msgs::msg::PoseStamped dock_in_odom;
-      tf_->transform(ref, dock_in_odom, "odom", tf2::durationFromSec(0.1));
-
-      // ── Get robot position in odom frame ──
-      geometry_msgs::msg::TransformStamped robot_tf =
-        tf_->lookupTransform("odom", base_frame_, tf2::TimePointZero);
-
-      // ── Compute 2D distance from robot to dock pose ──
-      double dx = dock_in_odom.pose.position.x - robot_tf.transform.translation.x;
-      double dy = dock_in_odom.pose.position.y - robot_tf.transform.translation.y;
-      double dist = std::hypot(dx, dy);
-
-      // ── Publish debug topics ──
-      auto node = node_.lock();
-      if (node && dock_distance_pub_) {
-        std_msgs::msg::Float32 dist_msg;
-        dist_msg.data = static_cast<float>(dist);
-        dock_distance_pub_->publish(dist_msg);
-      }
-      if (node && dock_pose_odom_pub_) {
-        dock_pose_odom_pub_->publish(dock_in_odom);
-      }
-
-      // ── MODE 1: REFLECTIVE-POSE MODE ──
-      // Check if standard pose-based distance is below threshold
-      if (dist < docking_threshold_) {
-        if (node) {
-          RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 500,
-            "[%s] isDocked: REFLECTIVE-POSE mode → dist=%.3fm < thresh=%.3fm → DOCKED",
-            name_.c_str(), dist, docking_threshold_);
-        }
-        return true;
-      }
-
-      // ── MODE 2: NEAR-RANGE DIRECT-RANGE MODE ──
-      // If enabled and robot is close enough, switch to direct range measurement
-      if (use_near_range_stop_ && dist < near_range_entry_distance_) {
-        sensor_msgs::msg::LaserScan::SharedPtr scan_copy;
-        {
-          std::lock_guard<std::mutex> scan_lock(scan_mutex_);
-          scan_copy = last_scan_;
-        }
-
-        if (scan_copy) {
-          double near_range = 0.0;
-          if (computeNearRangeEstimate(*scan_copy, near_range)) {
-            // Publish near-range debug topic
-            if (node && dock_near_range_pub_) {
-              std_msgs::msg::Float32 nr_msg;
-              nr_msg.data = static_cast<float>(near_range);
-              dock_near_range_pub_->publish(nr_msg);
-            }
-
-            // Check if near-range is below stopping threshold
-            if (near_range < near_range_stop_threshold_) {
-              near_range_stable_count_++;
-              if (near_range_stable_count_ >= near_range_required_stable_count_) {
-                if (node) {
-                  RCLCPP_INFO(node->get_logger(),
-                    "[%s] isDocked: NEAR-RANGE mode → range=%.3fm < thresh=%.3fm "
-                    "for %d cycles → DOCKED",
-                    name_.c_str(), near_range, near_range_stop_threshold_,
-                    near_range_stable_count_);
-                }
-                return true;
-              } else {
-                if (node) {
-                  RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 500,
-                    "[%s] isDocked: NEAR-RANGE mode → range=%.3fm < thresh=%.3fm "
-                    "(%d/%d cycles)",
-                    name_.c_str(), near_range, near_range_stop_threshold_,
-                    near_range_stable_count_, near_range_required_stable_count_);
-                }
-              }
-            } else {
-              // Range above threshold → reset counter
-              if (near_range_stable_count_ > 0) {
-                if (node) {
-                  RCLCPP_INFO(node->get_logger(),
-                    "[%s] isDocked: NEAR-RANGE mode → range=%.3fm >= thresh=%.3fm "
-                    "→ reset counter",
-                    name_.c_str(), near_range, near_range_stop_threshold_);
-                }
-                near_range_stable_count_ = 0;
-              }
-            }
-          } else {
-            // Failed to compute near-range estimate
-            if (node) {
-              RCLCPP_WARN_THROTTLE(node->get_logger(), *node->get_clock(), 1000,
-                "[%s] isDocked: NEAR-RANGE mode active but failed to compute range estimate",
-                name_.c_str());
-            }
-          }
-        }
-      }
-
-      return false;  // Neither mode satisfied docking condition
-
-    } catch (const tf2::TransformException & ex) {
-      auto node = node_.lock();
-      if (node) {
-        RCLCPP_WARN(node->get_logger(),
-          "[%s] isDocked() TF failed: %s", name_.c_str(), ex.what());
-      }
-      return false;
-    }
+  // Get latest scan
+  sensor_msgs::msg::LaserScan::SharedPtr scan_copy;
+  {
+    std::lock_guard<std::mutex> lock(scan_mutex_);
+    scan_copy = last_scan_;
   }
 
-  // ── External detection mode (unchanged) ──
-  std::lock_guard<std::mutex> lock(pose_mutex_);
-  if (!dock_detected_) { return false; }
-  try {
-    geometry_msgs::msg::PoseStamped pose_base;
-    tf_->transform(last_detected_pose_, pose_base, base_frame_,
-                   tf2::durationFromSec(0.1));
-    double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y);
-    return dist < docking_threshold_;
-  } catch (const tf2::TransformException & ex) {
-    auto node = node_.lock();
-    if (node) {
-      RCLCPP_WARN(node->get_logger(),
-        "[%s] isDocked() external TF failed: %s", name_.c_str(), ex.what());
-    }
+  if (!scan_copy) {
+    // auto node = node_.lock();
+    // if (node) {
+    //   RCLCPP_WARN_THROTTLE(node->get_logger(), *node->get_clock(), 1000,
+    //     "[%s] isDocked: No scan available", name_.c_str());
+    // }
     return false;
   }
+
+  // Find minimum range across ALL scan points
+  float min_range = std::numeric_limits<float>::max();
+  for (size_t i = 0; i < scan_copy->ranges.size(); ++i) {
+    float r = scan_copy->ranges[i];
+    if (std::isfinite(r) && r >= scan_copy->range_min && r <= scan_copy->range_max) {
+      min_range = std::min(min_range, r);
+    }
+  }
+
+  // Check if minimum range indicates docked (25cm threshold)
+  const float DOCKED_RANGE_THRESHOLD = 0.25f;
+  
+  auto node = node_.lock();
+  if (min_range < DOCKED_RANGE_THRESHOLD) {
+    // if (node) {
+    //   RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 500,
+    //     "[%s] isDocked: min_range=%.3fm < thresh=%.3fm → DOCKED",
+    //     name_.c_str(), min_range, DOCKED_RANGE_THRESHOLD);
+    // }
+    return true;
+  }
+
+  // if (node) {
+  //   RCLCPP_DEBUG_THROTTLE(node->get_logger(), *node->get_clock(), 1000,
+  //     "[%s] isDocked: min_range=%.3fm >= thresh=%.3fm → NOT DOCKED",
+  //     name_.c_str(), min_range, DOCKED_RANGE_THRESHOLD);
+  // }
+  
+  return false;
+
+  // ── OLD IMPLEMENTATION (COMMENTED OUT FOR REFERENCE) ──
+  // if (!use_external_detection_pose_) {
+  //   std::lock_guard<std::mutex> lock(pose_mutex_);
+  //
+  //   if (last_detected_pose_.header.stamp.sec == 0) { 
+  //     return false; 
+  //   }
+  //
+  //   geometry_msgs::msg::PoseStamped ref;
+  //   if (dock_detected_) {
+  //     ref = last_detected_pose_;
+  //   } else if (has_refined_pose_latch_) {
+  //     ref = refined_pose_latched_;
+  //   } else {
+  //     return false;
+  //   }
+  //
+  //   try {
+  //     ref.header.stamp = rclcpp::Time(0);
+  //     geometry_msgs::msg::PoseStamped dock_in_odom;
+  //     tf_->transform(ref, dock_in_odom, "odom", tf2::durationFromSec(0.1));
+  //
+  //     geometry_msgs::msg::TransformStamped robot_tf =
+  //       tf_->lookupTransform("odom", base_frame_, tf2::TimePointZero);
+  //
+  //     double dx = dock_in_odom.pose.position.x - robot_tf.transform.translation.x;
+  //     double dy = dock_in_odom.pose.position.y - robot_tf.transform.translation.y;
+  //     double dist = std::hypot(dx, dy);
+  //
+  //     auto node = node_.lock();
+  //     if (node && dock_distance_pub_) {
+  //       std_msgs::msg::Float32 dist_msg;
+  //       dist_msg.data = static_cast<float>(dist);
+  //       dock_distance_pub_->publish(dist_msg);
+  //     }
+  //     if (node && dock_pose_odom_pub_) {
+  //       dock_pose_odom_pub_->publish(dock_in_odom);
+  //     }
+  //
+  //     if (dist < docking_threshold_) {
+  //       if (node) {
+  //         RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 500,
+  //           "[%s] isDocked: dist=%.3fm < thresh=%.3fm → DOCKED",
+  //           name_.c_str(), dist, docking_threshold_);
+  //       }
+  //       return true;
+  //     }
+  //
+  //     return false;
+  //
+  //   } catch (const tf2::TransformException & ex) {
+  //     auto node = node_.lock();
+  //     if (node) {
+  //       RCLCPP_WARN(node->get_logger(),
+  //         "[%s] isDocked() TF failed: %s", name_.c_str(), ex.what());
+  //     }
+  //     return false;
+  //   }
+  // }
+  //
+  // std::lock_guard<std::mutex> lock(pose_mutex_);
+  // if (!dock_detected_) { return false; }
+  // try {
+  //   geometry_msgs::msg::PoseStamped pose_base;
+  //   tf_->transform(last_detected_pose_, pose_base, base_frame_,
+  //                  tf2::durationFromSec(0.1));
+  //   double dist = std::hypot(pose_base.pose.position.x, pose_base.pose.position.y);
+  //   return dist < docking_threshold_;
+  // } catch (const tf2::TransformException & ex) {
+  //   auto node = node_.lock();
+  //   if (node) {
+  //     RCLCPP_WARN(node->get_logger(),
+  //       "[%s] isDocked() external TF failed: %s", name_.c_str(), ex.what());
+  //   }
+  //   return false;
+  // }
 }
 
 bool LidarIntensityDock::isCharging()         { return isDocked(); }
@@ -463,20 +397,30 @@ bool LidarIntensityDock::disableCharging()    { return true; }
 bool LidarIntensityDock::hasStoppedCharging() { return !isDocked(); }
 
 // ─────────────────────────────────────────────
-// Scan callback
+// Scan callback - with quality checks
 // ─────────────────────────────────────────────
 
 void LidarIntensityDock::scanCallback(
   const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
-  // ── PHASE C: Store latest scan for near-range processing ──
+  // ── Store latest scan ──
   {
     std::lock_guard<std::mutex> lock(scan_mutex_);
     last_scan_ = msg;
   }
 
-  auto reflectors = detectReflectors(*msg);
+  DetectStats stats;
+  auto reflectors = detectReflectors(*msg, stats);
   auto clusters   = clusterReflectors(reflectors);
+
+  auto node = node_.lock();
+  if (node) {
+    RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 1000,
+      "[%s] accept=%d peak_rej=%d local_rej=%d valley_rej=%d range_rej=%d left_peak=%.1f right_peak=%.1f",
+      name_.c_str(), stats.accepted, stats.reject_peak, stats.reject_local_max,
+      stats.reject_valley, stats.reject_range,
+      stats.strongest_peak_left, stats.strongest_peak_right);
+  }
 
   geometry_msgs::msg::PoseStamped detected;
   detected.header = msg->header;
@@ -491,7 +435,32 @@ void LidarIntensityDock::scanCallback(
       (clusters[0].peak_idx < clusters[1].peak_idx)
       ? clusters[1] : clusters[0];
 
-    found = computeDockPose(left, right, tape_distance_, lrf_forward_offset_, detected);
+    // Convert clusters back to Reflector for quality check
+    Reflector left_ref, right_ref;
+    left_ref.x = left.x; left_ref.y = left.y;
+    right_ref.x = right.x; right_ref.y = right.y;
+
+    if (isMeasurementReliable(stats, left_ref, right_ref)) {
+      geometry_msgs::msg::PoseStamped candidate;
+      candidate.header = msg->header;
+
+      if (computeDockPose(left, right, tape_distance_, lrf_forward_offset_, candidate)) {
+        if (isPoseJumpReasonable(candidate)) {
+          detected = candidate;
+          found = true;
+        } else {
+          if (node) {
+            RCLCPP_WARN(node->get_logger(),
+              "[%s] Pose jump rejected, keeping last valid pose", name_.c_str());
+          }
+        }
+      }
+    } else {
+      if (node) {
+        RCLCPP_WARN(node->get_logger(),
+          "[%s] Measurement unreliable, keeping last valid pose", name_.c_str());
+      }
+    }
   }
 
   std::lock_guard<std::mutex> lock(pose_mutex_);
@@ -499,8 +468,14 @@ void LidarIntensityDock::scanCallback(
     miss_count_        = 0;
     dock_detected_     = true;
     last_detected_pose_ = detected;
+    last_valid_pose_ = detected;
+    has_last_valid_pose_ = true;
     detected_pose_pub_->publish(detected);
   } else {
+    // Publish last valid pose if available
+    if (has_last_valid_pose_ && detected_pose_pub_) {
+      detected_pose_pub_->publish(last_valid_pose_);
+    }
     // Debounce: only clear detection after max_fail_count_ consecutive misses
     if (++miss_count_ > max_fail_count_) {
       dock_detected_ = false;
@@ -509,12 +484,13 @@ void LidarIntensityDock::scanCallback(
 }
 
 // ─────────────────────────────────────────────
-// detectReflectors() - NEW: Cluster-based detection
+// detectReflectors() - NEW: Cluster-based detection with stats
 // ─────────────────────────────────────────────
 
 std::vector<LidarIntensityDock::Reflector>
 LidarIntensityDock::detectReflectors(
-  const sensor_msgs::msg::LaserScan & scan) const
+  const sensor_msgs::msg::LaserScan & scan,
+  DetectStats & stats) const
 {
   std::vector<Reflector> result;
 
@@ -530,6 +506,7 @@ LidarIntensityDock::detectReflectors(
     // ===== Skip until a bright point is found =====
     while (i < static_cast<int>(N) &&
            scan.intensities[i] < intensity_cluster_threshold_) {
+      stats.reject_peak++;
       i++;
     }
 
@@ -552,6 +529,7 @@ LidarIntensityDock::detectReflectors(
 
     // ===== Check cluster size =====
     if (static_cast<int>(indices.size()) < min_cluster_points_) {
+      stats.reject_local_max++;
       continue;
     }
 
@@ -572,6 +550,7 @@ LidarIntensityDock::detectReflectors(
       if (!std::isfinite(r) ||
           r < scan.range_min ||
           r > scan.range_max) {
+        stats.reject_range++;
         continue;
       }
 
@@ -593,6 +572,7 @@ LidarIntensityDock::detectReflectors(
     double range_span = max_range - min_range;
 
     if (range_span > max_cluster_range_span_) {
+      stats.reject_range++;
       continue;
     }
 
@@ -608,6 +588,7 @@ LidarIntensityDock::detectReflectors(
 
     if (cluster_angle_width < min_cluster_angle_width_ ||
         cluster_angle_width > max_cluster_angle_width_) {
+      stats.reject_valley++;
       continue;
     }
 
@@ -632,6 +613,13 @@ LidarIntensityDock::detectReflectors(
     double x = center_range * std::cos(ros_angle);
     double y = center_range * std::sin(ros_angle);
 
+    // ===== Track strongest peaks by side =====
+    if (y >= 0.0) {
+      stats.strongest_peak_left = std::max(stats.strongest_peak_left, strongest_I);
+    } else {
+      stats.strongest_peak_right = std::max(stats.strongest_peak_right, strongest_I);
+    }
+
     // ===== Create reflector =====
     Reflector ref;
     ref.peak_idx = static_cast<int>(std::round(center_idx));
@@ -645,6 +633,7 @@ LidarIntensityDock::detectReflectors(
     ref.y = y;
 
     result.push_back(ref);
+    stats.accepted++;
   }
 
   return result;
@@ -811,6 +800,102 @@ bool LidarIntensityDock::computeDockPose(
   pose_out.pose.orientation.y = 0.0;
   pose_out.pose.orientation.z = std::sin(yaw / 2.0);
   pose_out.pose.orientation.w = std::cos(yaw / 2.0);
+
+  return true;
+}
+
+// ─────────────────────────────────────────────
+// Quality check: Measurement reliability
+// ─────────────────────────────────────────────
+bool LidarIntensityDock::isMeasurementReliable(
+  const DetectStats & stats,
+  const Reflector & left,
+  const Reflector & right) const
+{
+  auto node = node_.lock();
+
+  // Check if peaks are strong enough
+  if (stats.strongest_peak_left <= 10.0f || stats.strongest_peak_right <= 10.0f) {
+    if (node) {
+      RCLCPP_WARN(node->get_logger(),
+        "[%s] Reject: weak peaks (left=%.1f right=%.1f)",
+        name_.c_str(), stats.strongest_peak_left, stats.strongest_peak_right);
+    }
+    return false;
+  }
+
+  // Check peak balance
+  if (std::abs(stats.strongest_peak_left - stats.strongest_peak_right) > max_peak_diff_) {
+    if (node) {
+      RCLCPP_WARN(node->get_logger(),
+        "[%s] Reject: peak imbalance (left=%.1f right=%.1f diff=%.1f)",
+        name_.c_str(), stats.strongest_peak_left, stats.strongest_peak_right,
+        std::abs(stats.strongest_peak_left - stats.strongest_peak_right));
+    }
+    return false;
+  }
+
+  // Check tape distance
+  double dist = std::hypot(left.x - right.x, left.y - right.y);
+  if (std::abs(dist - tape_distance_) > tape_distance_ * 0.2) {
+    if (node) {
+      RCLCPP_WARN(node->get_logger(),
+        "[%s] Reject: tape distance invalid (measured=%.3f expected=%.3f)",
+        name_.c_str(), dist, tape_distance_);
+    }
+    return false;
+  }
+
+  return true;
+}
+
+// ─────────────────────────────────────────────
+// Quality check: Pose jump validation
+// ─────────────────────────────────────────────
+bool LidarIntensityDock::isPoseJumpReasonable(
+  const geometry_msgs::msg::PoseStamped & new_pose) const
+{
+  if (!has_last_valid_pose_) {
+    return true;  // First pose, accept
+  }
+
+  auto node = node_.lock();
+
+  // Check position jump
+  double dx = new_pose.pose.position.x - last_valid_pose_.pose.position.x;
+  double dy = new_pose.pose.position.y - last_valid_pose_.pose.position.y;
+  double dist = std::hypot(dx, dy);
+
+  if (dist > max_pose_jump_dist_) {
+    if (node) {
+      RCLCPP_WARN(node->get_logger(),
+        "[%s] Reject: pose jump too large in position (%.3f m)",
+        name_.c_str(), dist);
+    }
+    return false;
+  }
+
+  // Check yaw jump
+  double yaw_new = 2.0 * std::atan2(
+    new_pose.pose.orientation.z,
+    new_pose.pose.orientation.w);
+
+  double yaw_old = 2.0 * std::atan2(
+    last_valid_pose_.pose.orientation.z,
+    last_valid_pose_.pose.orientation.w);
+
+  double dyaw = yaw_new - yaw_old;
+  while (dyaw > M_PI) dyaw -= 2.0 * M_PI;
+  while (dyaw < -M_PI) dyaw += 2.0 * M_PI;
+
+  if (std::abs(dyaw) > max_pose_jump_yaw_rad_) {
+    if (node) {
+      RCLCPP_WARN(node->get_logger(),
+        "[%s] Reject: pose jump too large in yaw (%.3f rad)",
+        name_.c_str(), dyaw);
+    }
+    return false;
+  }
 
   return true;
 }

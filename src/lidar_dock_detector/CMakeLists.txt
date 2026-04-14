@@ -11,6 +11,7 @@ find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -78,6 +79,13 @@ ament_target_dependencies(debug_dock_pose_node_v4
   geometry_msgs
 )
 
+add_executable(rear_docking_controller_node src/rear_docking_controller_node.cpp)
+ament_target_dependencies(rear_docking_controller_node
+  rclcpp
+  geometry_msgs
+  nav_msgs
+)
+
 add_executable(custom_range_dock_node src/custom_range_dock.cpp src/custom_range_dock_main.cpp)
 target_include_directories(custom_range_dock_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -99,6 +107,7 @@ install(TARGETS
   debug_dock_pose_node_v2
   debug_dock_pose_node_v3
   debug_dock_pose_node_v4
+  rear_docking_controller_node
   custom_range_dock_node
   DESTINATION lib/${PROJECT_NAME}
 )

@@ -62,29 +62,37 @@ docking_server:
       max_detect_range: 3.0                                 # Maximum range (m) beyond which a detected reflector is discarded as too far
       max_fail_count: 5                                     # Consecutive scan failures before dock_detected_ is cleared (debounce guard)
       cluster_beam_gap: 3                                   # Max beam index gap to merge adjacent reflector peaks into one cluster (improves tape centroid stability)
-      staging_x_offset: 0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
-      
+      # staging_x_offset: 0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
+      staging_x_offset: 0.60                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
+
       # ── PHASE A: Changed staging orientation so REAR faces dock ──
       # staging_yaw_offset: 0.0                             # OLD: robot faces dock (front lidar sees tapes, controller reverses)
       staging_yaw_offset: 0.0                           # NEW: π rad = 180° flip → robot REAR faces dock, rear lidar sees tapes, controller drives forward
       
       docking_threshold: 0.32                               # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true (used in reflective-pose mode)
       
-      # dock_direction: "backward"                          # OLD: controller reverses (for front-facing staging)
-      dock_direction: "forward"                             # NEW: controller drives forward (robot already rear-facing at staging)
+      # ── Quality constraint parameters (NEW) ──
+      max_peak_diff: 4.0                                    # Maximum allowed difference between left/right peak intensities
+      # max_pose_jump_dist: 0.10                            # OLD: Too strict - caused rejections at 0.29-0.40m jumps
+      max_pose_jump_dist: 0.50                              # NEW: Increased to allow initial detection variance (observed: 0.29-0.40m)
+      # max_pose_jump_yaw_deg: 15.0                         # OLD: Too strict for initial detection
+      max_pose_jump_yaw_deg: 30.0                           # NEW: Increased for initial detection stability
+      
+      dock_direction: "backward"                          # OLD: controller reverses (for front-facing staging)
+      # dock_direction: "forward"                           # COMMENTED OUT: docking_server parameter, not used by plugin
       
       # rotate_to_dock: true                                # OLD: SimpleChargingDock-only parameter
       rotate_to_dock: false                                 # NEW: no extra rotation needed; staging already orients rear toward dock
       
-      # ── PHASE C: Near-range stopping parameters ──
+      # ── PHASE C: Near-range stopping parameters (COMMENTED OUT - using direct min_range check in isDocked()) ──
       # When robot gets very close, 2-reflector pair becomes unstable/disappears.
       # Near-range mode uses direct range from a narrow rear-facing sector for robust docking completion.
-      use_near_range_stop: true                             # Enable near-range direct-range stopping mode
-      near_range_entry_distance: 0.60                       # Distance (m) below which near-range mode can activate
-      near_range_sector_half_angle_deg: 15.0                # Half-width (deg) of angular sector around rear direction for range sampling
-      near_range_stop_threshold: 0.08                       # Range (m) below which robot is considered docked in near-range mode (tuned to physical contact distance)
-      near_range_required_stable_count: 3                   # Consecutive cycles range must stay below threshold to declare docked
-      near_range_statistic: "median"                        # Statistic for robust range estimate: "min", "median", "trimmed_mean"
+      # use_near_range_stop: true                             # Enable near-range direct-range stopping mode
+      # near_range_entry_distance: 0.60                       # Distance (m) below which near-range mode can activate
+      # near_range_sector_half_angle_deg: 15.0                # Half-width (deg) of angular sector around rear direction for range sampling
+      # near_range_stop_threshold: 0.08                       # Range (m) below which robot is considered docked in near-range mode (tuned to physical contact distance)
+      # near_range_required_stable_count: 3                   # Consecutive cycles range must stay below threshold to declare docked
+      # near_range_statistic: "median"                        # Statistic for robust range estimate: "min", "median", "trimmed_mean"
 
       # ── SimpleChargingDock (for reference — only usable if detector is a separate node) ──
       # plugin: "opennav_docking::SimpleChargingDock"

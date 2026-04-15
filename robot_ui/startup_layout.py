@@ -408,7 +408,7 @@ class RobotUI(QMainWindow):
                 color: #6b7a99;
                 border: 1px solid #2a3040;
                 border-radius: 6px;
-                font-size: 14px;
+                font-size: 26px;
                 padding: 10px;
             }
             QPushButton#voice-btn:checked {

@@ -102,17 +102,12 @@ class VoiceEngine(QObject):
         mic = None
         for idx in candidates:
             try:
-                m = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
-                with _suppress_stderr():
-                    src = m.__enter__()
-                    if src.stream is None:
-                        raise RuntimeError("stream is None")
-                    m.__exit__(None, None, None)
-                mic = m
+                mic = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
                 print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
                 break
             except Exception as e:
                 print(f"[VoiceEngine] mic index={idx} failed: {e}")
+                mic = None
 
         if mic is None:
             print("[VoiceEngine] no usable microphone found")

@@ -3,6 +3,7 @@ import os
 import re
 import json
 import math
+import unicodedata
 from openai import OpenAI
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QLineEdit, QScrollArea, QSizePolicy)
@@ -14,6 +15,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from voice_engine import VoiceEngine, VoiceState
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
+
+def _strip_diacritics(s: str) -> str:
+    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
 _LOCATION_PATTERNS = re.compile(
     r'(tôi đang ở đâu|tôi đang ở dâu|robot đang ở đâu|vị trí (hiện tại|của tôi|robot))',
     re.IGNORECASE
@@ -432,20 +437,45 @@ class ChatPanel(QWidget):
 
         if (_MULTI_NAV_PATTERN.search(text) or _REVERSE_NAV_PATTERN.search(text)) and not _NO_EXEC_PATTERN.search(text):
             wps = _load_waypoints()
-            found = [k for k in wps if re.search(re.escape(k), text, re.IGNORECASE)]
+            # Match waypoints by checking key and aliases, preserving order of appearance
+            found = []
+            text_lower = text.lower()
+            text_plain = _strip_diacritics(text_lower)
+            for k, data in wps.items():
+                aliases = data.get('aliases', []) if isinstance(data, dict) else []
+                candidates = [k] + aliases
+                for c in candidates:
+                    # Use word boundary for numeric keys to avoid substring matches
+                    if c.isdigit():
+                        pattern = r'\b' + re.escape(c) + r'\b'
+                        if re.search(pattern, text_lower, re.IGNORECASE):
+                            if k not in found:
+                                found.append(k)
+                            break
+                    else:
+                        # Try exact match first, then diacritic-insensitive fallback
+                        if re.search(re.escape(c), text_lower, re.IGNORECASE) or \
+                           re.search(re.escape(_strip_diacritics(c.lower())), text_plain, re.IGNORECASE):
+                            if k not in found:
+                                found.append(k)
+                            break
 
             # Snapshot current pose as return point if user said "quay lại đây"
-            return_here = _RETURN_HERE_PATTERN.search(text) and self._pose_provider
+            return_here = bool(_RETURN_HERE_PATTERN.search(text))
             if return_here:
-                pose = self._pose_provider()
+                pose = self._pose_provider() if self._pose_provider else None
                 if pose:
                     self._return_here_pose = (pose.position.x, pose.position.y)
-                    found.append(f'{_RETURN_HERE_WAYPOINT_KEY}:{pose.position.x:.4f},{pose.position.y:.4f}')
+                    o = pose.orientation
+                    found.append(f'{_RETURN_HERE_WAYPOINT_KEY}:{pose.position.x:.4f};{pose.position.y:.4f};{o.z:.4f};{o.w:.4f}')
+                else:
+                    # No pose available — use a sentinel so we still intercept the request
+                    found.append(_RETURN_HERE_WAYPOINT_KEY)
 
             if len(found) >= 2:
                 if _REVERSE_NAV_PATTERN.search(text):
                     found = list(reversed(found))
-                display = [k for k in found if k != _RETURN_HERE_WAYPOINT_KEY]
+                display = [k for k in found if not k.startswith(_RETURN_HERE_WAYPOINT_KEY)]
                 suffix = " rồi quay lại vị trí hiện tại của bạn" if return_here else ""
                 reply = f"Đang dẫn bạn lần lượt tới {', '.join(display)}{suffix}!"
                 self._chat_history.append({"role": "user", "content": text})
@@ -506,8 +536,10 @@ class ChatPanel(QWidget):
             for c in [key] + aliases:
                 pairs.append((c, key))
         pairs.sort(key=lambda p: len(p[0]), reverse=True)
+        text_plain = _strip_diacritics(text_lower)
         for c, key in pairs:
-            if c.lower() in text_lower:
+            c_lower = c.lower()
+            if c_lower in text_lower or _strip_diacritics(c_lower) in text_plain:
                 return [key]
         return []
 

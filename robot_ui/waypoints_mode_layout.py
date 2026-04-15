@@ -448,6 +448,9 @@ class WaypointsModeLayout(QMainWindow):
 
         self.chat_widget = ChatPanel()
         self.chat_widget.waypoint_command.connect(self.voice_navigate_to_waypoint)
+        self.chat_widget.set_pose_provider(
+            lambda: self.ros_node.current_pose.pose.pose if self.ros_node.current_pose else None
+        )
 
         # Horizontal splitter for log and chat
         panels_splitter = QWidget()
@@ -614,6 +617,8 @@ class WaypointsModeLayout(QMainWindow):
         goal_msg.pose.pose.orientation.y = wp['qy']
         goal_msg.pose.pose.orientation.z = wp['qz']
         goal_msg.pose.pose.orientation.w = wp['qw']
+        if wp.get('yaw_tolerance'):
+            self._set_yaw_tolerance(wp['yaw_tolerance'])
         
         send_goal_future = self.ros_node.nav_client.send_goal_async(goal_msg)
         self._current_nav_target = str(slot_num)
@@ -632,9 +637,20 @@ class WaypointsModeLayout(QMainWindow):
             if self.running_sequence:
                 self.running_sequence = False
 
+    def _set_yaw_tolerance(self, value: float):
+        """Dynamically set yaw_goal_tolerance on controller_server via ros2 param."""
+        subprocess.Popen([
+            'ros2', 'param', 'set', '/controller_server',
+            'general_goal_checker.yaw_goal_tolerance', str(value)
+        ])
+
     def _goal_result_callback(self, future):
         status = future.result().status
         print(f"[Nav] _goal_result_callback fired — status={status} (SUCCEEDED={GoalStatus.STATUS_SUCCEEDED})")
+        # Restore default yaw tolerance if it was relaxed for a return-here waypoint
+        wp = self.waypoints.get(str(self._current_nav_target), {})
+        if wp.get('yaw_tolerance'):
+            self._set_yaw_tolerance(0.25)
         if status != GoalStatus.STATUS_SUCCEEDED:
             self.log(f'[NAV] Goal did not succeed (status={status}) — sequence stopped')
             self.running_sequence = False
@@ -734,18 +750,44 @@ class WaypointsModeLayout(QMainWindow):
             if s.startswith('__return_here__:'):
                 # Inject synthetic waypoint from encoded coordinates
                 _, coords = s.split(':', 1)
-                rx, ry = map(float, coords.split(','))
+                parts = coords.split(';')
+                rx, ry = float(parts[0]), float(parts[1])
+                rqz = float(parts[2]) if len(parts) > 2 else 0.0
+                rqw = float(parts[3]) if len(parts) > 3 else 1.0
                 _RETURN_KEY = '__return_here__'
                 self.waypoints[_RETURN_KEY] = {
                     'x': rx, 'y': ry, 'z': 0.0,
-                    'qx': 0.0, 'qy': 0.0, 'qz': 0.0, 'qw': 1.0,
+                    'qx': 0.0, 'qy': 0.0, 'qz': rqz, 'qw': rqw,
+                    'yaw_tolerance': 3.14,
                 }
                 resolved.append(_RETURN_KEY)
+            elif s == '__return_here__':
+                # Pose was unavailable when command was issued — capture it now
+                pose = self.ros_node.current_pose
+                if pose:
+                    _RETURN_KEY = '__return_here__'
+                    self.waypoints[_RETURN_KEY] = {
+                        'x': pose.pose.pose.position.x,
+                        'y': pose.pose.pose.position.y,
+                        'z': 0.0,
+                        'qx': pose.pose.pose.orientation.x,
+                        'qy': pose.pose.pose.orientation.y,
+                        'qz': pose.pose.pose.orientation.z,
+                        'qw': pose.pose.pose.orientation.w,
+                        'yaw_tolerance': 3.14,
+                    }
+                    resolved.append(_RETURN_KEY)
+                else:
+                    resolved.append(None)  # will be caught as missing
             else:
                 resolved.append(key_map.get(s.lower()))
         missing = [slot_list[i] for i, r in enumerate(resolved) if r is None]
         if missing:
-            msg = f'Vị trí chưa được lưu: {", ".join(missing)}'
+            has_return_sentinel = any(s.startswith('__return_here__') for s in missing)
+            if has_return_sentinel:
+                msg = 'Không thể xác định vị trí hiện tại để quay về — robot chưa được định vị.'
+            else:
+                msg = f'Vị trí chưa được lưu: {", ".join(m for m in missing if not m.startswith("__return_here__"))}'
             self.log(f'[Voice] {msg}')
             self.chat_widget._voice_engine.speak(msg)
             return

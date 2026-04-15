@@ -82,6 +82,7 @@ ament_target_dependencies(debug_dock_pose_node_v4
 add_executable(rear_docking_controller_node src/rear_docking_controller_node.cpp)
 ament_target_dependencies(rear_docking_controller_node
   rclcpp
+  sensor_msgs
   geometry_msgs
   nav_msgs
 )

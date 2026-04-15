@@ -23,15 +23,16 @@ public:
     i_valley_            = 24.0f;
     valley_search_range_ = 19;
     max_detect_range_    = 3.0;
-    intensity_cluster_threshold_ = 45.0f;
+    intensity_cluster_threshold_ = 38.0f;
     min_cluster_points_ = 8;
-    max_cluster_range_span_ = 0.03;
+    max_cluster_range_span_ = 0.04;
     min_cluster_angle_width_ = 0.01;
-    max_cluster_angle_width_ = 0.12;
+    max_cluster_angle_width_ = 0.2;
+    max_gap_points_ = 0;   // hoặc 3
 
-    max_peak_diff_ = 4.0f;
-    max_pose_jump_dist_ = 0.10; 
-    max_pose_jump_yaw_rad_ = 15.0 * M_PI / 180.0;
+    max_peak_diff_ = 10.0f;
+    max_pose_jump_dist_ = 0.20; 
+    max_pose_jump_yaw_rad_ = 30.0 * M_PI / 180.0;
 
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       scan_topic_, rclcpp::SensorDataQoS(),
@@ -108,9 +109,16 @@ private:
     return true;
   }
 
-  bool isPoseJumpReasonable(const geometry_msgs::msg::PoseStamped & new_pose) const
+  bool isPoseJumpReasonable(
+    const geometry_msgs::msg::PoseStamped & new_pose,
+    bool both_peaks_strong) const
   {
     if (!has_last_valid_pose_) {
+      return true;
+    }
+
+    // If both reflectors are strong, trust the detection
+    if (both_peaks_strong) {
       return true;
     }
 
@@ -194,8 +202,12 @@ private:
         geometry_msgs::msg::PoseStamped candidate;
         candidate.header = msg->header;
 
+        // Check if both peaks are strong (> 0)
+        bool both_peaks_strong = (stats.strongest_peak_left > 0.0f && 
+                                   stats.strongest_peak_right > 0.0f);
+
         if (computeDockPose(left, right, tape_distance_, lrf_forward_offset_, candidate)) {
-          if (isPoseJumpReasonable(candidate)) {
+          if (isPoseJumpReasonable(candidate, both_peaks_strong)) {
             detected = candidate;
             found = true;
 
@@ -273,12 +285,24 @@ private:
       int cluster_start = i;
       std::vector<int> indices;
 
-      while (i < static_cast<int>(N) &&
-             scan.intensities[i] >= intensity_cluster_threshold_) {
-        indices.push_back(i);
+      // while (i < static_cast<int>(N) &&
+      //        scan.intensities[i] >= intensity_cluster_threshold_) {
+      //   indices.push_back(i);
+      //   i++;
+      // }
+      int gap_count = 0;
+      while (i < static_cast<int>(N)) {
+        if (scan.intensities[i] >= intensity_cluster_threshold_) {
+          indices.push_back(i);
+          gap_count = 0;
+        } else {
+          gap_count++;
+          if (gap_count > max_gap_points_) {
+            break;
+          }
+        }
         i++;
       }
-
       int cluster_end = i - 1;
 
       if (static_cast<int>(indices.size()) < min_cluster_points_) {
@@ -475,6 +499,7 @@ private:
   double max_cluster_range_span_;
   double min_cluster_angle_width_;
   double max_cluster_angle_width_;
+  double max_gap_points_;
 
   bool has_last_valid_pose_ = false;
   geometry_msgs::msg::PoseStamped last_valid_pose_;

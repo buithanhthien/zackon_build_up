@@ -1,10 +1,12 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <limits>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "sensor_msgs/msg/laser_scan.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 class RearDockingControllerNode : public rclcpp::Node
@@ -16,6 +18,7 @@ public:
     dock_pose_topic_ = declare_parameter<std::string>("dock_pose_topic", "/debug_dock_pose_lidar");
     odom_topic_ = declare_parameter<std::string>("odom_topic", "/odom");
     cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
+    scan_topic_ = declare_parameter<std::string>("scan_topic", "/scan_rear_lidar_filter");
     // cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel_test");
 
 
@@ -39,8 +42,12 @@ public:
     yaw_align_threshold_ = declare_parameter<double>("yaw_align_threshold", 0.25);
 
     // Pose freshness
-    dock_pose_timeout_ = declare_parameter<double>("dock_pose_timeout", 0.50);
+    dock_pose_timeout_ = declare_parameter<double>("dock_pose_timeout", 0.30);
+    stale_pose_timeout_ = declare_parameter<double>("stale_pose_timeout", 1.0);
     stop_on_lost_pose_ = declare_parameter<bool>("stop_on_lost_pose", true);
+
+    // Safety
+    min_range_threshold_ = declare_parameter<double>("min_range_threshold", 0.20);
 
     // Optional odom freshness
     require_fresh_odom_ = declare_parameter<bool>("require_fresh_odom", false);
@@ -54,6 +61,10 @@ public:
       odom_topic_, 20,
       std::bind(&RearDockingControllerNode::odomCallback, this, std::placeholders::_1));
 
+    scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
+      scan_topic_, 10,
+      std::bind(&RearDockingControllerNode::scanCallback, this, std::placeholders::_1));
+
     cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>(cmd_vel_topic_, 10);
 
     timer_ = create_wall_timer(
@@ -64,6 +75,7 @@ public:
     RCLCPP_INFO(get_logger(), "dock_pose_topic: %s", dock_pose_topic_.c_str());
     RCLCPP_INFO(get_logger(), "odom_topic: %s", odom_topic_.c_str());
     RCLCPP_INFO(get_logger(), "cmd_vel_topic: %s", cmd_vel_topic_.c_str());
+    RCLCPP_INFO(get_logger(), "scan_topic: %s", scan_topic_.c_str());
   }
 
 private:
@@ -86,9 +98,47 @@ private:
 
   void dockPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
   {
+    // Check if pose is stale (unchanged)
+    if (has_dock_pose_) {
+      const double dx = msg->pose.position.x - last_dock_pose_.pose.position.x;
+      const double dy = msg->pose.position.y - last_dock_pose_.pose.position.y;
+      const double dz = msg->pose.orientation.z - last_dock_pose_.pose.orientation.z;
+      const double dw = msg->pose.orientation.w - last_dock_pose_.pose.orientation.w;
+      
+      const double pose_diff = std::sqrt(dx*dx + dy*dy + dz*dz + dw*dw);
+      
+      if (pose_diff < 0.001) {  // pose unchanged
+        const double unchanged_time = (now() - last_dock_pose_change_time_).seconds();
+        if (unchanged_time > stale_pose_timeout_) {
+          if (state_ != DockState::SEARCH) {
+            state_ = DockState::SEARCH;
+            search_start_time_ = now();
+            RCLCPP_WARN(
+              get_logger(),
+              "[rear_docking_ctrl] Stale pose detected (unchanged for %.2fs) -> SEARCH MODE",
+              unchanged_time);
+          }
+          return;
+        }
+      } else {
+        last_dock_pose_change_time_ = now();
+      }
+    } else {
+      last_dock_pose_change_time_ = now();
+    }
+
     last_dock_pose_ = *msg;
     has_dock_pose_ = true;
     last_dock_pose_time_ = now();
+
+    // if pose is reacquired while searching
+    if (state_ == DockState::SEARCH) {
+      state_ = DockState::TRACK;
+
+      RCLCPP_INFO(
+        get_logger(),
+        "[rear_docking_ctrl] Dock pose reacquired -> TRACK MODE");
+    }
   }
 
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
@@ -96,6 +146,27 @@ private:
     last_odom_ = *msg;
     has_odom_ = true;
     last_odom_time_ = now();
+  }
+
+  void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
+  {
+    last_scan_ = msg;
+    has_scan_ = true;
+  }
+
+  double getMinRange() const
+  {
+    if (!has_scan_ || last_scan_->ranges.empty()) {
+      return std::numeric_limits<double>::infinity();
+    }
+
+    double min_range = std::numeric_limits<double>::infinity();
+    for (const auto& range : last_scan_->ranges) {
+      if (std::isfinite(range) && range > 0.0) {
+        min_range = std::min(min_range, static_cast<double>(range));
+      }
+    }
+    return min_range;
   }
 
   void publishStop()
@@ -106,26 +177,80 @@ private:
     cmd_pub_->publish(cmd);
   }
 
+  void publishSearchMotion()
+  {
+    geometry_msgs::msg::Twist cmd;
+    cmd.linear.x = 0.0;
+
+    const double t = (now() - search_start_time_).seconds();
+
+    // alternate left-right every 1 second
+    const int phase =
+      static_cast<int>(t / search_switch_period_) % 2;
+
+    if (phase == 0) {
+      cmd.angular.z = search_w_;
+    } else {
+      cmd.angular.z = -search_w_;
+    }
+
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 500,
+      "[rear_docking_ctrl] SEARCH MODE wz=%.3f",
+      cmd.angular.z);
+
+    cmd_pub_->publish(cmd);
+  }
+
   void controlLoop()
   {
+    // ===============================
+    // SAFETY CHECK: Min range
+    // ===============================
+    const double min_range = getMinRange();
+    if (min_range < min_range_threshold_) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 500,
+        "[rear_docking_ctrl] SAFETY STOP: min_range=%.3fm < threshold=%.3fm",
+        min_range, min_range_threshold_);
+      publishStop();
+      return;
+    }
+
+    // ===============================
+    // SEARCH / TRACK state handling
+    // ===============================
     if (!has_dock_pose_) {
+      if (state_ != DockState::SEARCH) {
+        state_ = DockState::SEARCH;
+        search_start_time_ = now();
+      }
+
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "[rear_docking_ctrl] No dock pose yet");
-      publishStop();
+        "[rear_docking_ctrl] No dock pose -> SEARCH MODE");
+
+      publishSearchMotion();
       return;
     }
 
     const double pose_age = (now() - last_dock_pose_time_).seconds();
     if (pose_age > dock_pose_timeout_) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "[rear_docking_ctrl] Dock pose timeout: %.3f s", pose_age);
-      if (stop_on_lost_pose_) {
-        publishStop();
+      if (state_ != DockState::SEARCH) {
+        state_ = DockState::SEARCH;
+        search_start_time_ = now();
+
+        RCLCPP_WARN(
+          get_logger(),
+          "[rear_docking_ctrl] Dock pose timeout -> SEARCH MODE");
       }
+
+      publishSearchMotion();
       return;
     }
+
+    // valid pose
+    state_ = DockState::TRACK;
 
     if (require_fresh_odom_) {
       if (!has_odom_) {
@@ -210,9 +335,24 @@ private:
   }
 
 private:
+  enum class DockState
+  {
+    TRACK,
+    SEARCH
+  };
+
+  DockState state_ = DockState::SEARCH;
+
+  // search behavior
+  // double search_w_ = 0.15;             // rad/s
+  double search_w_ = 0.3;             // rad/s
+  double search_switch_period_ = 1.0;  // seconds
+  rclcpp::Time search_start_time_{0, 0, RCL_ROS_TIME};
+
   std::string dock_pose_topic_;
   std::string odom_topic_;
   std::string cmd_vel_topic_;
+  std::string scan_topic_;
 
   double control_frequency_;
 
@@ -230,22 +370,29 @@ private:
   double yaw_align_threshold_;
 
   double dock_pose_timeout_;
+  double stale_pose_timeout_;
   bool stop_on_lost_pose_;
+
+  double min_range_threshold_;
 
   bool require_fresh_odom_;
   double odom_timeout_;
 
   bool has_dock_pose_ = false;
   bool has_odom_ = false;
+  bool has_scan_ = false;
 
   geometry_msgs::msg::PoseStamped last_dock_pose_;
   nav_msgs::msg::Odometry last_odom_;
+  sensor_msgs::msg::LaserScan::SharedPtr last_scan_;
 
   rclcpp::Time last_dock_pose_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_dock_pose_change_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_odom_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr dock_pose_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

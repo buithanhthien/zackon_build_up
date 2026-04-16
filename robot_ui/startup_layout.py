@@ -573,9 +573,18 @@ class RobotUI(QMainWindow):
         self.log_text.setObjectName("log-text")
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Fira Code", 13))
-        log_layout.addWidget(self.log_text)
+        log_layout.addWidget(self.log_text, 1)
 
         self.chat_panel = ChatPanel()
+
+        # Mic button fills bottom half of log panel
+        self.chat_panel.voice_btn.setMinimumSize(0, 0)
+        self.chat_panel.voice_btn.setMaximumSize(16777215, 16777215)
+        self.chat_panel.voice_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.chat_panel.voice_btn.setStyleSheet(
+            self.chat_panel.voice_btn.styleSheet() + "font-size: 64px; border-top: 1px solid #2a3040;"
+        )
+        log_layout.addWidget(self.chat_panel.voice_btn, 1)
 
         # Horizontal splitter for log and chat
         panels_splitter = QWidget()

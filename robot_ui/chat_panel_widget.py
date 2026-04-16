@@ -352,7 +352,6 @@ class ChatPanel(QWidget):
         self.interrupt_btn.setToolTip("Stop speaking")
         self.interrupt_btn.clicked.connect(self._voice_engine.stop_speaking)
 
-        input_layout.addWidget(self.voice_btn)
         input_layout.addWidget(self.chat_input)
         input_layout.addWidget(self.send_btn)
         input_layout.addWidget(self.clear_btn)

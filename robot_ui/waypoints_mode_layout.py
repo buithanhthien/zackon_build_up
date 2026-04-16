@@ -411,7 +411,26 @@ class WaypointsModeLayout(QMainWindow):
 
         self.map_widget = MapWidget(map_image_path, yaml_data)
         self.map_widget.set_waypoints(self.waypoints)
-        map_layout.addWidget(self.map_widget, 2)
+
+        self.chat_widget = ChatPanel()
+        self.chat_widget.waypoint_command.connect(self.voice_navigate_to_waypoint)
+        self.chat_widget.set_pose_provider(
+            lambda: self.ros_node.current_pose.pose.pose if self.ros_node.current_pose else None
+        )
+
+        mic_btn = self.chat_widget.voice_btn
+        mic_btn.setMinimumSize(0, 0)
+        mic_btn.setMaximumSize(16777215, 16777215)
+        mic_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        mic_btn.setStyleSheet(mic_btn.styleSheet() + "font-size: 64px;")
+
+        map_and_mic = QWidget()
+        map_and_mic_layout = QHBoxLayout(map_and_mic)
+        map_and_mic_layout.setContentsMargins(0, 0, 0, 0)
+        map_and_mic_layout.setSpacing(8)
+        map_and_mic_layout.addWidget(self.map_widget, 3)
+        map_and_mic_layout.addWidget(mic_btn, 1)
+        map_layout.addWidget(map_and_mic, 2)
 
         grid_layout = QGridLayout()
         grid_layout.setSpacing(6)
@@ -445,12 +464,6 @@ class WaypointsModeLayout(QMainWindow):
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Fira Code", 13))
         log_layout.addWidget(self.log_text)
-
-        self.chat_widget = ChatPanel()
-        self.chat_widget.waypoint_command.connect(self.voice_navigate_to_waypoint)
-        self.chat_widget.set_pose_provider(
-            lambda: self.ros_node.current_pose.pose.pose if self.ros_node.current_pose else None
-        )
 
         # Horizontal splitter for log and chat
         panels_splitter = QWidget()

@@ -93,21 +93,30 @@ class VoiceEngine(QObject):
             candidates = [MIC_FORCE_INDEX, None]
         else:
             candidates = []
+            # Prioritize 3.5mm jack if detected
+            if jack_idx is not None:
+                candidates.append(jack_idx)
+            # Then try priority list
             for name in MIC_DEVICE_PRIORITY:
                 idx = next((i for i, n in enumerate(available) if name.lower() in n.lower()), None)
-                if idx is not None:
+                if idx is not None and idx not in candidates:
                     candidates.append(idx)
             candidates.append(None)  # system default as final fallback
 
         mic = None
+        chosen_idx = None
         for idx in candidates:
             try:
-                mic = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
+                candidate = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
+                with candidate as source:
+                    with _suppress_stderr():
+                        self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                mic = candidate
+                chosen_idx = idx
                 print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
                 break
             except Exception as e:
                 print(f"[VoiceEngine] mic index={idx} failed: {e}")
-                mic = None
 
         if mic is None:
             print("[VoiceEngine] no usable microphone found")
@@ -116,8 +125,6 @@ class VoiceEngine(QObject):
 
         try:
             with mic as source:
-                with _suppress_stderr():
-                    self.recognizer.adjust_for_ambient_noise(source, duration=1)
                 print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
                 self._set_state(VoiceState.LISTENING)
                 try:

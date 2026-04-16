@@ -15,6 +15,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
 from std_srvs.srv import Empty
+from std_msgs.msg import Bool
 from load_map_dialog import LoadMapDialog
 from chat_panel_widget import ChatPanel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -232,6 +233,10 @@ class RobotUI(QMainWindow):
         self._ros_node.create_subscription(
             PoseWithCovarianceStamped, '/amcl_pose', self._amcl_callback, 10
         )
+        self._ros_node.create_subscription(
+            Bool, '/door_state', self._door_state_callback, 10
+        )
+        self._door_detector_process = None
         self._ros_spin_timer = QTimer()
         self._ros_spin_timer.timeout.connect(self._ros_spin_once)
         self._ros_spin_timer.start(100)
@@ -477,11 +482,12 @@ class RobotUI(QMainWindow):
         self.btn_new_map    = QPushButton("Bản đồ mới")
         self.btn_load_map   = QPushButton("Tải bản đồ")
         self.btn_docking    = QPushButton("Về trạm sạc")
+        self.btn_door       = QPushButton("Cửa thang máy")
         self.btn_nav2       = QPushButton("Nav2")
 
         mono = QFont("JetBrains Mono", 18)
         for btn in [self.btn_tracking, self.btn_waypoints, self.btn_reestimate,
-                    self.btn_new_map, self.btn_load_map, self.btn_docking, self.btn_nav2]:
+                    self.btn_new_map, self.btn_load_map, self.btn_docking, self.btn_door, self.btn_nav2]:
             btn.setObjectName("mode-btn")
             btn.setFont(mono)
             btn.setMinimumHeight(72)
@@ -508,6 +514,7 @@ class RobotUI(QMainWindow):
         self.btn_new_map.clicked.connect(self.start_new_map)
         self.btn_load_map.clicked.connect(self.load_map)
         self.btn_docking.clicked.connect(self.start_docking)
+        self.btn_door.clicked.connect(self.start_door_detector)
         self.btn_nav2.clicked.connect(lambda: self.mode_changed("Nav2"))
         self.btn_dev.clicked.connect(self.open_developer_mode)
 
@@ -748,6 +755,25 @@ class RobotUI(QMainWindow):
             f'python3 {SOURCE_PATH}/robot_ui/docking_sequence.py; exec bash'
         ])
 
+    def start_door_detector(self):
+        if self._door_detector_process and self._door_detector_process.poll() is None:
+            self._door_detector_process.terminate()
+            self._door_detector_process = None
+            self.btn_door.setChecked(False)
+            self.log("Door detector stopped")
+            return
+        self._door_detector_process = subprocess.Popen([
+            'gnome-terminal', '--', 'bash', '-c',
+            f'source {SOURCE_PATH}/install/setup.bash && '
+            f'ros2 run view_robot_pkg door_detector_node; exec bash'
+        ])
+        self.btn_door.setChecked(True)
+        self.log("Door detector started — listening on /scan, publishing /door_state")
+
+    def _door_state_callback(self, msg: Bool):
+        state_str = "OPEN" if msg.data else "CLOSED"
+        self.log(f"[Door] {state_str}")
+
     def load_map(self):
         dialog = LoadMapDialog(self)
         if dialog.exec():
@@ -870,6 +896,8 @@ class RobotUI(QMainWindow):
     def closeEvent(self, event):
         if self.localization_worker:
             self.localization_worker.stop()
+        if self._door_detector_process and self._door_detector_process.poll() is None:
+            self._door_detector_process.terminate()
         self._ros_spin_timer.stop()
         self._ros_node.destroy_node()
         self.chat_panel.cleanup()

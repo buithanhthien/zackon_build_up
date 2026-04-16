@@ -46,6 +46,7 @@ setup(
             'odom_frame_publisher = view_robot_pkg.odom_frame_publisher:main',
             'odom_tf_broadcaster = view_robot_pkg.odom_tf_broadcaster:main',
             'my_teleop_node = view_robot_pkg.teleop_node:main',
+            'door_detector_node = view_robot_pkg.door_detector_node:main',
         ],
     },
 )

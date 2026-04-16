@@ -14,6 +14,8 @@ from PyQt6.QtGui import QFont, QFontDatabase, QKeyEvent
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Empty
 from load_map_dialog import LoadMapDialog
 from chat_panel_widget import ChatPanel
@@ -223,6 +225,9 @@ class RobotUI(QMainWindow):
         self.localization_worker     = None
         self.localization_thread     = None
         self._latest_pose            = None
+        self._stm32_last_msg_time        = None
+        self._front_lidar_last_msg_time  = None
+        self._rear_lidar_last_msg_time   = None
 
         try:
             rclpy.init()
@@ -231,6 +236,15 @@ class RobotUI(QMainWindow):
         self._ros_node = Node('robot_ui_node')
         self._ros_node.create_subscription(
             PoseWithCovarianceStamped, '/amcl_pose', self._amcl_callback, 10
+        )
+        self._ros_node.create_subscription(
+            Odometry, '/odomfromSTM32', self._stm32_odom_callback, 10
+        )
+        self._ros_node.create_subscription(
+            LaserScan, '/front_lidar/scan', lambda msg: self._lidar_callback('front'), 10
+        )
+        self._ros_node.create_subscription(
+            LaserScan, '/rear_lidar/scan', lambda msg: self._lidar_callback('rear'), 10
         )
         self._ros_spin_timer = QTimer()
         self._ros_spin_timer.timeout.connect(self._ros_spin_once)
@@ -252,6 +266,15 @@ class RobotUI(QMainWindow):
 
     def _amcl_callback(self, msg):
         self._latest_pose = msg.pose.pose
+
+    def _stm32_odom_callback(self, msg):
+        self._stm32_last_msg_time = time.monotonic()
+
+    def _lidar_callback(self, which):
+        if which == 'front':
+            self._front_lidar_last_msg_time = time.monotonic()
+        else:
+            self._rear_lidar_last_msg_time = time.monotonic()
 
     # ══════════════════════════════════════════════════════════════════════════
     #  UI construction
@@ -408,7 +431,7 @@ class RobotUI(QMainWindow):
                 color: #6b7a99;
                 border: 1px solid #2a3040;
                 border-radius: 6px;
-                font-size: 14px;
+                font-size: 26px;
                 padding: 10px;
             }
             QPushButton#voice-btn:checked {
@@ -544,10 +567,12 @@ class RobotUI(QMainWindow):
         cards_layout.setContentsMargins(12, 12, 12, 12)
         cards_layout.setSpacing(12)
 
-        self.stm32_card = self._make_status_card("STM32")
-        self.lidar_card = self._make_status_card("LiDAR")
+        self.stm32_card       = self._make_status_card("STM32")
+        self.front_lidar_card = self._make_status_card("LiDAR Front")
+        self.rear_lidar_card  = self._make_status_card("LiDAR Rear")
         cards_layout.addWidget(self.stm32_card["widget"])
-        cards_layout.addWidget(self.lidar_card["widget"])
+        cards_layout.addWidget(self.front_lidar_card["widget"])
+        cards_layout.addWidget(self.rear_lidar_card["widget"])
         right_layout.addWidget(cards_widget)
 
         # ── Panel switcher (LOG / AI CHAT) ────────────────────────────────────
@@ -573,9 +598,18 @@ class RobotUI(QMainWindow):
         self.log_text.setObjectName("log-text")
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Fira Code", 13))
-        log_layout.addWidget(self.log_text)
+        log_layout.addWidget(self.log_text, 1)
 
         self.chat_panel = ChatPanel()
+
+        # Mic button fills bottom half of log panel
+        self.chat_panel.voice_btn.setMinimumSize(0, 0)
+        self.chat_panel.voice_btn.setMaximumSize(16777215, 16777215)
+        self.chat_panel.voice_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.chat_panel.voice_btn.setStyleSheet(
+            self.chat_panel.voice_btn.styleSheet() + "font-size: 64px; border-top: 1px solid #2a3040;"
+        )
+        log_layout.addWidget(self.chat_panel.voice_btn, 1)
 
         # Horizontal splitter for log and chat
         panels_splitter = QWidget()
@@ -675,23 +709,34 @@ class RobotUI(QMainWindow):
             self.log(f"Failed to start micro-ROS agent: {e}")
 
     def update_status(self):
-        try:
-            result = subprocess.run(['ros2', 'topic', 'list'],
-                                    capture_output=True, text=True, timeout=2)
-            stm32_available = '/cmd_vel' in result.stdout or result.returncode == 0
-        except Exception:
-            stm32_available = False
+        now = time.monotonic()
 
+        stm32_available = (
+            self._stm32_last_msg_time is not None and
+            now - self._stm32_last_msg_time < 3.0
+        )
         self._set_card_status(self.stm32_card, stm32_available)
         if self.prev_stm32_status is not None and self.prev_stm32_status != stm32_available:
             self.log("STM32 connection lost" if not stm32_available else "STM32 connection restored")
         self.prev_stm32_status = stm32_available
 
-        lidar_available = os.path.exists('/dev/lidar')
-        self._set_card_status(self.lidar_card, lidar_available)
-        if self.prev_lidar_status is not None and self.prev_lidar_status != lidar_available:
-            self.log("LiDAR connection lost" if not lidar_available else "LiDAR connection restored")
-        self.prev_lidar_status = lidar_available
+        front_available = (
+            self._front_lidar_last_msg_time is not None and
+            now - self._front_lidar_last_msg_time < 3.0
+        )
+        self._set_card_status(self.front_lidar_card, front_available)
+        if self.prev_lidar_status is not None and self.prev_lidar_status != front_available:
+            self.log("LiDAR Front connection lost" if not front_available else "LiDAR Front connection restored")
+        self.prev_lidar_status = front_available
+
+        rear_available = (
+            self._rear_lidar_last_msg_time is not None and
+            now - self._rear_lidar_last_msg_time < 3.0
+        )
+        self._set_card_status(self.rear_lidar_card, rear_available)
+        if self.prev_lidar_rear_status is not None and self.prev_lidar_rear_status != rear_available:
+            self.log("LiDAR Rear connection lost" if not rear_available else "LiDAR Rear connection restored")
+        self.prev_lidar_rear_status = rear_available
 
     def mode_changed(self, mode):
         self.log(f"Mode changed to {mode}")
@@ -852,10 +897,10 @@ class RobotUI(QMainWindow):
         except Exception as e:
             self.log(f"[ERROR] Failed to open Developer Mode: {e}. Is 'claude' installed?")
 
-    def _voice_go_to_waypoint(self, slot: str):
-        self.log(f"[Voice] Navigating to waypoint {slot}")
+    def _voice_go_to_waypoint(self, slots: str):
+        self.log(f"[Voice] Navigating to waypoint(s) {slots}")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
-                          '--go-to', slot])
+                          '--go-to', slots])
         self.close()
 
     def _on_voice_ui_command(self, command: str):

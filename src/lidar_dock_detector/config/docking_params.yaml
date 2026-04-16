@@ -109,18 +109,18 @@ docking_server:
       # dock_direction: "backward"
       # rotate_to_dock: true
 
-    # ── LiDAR detector parameters (used by docking_sequence.py and debug tools) ──
-    lidar_detector:                                         # Standalone detector params — mirrored by docking_sequence.py and debug tools (not loaded by the plugin itself)
-      scan_topic: "/scan_rear_lidar_filter"                 # LaserScan topic to subscribe to for reflector detection (UPDATED: rear lidar)
-      lrf_forward_offset: 0.35                             # Forward offset (m) from base_link to LRF optical centre (UPDATED: negative for rear lidar)
-      tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes
-      rubber_width: 0.32                                    # Width (m) of the rubber backing strip; used for geometric max-range calculation
-      reflector_width: 0.048                                # Width (m) of a single reflective tape; used in inception-angle computation
-      i_peak: 46.0                                          # Minimum intensity threshold to classify a beam as a reflector peak (UPDATED: rear lidar)
-      i_valley: 21.0                                        # Maximum intensity allowed for valley (non-reflective) neighbour beams (UPDATED: rear lidar)
-      valley_search_range: 12                               # Number of beams to scan each side of a peak when looking for valley neighbours
-      max_detect_range: 1.5                                 # Maximum detection range (m); reflectors beyond this are ignored
-      cluster_beam_gap: 3                                   # Max beam index gap to merge adjacent reflector peaks into one cluster
+    # # ── LiDAR detector parameters (used by docking_sequence.py and debug tools) ──
+    # lidar_detector:                                         # Standalone detector params — mirrored by docking_sequence.py and debug tools (not loaded by the plugin itself)
+    #   scan_topic: "/scan_rear_lidar_filter"                 # LaserScan topic to subscribe to for reflector detection (UPDATED: rear lidar)
+    #   lrf_forward_offset: -0.35                             # Forward offset (m) from base_link to LRF optical centre (UPDATED: negative for rear lidar)
+    #   tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes
+    #   rubber_width: 0.32                                    # Width (m) of the rubber backing strip; used for geometric max-range calculation
+    #   reflector_width: 0.048                                # Width (m) of a single reflective tape; used in inception-angle computation
+    #   i_peak: 46.0                                          # Minimum intensity threshold to classify a beam as a reflector peak (UPDATED: rear lidar)
+    #   i_valley: 21.0                                        # Maximum intensity allowed for valley (non-reflective) neighbour beams (UPDATED: rear lidar)
+    #   valley_search_range: 12                               # Number of beams to scan each side of a peak when looking for valley neighbours
+    #   max_detect_range: 1.5                                 # Maximum detection range (m); reflectors beyond this are ignored
+    #   cluster_beam_gap: 3                                   # Max beam index gap to merge adjacent reflector peaks into one cluster
 
 
     # Dock instances

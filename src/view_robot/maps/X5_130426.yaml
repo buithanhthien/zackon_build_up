@@ -1,0 +1,7 @@
+image: X5_130426.pgm
+mode: trinary
+resolution: 0.050
+origin: [-5.079, -29.051, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

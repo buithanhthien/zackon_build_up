@@ -53,13 +53,12 @@ void LidarIntensityDock::configure(
   
   declare("max_detect_range",            3.0);
   declare("max_fail_count",              5);
-  // declare("staging_x_offset",           0.8);
-  declare("staging_x_offset",           0.6);
-
+  declare("staging_x_offset",           0.8);
   declare("staging_yaw_offset",          0.0);
   declare("docking_threshold",           0.32);
   declare("use_external_detection_pose", false);
   declare("rotate_to_dock",             false);
+  declare("dock_direction",              std::string("backward"));
   declare("cluster_beam_gap",           3);
   
   // ── Quality constraint parameters ──
@@ -108,6 +107,7 @@ void LidarIntensityDock::configure(
   docking_threshold_           = get_d("docking_threshold");
   use_external_detection_pose_ = get_b("use_external_detection_pose");
   rotate_to_dock_              = get_b("rotate_to_dock");
+  dock_direction_              = node->get_parameter(name_ + ".dock_direction").as_string();
   cluster_beam_gap_            = get_i("cluster_beam_gap");
 
   // ── Quality constraint parameters ──
@@ -126,13 +126,13 @@ void LidarIntensityDock::configure(
   RCLCPP_INFO(node->get_logger(),
     "[%s] Configured: scan=%s base=%s lrf_offset=%.3f tape=%.3f "
     "cluster_thresh=%.0f min_pts=%d max_range=%.1f max_fail=%d "
-    "staging_x=%.3f staging_yaw=%.3f use_ext=%s "
-    "quality: max_peak_diff=%.1f max_jump_dist=%.3f max_jump_yaw_deg=%.1f",
+    "staging_x=%.3f staging_yaw=%.3f dock_dir=%s use_ext=%s "
+    "near_range=%s entry_dist=%.2f sector_deg=%.1f stop_thresh=%.3f stable_cnt=%d stat=%s",
     name_.c_str(), scan_topic_.c_str(), base_frame_.c_str(),
     lrf_forward_offset_, tape_distance_,
     static_cast<double>(intensity_cluster_threshold_), min_cluster_points_,
     max_detect_range_, max_fail_count_,
-    staging_x_offset_, staging_yaw_offset_,
+    staging_x_offset_, staging_yaw_offset_, dock_direction_.c_str(),
     use_external_detection_pose_ ? "true" : "false",
     static_cast<double>(max_peak_diff_), max_pose_jump_dist_,
     angles::to_degrees(max_pose_jump_yaw_rad_));
@@ -166,6 +166,8 @@ void LidarIntensityDock::activate()
     "/detected_dock_pose", rclcpp::SystemDefaultsQoS());
   dock_pose_odom_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>(
     "/dock_pose_in_odom", rclcpp::SystemDefaultsQoS());
+  staging_pose_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>(
+    "/staging_pose", rclcpp::SystemDefaultsQoS());
   dock_distance_pub_ = node->create_publisher<std_msgs::msg::Float32>(
     "/dock_distance", rclcpp::SystemDefaultsQoS());
   // dock_near_range_pub_ = node->create_publisher<std_msgs::msg::Float32>(  // COMMENTED OUT
@@ -178,7 +180,8 @@ void LidarIntensityDock::activate()
 void LidarIntensityDock::deactivate() { 
   scan_sub_.reset(); 
   detected_pose_pub_.reset(); 
-  dock_pose_odom_pub_.reset(); 
+  dock_pose_odom_pub_.reset();
+  staging_pose_pub_.reset();
   dock_distance_pub_.reset();
   // dock_near_range_pub_.reset();  // COMMENTED OUT
 }
@@ -213,6 +216,16 @@ LidarIntensityDock::getStagingPose(
   staging.pose.orientation.y = 0.0;
   staging.pose.orientation.z = std::sin(staging_yaw / 2.0);
   staging.pose.orientation.w = std::cos(staging_yaw / 2.0);
+
+  // Publish for visualization
+  if (node && staging_pose_pub_) {
+    staging_pose_pub_->publish(staging);
+    
+    RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 1000,
+      "[%s] STAGING POSE in frame [%s]: x=%.3f y=%.3f yaw=%.3f rad",
+      name_.c_str(), frame.c_str(),
+      staging.pose.position.x, staging.pose.position.y, staging_yaw);
+  }
 
   return staging;
 }
@@ -414,12 +427,18 @@ void LidarIntensityDock::scanCallback(
   auto clusters   = clusterReflectors(reflectors);
 
   auto node = node_.lock();
+  
+  // ── Debug logging: cluster detection results ──
   if (node) {
     RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 1000,
-      "[%s] accept=%d peak_rej=%d local_rej=%d valley_rej=%d range_rej=%d left_peak=%.1f right_peak=%.1f",
-      name_.c_str(), stats.accepted, stats.reject_peak, stats.reject_local_max,
-      stats.reject_valley, stats.reject_range,
-      stats.strongest_peak_left, stats.strongest_peak_right);
+      "[%s] Detected %zu reflector clusters", name_.c_str(), clusters.size());
+    
+    for (size_t k = 0; k < clusters.size(); ++k) {
+      const auto & c = clusters[k];
+      RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 1000,
+        "[%s] cluster[%zu]: idx=%d x=%.3f y=%.3f beta=%.3f",
+        name_.c_str(), k, c.peak_idx, c.x, c.y, c.beta);
+    }
   }
 
   geometry_msgs::msg::PoseStamped detected;
@@ -471,6 +490,21 @@ void LidarIntensityDock::scanCallback(
     last_valid_pose_ = detected;
     has_last_valid_pose_ = true;
     detected_pose_pub_->publish(detected);
+    
+    // ── Debug logging: dock pose ──
+    if (node) {
+      double yaw = 2.0 * std::atan2(
+        detected.pose.orientation.z,
+        detected.pose.orientation.w);
+      
+      RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 1000,
+        "[%s] DOCK POSE in frame [%s]: x=%.3f y=%.3f yaw=%.3f rad",
+        name_.c_str(),
+        detected.header.frame_id.c_str(),
+        detected.pose.position.x,
+        detected.pose.position.y,
+        yaw);
+    }
   } else {
     // Publish last valid pose if available
     if (has_last_valid_pose_ && detected_pose_pub_) {

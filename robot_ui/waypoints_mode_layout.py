@@ -6,7 +6,8 @@ import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                               QLabel, QGridLayout, QTextEdit, QApplication, QMainWindow, QSizePolicy,
                               QDialog, QLineEdit)
-from PyQt6.QtCore import Qt, QTimer, QPointF
+from PyQt6.QtCore import Qt, QTimer, QPointF, QMetaObject, Q_ARG
+from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform, QFontDatabase
 import rclpy
 from rclpy.node import Node
@@ -410,7 +411,26 @@ class WaypointsModeLayout(QMainWindow):
 
         self.map_widget = MapWidget(map_image_path, yaml_data)
         self.map_widget.set_waypoints(self.waypoints)
-        map_layout.addWidget(self.map_widget, 2)
+
+        self.chat_widget = ChatPanel()
+        self.chat_widget.waypoint_command.connect(self.voice_navigate_to_waypoint)
+        self.chat_widget.set_pose_provider(
+            lambda: self.ros_node.current_pose.pose.pose if self.ros_node.current_pose else None
+        )
+
+        mic_btn = self.chat_widget.voice_btn
+        mic_btn.setMinimumSize(0, 0)
+        mic_btn.setMaximumSize(16777215, 16777215)
+        mic_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        mic_btn.setStyleSheet(mic_btn.styleSheet() + "font-size: 64px;")
+
+        map_and_mic = QWidget()
+        map_and_mic_layout = QHBoxLayout(map_and_mic)
+        map_and_mic_layout.setContentsMargins(0, 0, 0, 0)
+        map_and_mic_layout.setSpacing(8)
+        map_and_mic_layout.addWidget(self.map_widget, 3)
+        map_and_mic_layout.addWidget(mic_btn, 1)
+        map_layout.addWidget(map_and_mic, 2)
 
         grid_layout = QGridLayout()
         grid_layout.setSpacing(6)
@@ -444,9 +464,6 @@ class WaypointsModeLayout(QMainWindow):
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Fira Code", 13))
         log_layout.addWidget(self.log_text)
-
-        self.chat_widget = ChatPanel()
-        self.chat_widget.waypoint_command.connect(self.voice_navigate_to_waypoint)
 
         # Horizontal splitter for log and chat
         panels_splitter = QWidget()
@@ -613,6 +630,8 @@ class WaypointsModeLayout(QMainWindow):
         goal_msg.pose.pose.orientation.y = wp['qy']
         goal_msg.pose.pose.orientation.z = wp['qz']
         goal_msg.pose.pose.orientation.w = wp['qw']
+        if wp.get('yaw_tolerance'):
+            self._set_yaw_tolerance(wp['yaw_tolerance'])
         
         send_goal_future = self.ros_node.nav_client.send_goal_async(goal_msg)
         self._current_nav_target = str(slot_num)
@@ -631,30 +650,43 @@ class WaypointsModeLayout(QMainWindow):
             if self.running_sequence:
                 self.running_sequence = False
 
+    def _set_yaw_tolerance(self, value: float):
+        """Dynamically set yaw_goal_tolerance on controller_server via ros2 param."""
+        subprocess.Popen([
+            'ros2', 'param', 'set', '/controller_server',
+            'general_goal_checker.yaw_goal_tolerance', str(value)
+        ])
+
     def _goal_result_callback(self, future):
         status = future.result().status
         print(f"[Nav] _goal_result_callback fired — status={status} (SUCCEEDED={GoalStatus.STATUS_SUCCEEDED})")
-        if status == GoalStatus.STATUS_SUCCEEDED:
-            self.log(f'Reached {self._current_nav_target}')
-            print(f"[Nav] Goal SUCCEEDED — calling _announce_arrival('{self._current_nav_target}')")
-            self._announce_arrival(self._current_nav_target)
+        # Restore default yaw tolerance if it was relaxed for a return-here waypoint
+        wp = self.waypoints.get(str(self._current_nav_target), {})
+        if wp.get('yaw_tolerance'):
+            self._set_yaw_tolerance(0.25)
+        if status != GoalStatus.STATUS_SUCCEEDED:
+            self.log(f'[NAV] Goal did not succeed (status={status}) — sequence stopped')
+            self.running_sequence = False
+            return
+
+        self.log(f'Reached {self._current_nav_target}')
+        self._announce_arrival(self._current_nav_target)
 
         if self.running_sequence and self.current_sequence_index < len(self.selected_sequence) - 1:
             self.current_sequence_index += 1
-            next_slot = self.selected_sequence[self.current_sequence_index]
-            current_slot = self.selected_sequence[self.current_sequence_index - 1]
-            if next_slot == current_slot:
-                self.log(f'Already at slot {next_slot}, skipping...')
-                self._goal_result_callback(future)
-            else:
-                self.navigate_to_waypoint(next_slot)
+            self.navigate_to_waypoint(self.selected_sequence[self.current_sequence_index])
         else:
             self.running_sequence = False
             self.log('Sequence completed')
 
     def _announce_arrival(self, target: str):
         print(f"[Announce] _announce_arrival called with target='{target}'")
-        self.chat_widget._voice_engine.speak("Đã tới nơi rồi")
+        QMetaObject.invokeMethod(
+            self.chat_widget._voice_engine,
+            "speak",
+            Qt.ConnectionType.QueuedConnection,
+            Q_ARG(str, "Đã tới nơi rồi")
+        )
     
     def run_sequence(self):
         if not self.selected_sequence:
@@ -722,15 +754,62 @@ class WaypointsModeLayout(QMainWindow):
             f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
         )
         
-    def voice_navigate_to_waypoint(self, slot: str):
-        self.log(f'[Voice] Command received: Đi tới {slot}')
-        if slot not in self.waypoints:
-            msg = f'Vị trí {slot} chưa được lưu'
+    def voice_navigate_to_waypoint(self, slots: str):
+        slot_list = [s.strip() for s in slots.split(',') if s.strip()]
+        # case-insensitive key resolution
+        key_map = {k.lower(): k for k in self.waypoints}
+        resolved = []
+        for s in slot_list:
+            if s.startswith('__return_here__:'):
+                # Inject synthetic waypoint from encoded coordinates
+                _, coords = s.split(':', 1)
+                parts = coords.split(';')
+                rx, ry = float(parts[0]), float(parts[1])
+                rqz = float(parts[2]) if len(parts) > 2 else 0.0
+                rqw = float(parts[3]) if len(parts) > 3 else 1.0
+                _RETURN_KEY = '__return_here__'
+                self.waypoints[_RETURN_KEY] = {
+                    'x': rx, 'y': ry, 'z': 0.0,
+                    'qx': 0.0, 'qy': 0.0, 'qz': rqz, 'qw': rqw,
+                    'yaw_tolerance': 3.14,
+                }
+                resolved.append(_RETURN_KEY)
+            elif s == '__return_here__':
+                # Pose was unavailable when command was issued — capture it now
+                pose = self.ros_node.current_pose
+                if pose:
+                    _RETURN_KEY = '__return_here__'
+                    self.waypoints[_RETURN_KEY] = {
+                        'x': pose.pose.pose.position.x,
+                        'y': pose.pose.pose.position.y,
+                        'z': 0.0,
+                        'qx': pose.pose.pose.orientation.x,
+                        'qy': pose.pose.pose.orientation.y,
+                        'qz': pose.pose.pose.orientation.z,
+                        'qw': pose.pose.pose.orientation.w,
+                        'yaw_tolerance': 3.14,
+                    }
+                    resolved.append(_RETURN_KEY)
+                else:
+                    resolved.append(None)  # will be caught as missing
+            else:
+                resolved.append(key_map.get(s.lower()))
+        missing = [slot_list[i] for i, r in enumerate(resolved) if r is None]
+        if missing:
+            has_return_sentinel = any(s.startswith('__return_here__') for s in missing)
+            if has_return_sentinel:
+                msg = 'Không thể xác định vị trí hiện tại để quay về — robot chưa được định vị.'
+            else:
+                msg = f'Vị trí chưa được lưu: {", ".join(m for m in missing if not m.startswith("__return_here__"))}'
             self.log(f'[Voice] {msg}')
             self.chat_widget._voice_engine.speak(msg)
             return
-        self.chat_widget._voice_engine.speak(f'Đang đi tới {slot}')
-        self.navigate_to_waypoint(slot)
+        self.log(f'[Voice] Tour: {resolved}')
+        self.chat_widget._voice_engine.speak(f'Bắt đầu tham quan {len(resolved)} địa điểm')
+        self.selected_sequence = resolved
+        self.running_sequence = True
+        self.current_sequence_index = 0
+        self.navigate_to_waypoint(resolved[0])
 
     def _on_voice_transcript(self, text: str):
         """Forward unrecognized voice input to the AI chat panel."""
@@ -748,6 +827,9 @@ class WaypointsModeLayout(QMainWindow):
             name = dialog.get_name()
             if not name:
                 self.log('[WARN] Waypoint name cannot be empty')
+                return
+            if name in self.waypoints:
+                self.log(f'[WARN] Waypoint "{name}" already exists — choose a different name')
                 return
             pose = self.ros_node.current_pose
             self.waypoints[name] = {
@@ -789,6 +871,6 @@ if __name__ == '__main__':
     if '--go-to' in sys.argv:
         idx = sys.argv.index('--go-to')
         if idx + 1 < len(sys.argv):
-            slot = sys.argv[idx + 1]
-            QTimer.singleShot(1500, lambda: window.navigate_to_waypoint(slot))
+            slots = sys.argv[idx + 1]
+            QTimer.singleShot(1500, lambda: window.voice_navigate_to_waypoint(slots))
     sys.exit(app.exec())

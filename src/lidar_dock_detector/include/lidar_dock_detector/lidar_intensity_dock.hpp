@@ -135,6 +135,7 @@ private:
   double docking_threshold_;           // Distance (m) from dock pose at which isDocked() returns true
   bool   use_external_detection_pose_; // If true, skip LiDAR detection and accept pose from an external node
   bool   rotate_to_dock_;              // If true, staging faces away from dock for forward approach; robot rotates and backs in (requires dock_direction: backward)
+  std::string dock_direction_;         // Docking direction: "forward" or "backward"
   int    cluster_beam_gap_;            // Max beam index gap to merge adjacent reflector peaks into one cluster
 
   // ── Quality constraint parameters ──
@@ -156,6 +157,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr detected_pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr dock_pose_odom_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr staging_pose_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr dock_distance_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr dock_near_range_pub_;  // NEW: debug topic for near-range estimate
   std::shared_ptr<tf2_ros::Buffer> tf_;

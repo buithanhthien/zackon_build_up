@@ -30,13 +30,13 @@ public:
     k_yaw_ = declare_parameter<double>("k_yaw", 2.0);
 
     // Velocity limits
-    v_reverse_max_ = declare_parameter<double>("v_reverse_max", 0.2);
+    v_reverse_max_ = declare_parameter<double>("v_reverse_max", 0.13);
     v_reverse_min_ = declare_parameter<double>("v_reverse_min", 0.1);
     // w_max_ = declare_parameter<double>("w_max", 0.6);
-    w_max_ = declare_parameter<double>("w_max", 0.3);
+    w_max_ = declare_parameter<double>("w_max", 0.4);
 
     // Thresholds
-    stop_distance_ = declare_parameter<double>("stop_distance", 0.2);
+    stop_distance_ = declare_parameter<double>("stop_distance", 0.15);
     slowdown_distance_ = declare_parameter<double>("slowdown_distance", 0.40);
     y_align_threshold_ = declare_parameter<double>("y_align_threshold", 0.10);
     yaw_align_threshold_ = declare_parameter<double>("yaw_align_threshold", 0.25);
@@ -47,7 +47,7 @@ public:
     stop_on_lost_pose_ = declare_parameter<bool>("stop_on_lost_pose", true);
 
     // Safety
-    min_range_threshold_ = declare_parameter<double>("min_range_threshold", 0.20);
+    min_range_threshold_ = declare_parameter<double>("min_range_threshold", 0.14);
 
     // Optional odom freshness
     require_fresh_odom_ = declare_parameter<bool>("require_fresh_odom", false);
@@ -345,7 +345,7 @@ private:
 
   // search behavior
   // double search_w_ = 0.15;             // rad/s
-  double search_w_ = 0.3;             // rad/s
+  double search_w_ = 0.6;             // rad/s
   double search_switch_period_ = 1.0;  // seconds
   rclcpp::Time search_start_time_{0, 0, RCL_ROS_TIME};
 

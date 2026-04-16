@@ -281,38 +281,38 @@ class RobotUI(QMainWindow):
     # ══════════════════════════════════════════════════════════════════════════
 
     def init_ui(self):
-        self.setWindowTitle("Robot Control Interface")
+        self.setWindowTitle("IUH Robot – Giao diện điều khiển")
 
         STYLESHEET = """
             QMainWindow, QWidget {
-                background-color: #0d0f12;
-                color: #e8ecf0;
+                background-color: #f0f4ff;
+                color: #1a2a5e;
                 border: none;
             }
             QWidget#left-panel {
-                background-color: #141720;
-                border-right: 2px solid #2a3040;
+                background-color: #214196;
+                border-right: none;
             }
             QWidget#header-bar {
-                background-color: #141720;
-                border-bottom: 1px solid #2a3040;
+                background-color: transparent;
+                
             }
             QWidget#status-card {
-                background-color: #1c2030;
-                border: 1px solid #2a3040;
-                border-radius: 4px;
+                background-color: #ffffff;
+                border: 1px solid #c8d4f0;
+                border-radius: 8px;
             }
             QWidget#log-panel {
-                background-color: #080a0d;
-                border-top: 1px solid #2a3040;
+                background-color: #ffffff;
+                border-top: 1px solid #c8d4f0;
             }
             QWidget#chat-panel {
-                background-color: #080a0d;
-                border-top: 1px solid #2a3040;
+                background-color: #ffffff;
+                border-top: 1px solid #c8d4f0;
             }
             QPushButton#mode-btn {
                 background-color: transparent;
-                color: #6b7a99;
+                color: #a8bce8;
                 border: none;
                 border-left: 4px solid transparent;
                 border-radius: 0px;
@@ -321,59 +321,59 @@ class RobotUI(QMainWindow):
                 font-size: 18px;
             }
             QPushButton#mode-btn:hover {
-                background-color: #1a1f2e;
-                color: #e8ecf0;
-                border-left: 4px solid #3a4460;
+                background-color: #1a3278;
+                color: #ffffff;
+                border-left: 4px solid #fcb525;
             }
             QPushButton#mode-btn:checked {
-                background-color: #1c2030;
-                color: #00e5ff;
-                border-left: 4px solid #00e5ff;
+                background-color: #1a3278;
+                color: #fcb525;
+                border-left: 4px solid #fcb525;
             }
             QPushButton#mode-btn:disabled {
-                color: #3a4460;
+                color: #4a6aaa;
                 border-left: 4px solid transparent;
             }
             QTextEdit#log-text {
-                background-color: #080a0d;
-                color: #e8ecf0;
+                background-color: #f8faff;
+                color: #1a2a5e;
                 border: none;
                 font-size: 13px;
             }
             QLabel#log-title {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 11px;
                 letter-spacing: 2px;
             }
             QLabel#clock {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 15px;
             }
             QLabel#mode-title {
-                color: #e8ecf0;
+                color: #1a2a5e;
                 font-size: 15px;
             }
             QLabel#device-name {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 11px;
             }
             QLabel#status-ok {
-                color: #00c853;
+                color: #22c55e;
                 font-size: 14px;
             }
             QLabel#status-error {
-                color: #ff3b3b;
+                color: #ef4444;
                 font-size: 14px;
             }
             QLabel#status-checking {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 14px;
             }
 
             /* ── Panel tab buttons ── */
             QPushButton#panel-tab {
                 background-color: transparent;
-                color: #6b7a99;
+                color: #5a7abf;
                 border: none;
                 border-bottom: 2px solid transparent;
                 border-radius: 0px;
@@ -382,93 +382,93 @@ class RobotUI(QMainWindow):
                 letter-spacing: 2px;
             }
             QPushButton#panel-tab:checked {
-                color: #00e5ff;
-                border-bottom: 2px solid #00e5ff;
+                color: #214196;
+                
             }
             QPushButton#panel-tab:hover {
-                color: #e8ecf0;
+                color: #214196;
             }
 
             /* ── Chat input ── */
             QLineEdit#chat-input {
-                background-color: #141720;
-                color: #e8ecf0;
-                border: 1px solid #2a3040;
+                background-color: #f0f4ff;
+                color: #1a2a5e;
+                border: 1px solid #c8d4f0;
                 border-radius: 6px;
                 padding: 10px 14px;
                 font-size: 13px;
-                selection-background-color: #00e5ff44;
+                selection-background-color: #fcb52544;
             }
             QLineEdit#chat-input:focus {
-                border: 1px solid #00e5ff66;
+                border: 1px solid #214196;
             }
 
             /* ── Send button ── */
             QPushButton#send-btn {
-                background-color: #00e5ff18;
-                color: #00e5ff;
-                border: 1px solid #00e5ff44;
+                background-color: #214196;
+                color: #ffffff;
+                border: none;
                 border-radius: 6px;
                 padding: 10px 20px;
                 font-size: 13px;
             }
             QPushButton#send-btn:hover {
-                background-color: #00e5ff30;
-                border: 1px solid #00e5ff88;
+                background-color: #1a3278;
             }
             QPushButton#send-btn:pressed {
-                background-color: #00e5ff44;
+                background-color: #fcb525;
+                color: #214196;
             }
             QPushButton#send-btn:disabled {
-                color: #3a4460;
-                background-color: transparent;
-                border: 1px solid #2a3040;
+                color: #a8bce8;
+                background-color: #e0e8f8;
+                border: none;
             }
 
             /* ── Voice toggle button ── */
             QPushButton#voice-btn {
-                background-color: transparent;
-                color: #6b7a99;
-                border: 1px solid #2a3040;
+                background-color: #f0f4ff;
+                color: #5a7abf;
+                border: 1px solid #c8d4f0;
                 border-radius: 6px;
                 font-size: 26px;
                 padding: 10px;
             }
             QPushButton#voice-btn:checked {
-                background-color: #ff3b3b18;
-                color: #ff3b3b;
-                border: 1px solid #ff3b3b44;
+                background-color: #fff0f0;
+                color: #ef4444;
+                border: 1px solid #ef444466;
             }
 
             /* ── Clear chat button ── */
             QPushButton#clear-btn {
                 background-color: transparent;
-                color: #3a4460;
+                color: #a8bce8;
                 border: none;
                 font-size: 11px;
                 padding: 4px 8px;
             }
             QPushButton#clear-btn:hover {
-                color: #6b7a99;
+                color: #5a7abf;
             }
 
             /* ── Scroll area ── */
             QScrollArea {
-                background-color: #080a0d;
+                background-color: #ffffff;
                 border: none;
             }
             QScrollBar:vertical {
-                background-color: #0d0f12;
+                background-color: #f0f4ff;
                 width: 6px;
                 border-radius: 3px;
             }
             QScrollBar::handle:vertical {
-                background-color: #2a3040;
+                background-color: #c8d4f0;
                 border-radius: 3px;
                 min-height: 20px;
             }
             QScrollBar::handle:vertical:hover {
-                background-color: #3a4460;
+                background-color: #214196;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
@@ -489,9 +489,9 @@ class RobotUI(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        wordmark = QLabel("ZACKON")
+        wordmark = QLabel("IUH ROBOT")
         wordmark.setFont(QFont("JetBrains Mono", 16, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
         self.btn_tracking   = QPushButton("Theo dõi")
@@ -520,8 +520,8 @@ class RobotUI(QMainWindow):
         self.btn_dev.setMinimumHeight(56)
         self.btn_dev.setCheckable(False)
         self.btn_dev.setStyleSheet(
-            "QPushButton#mode-btn { color: #ffb300; border-left: 4px solid #ffb30044; }"
-            "QPushButton#mode-btn:hover { background-color: #1a1f2e; border-left: 4px solid #ffb300; }"
+            "QPushButton#mode-btn { color: #fcb525; border-left: 4px solid #fcb52544; }"
+            "QPushButton#mode-btn:hover { background-color: #1a3278; border-left: 4px solid #fcb525; }"
         )
         left_layout.addWidget(self.btn_dev)
 
@@ -562,7 +562,7 @@ class RobotUI(QMainWindow):
 
         # Status cards row
         cards_widget = QWidget()
-        cards_widget.setStyleSheet("background-color: #0d0f12; padding: 12px;")
+        cards_widget.setStyleSheet("background-color: #f0f4ff; padding: 12px;")
         cards_layout = QHBoxLayout(cards_widget)
         cards_layout.setContentsMargins(12, 12, 12, 12)
         cards_layout.setSpacing(12)
@@ -578,7 +578,7 @@ class RobotUI(QMainWindow):
         # ── Panel switcher (LOG / AI CHAT) ────────────────────────────────────
         tab_bar = QWidget()
         tab_bar.setFixedHeight(36)
-        tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
+        tab_bar.setStyleSheet("background-color: #f0f4ff; border-top: 1px solid #c8d4f0;")
         # Remove tab bar - show both panels side by side
         right_layout.addWidget(QLabel())  # spacer
 
@@ -591,7 +591,7 @@ class RobotUI(QMainWindow):
 
         log_header = QLabel("SYSTEM LOG")
         log_header.setFont(QFont("DM Sans", 11, QFont.Weight.Bold))
-        log_header.setStyleSheet("color: #00c853; padding: 4px 0;")
+        log_header.setStyleSheet("color: #214196; padding: 4px 0;")
         log_layout.addWidget(log_header)
 
         self.log_text = QTextEdit()
@@ -607,7 +607,7 @@ class RobotUI(QMainWindow):
         self.chat_panel.voice_btn.setMaximumSize(16777215, 16777215)
         self.chat_panel.voice_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.chat_panel.voice_btn.setStyleSheet(
-            self.chat_panel.voice_btn.styleSheet() + "font-size: 64px; border-top: 1px solid #2a3040;"
+            self.chat_panel.voice_btn.styleSheet() + "font-size: 64px; border-top: 1px solid #c8d4f0;"
         )
         log_layout.addWidget(self.chat_panel.voice_btn, 1)
 
@@ -651,7 +651,7 @@ class RobotUI(QMainWindow):
         layout.setContentsMargins(16, 12, 20, 12)
 
         dot = QLabel("●")
-        dot.setStyleSheet("color: #6b7a99; font-size: 12px;")
+        dot.setStyleSheet("color: #8fa3cc; font-size: 12px;")
         dot.setFixedWidth(20)
 
         info = QVBoxLayout()
@@ -673,8 +673,8 @@ class RobotUI(QMainWindow):
         return {"widget": card, "dot": dot, "state": state_lbl}
 
     def _set_card_status(self, card, available):
-        color  = "#00c853" if available else "#ff3b3b"
-        text   = "Available" if available else "Unavailable"
+        color  = "#22c55e" if available else "#ef4444"
+        text   = "Hoạt động" if available else "Mất kết nối"
         obj    = "status-ok" if available else "status-error"
         card["dot"].setStyleSheet(f"color: {color}; font-size: 12px;")
         card["state"].setText(text)
@@ -682,7 +682,7 @@ class RobotUI(QMainWindow):
         card["state"].setStyleSheet(f"color: {color}; font-size: 14px;")
         border_side = f"border-left: 4px solid {color};"
         card["widget"].setStyleSheet(
-            f"QWidget#status-card {{ background-color: #1c2030; border: 1px solid #2a3040; "
+            f"QWidget#status-card {{ background-color: #ffffff; border: 1px solid #c8d4f0; "
             f"border-radius: 4px; {border_side} }}"
         )
 
@@ -692,9 +692,9 @@ class RobotUI(QMainWindow):
 
     def _pulse_reestimate(self):
         self._pulse_state = not self._pulse_state
-        color = "#00e5ff" if self._pulse_state else "#3a4460"
+        color = "#fcb525" if self._pulse_state else "#8fa3cc"
         self.btn_reestimate.setStyleSheet(
-            f"QPushButton#mode-btn {{ border-left: 4px solid {color}; color: #00e5ff; background-color: #1c2030; }}"
+            f"QPushButton#mode-btn {{ border-left: 4px solid {color}; color: #fcb525; background-color: #1a3278; }}"
         )
 
     def start_micro_ros(self):
@@ -863,15 +863,15 @@ class RobotUI(QMainWindow):
         from datetime import datetime
         ts = datetime.now().strftime("%H:%M:%S")
         if "[ERROR]" in message:
-            color = "#ff3b3b"
+            color = "#ef4444"
         elif "[WARN]" in message:
-            color = "#ffb300"
+            color = "#f59e0b"
         elif "✓" in message or "restored" in message or "complete" in message.lower():
-            color = "#00c853"
+            color = "#22c55e"
         else:
-            color = "#e8ecf0"
+            color = "#1a2a5e"
         self.log_text.append(
-            f'<span style="color:#6b7a99">[{ts}]</span> '
+            f'<span style="color:#8fa3cc">[{ts}]</span> '
             f'<span style="color:{color}">{message}</span>'
         )
 

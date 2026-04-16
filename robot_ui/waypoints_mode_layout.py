@@ -89,8 +89,8 @@ class MapWidget(QWidget):
             painter.drawEllipse(px - 5, py - 5, 10, 10)
 
     def _draw_arrow(self, painter, px, py, label):
-        painter.setPen(QPen(QColor(0, 229, 255), 2))
-        painter.setBrush(QColor(0, 229, 255))
+        painter.setPen(QPen(QColor(252, 181, 37), 2))
+        painter.setBrush(QColor(252, 181, 37))
         painter.drawLine(px, py - 20, px, py)
         from PyQt6.QtGui import QPolygon
         from PyQt6.QtCore import QPoint
@@ -98,7 +98,7 @@ class MapWidget(QWidget):
         left = QPoint(px - 6, py - 12)
         right = QPoint(px + 6, py - 12)
         painter.drawPolygon(QPolygon([tip, left, right]))
-        painter.setPen(QPen(QColor(232, 236, 240), 1))
+        painter.setPen(QPen(QColor(26, 42, 94), 1))
         painter.drawText(px + 8, py - 10, label)
 
 
@@ -109,26 +109,26 @@ class NewWaypointDialog(QDialog):
         self.setModal(True)
         self.resize(400, 200)
         self.setStyleSheet("""
-            QDialog { background-color: #0d0f12; color: #e8ecf0; }
-            QLabel { color: #6b7a99; font-size: 11px; letter-spacing: 2px; padding-bottom: 8px; }
+            QDialog { background-color: #f0f4ff; color: #1a2a5e; }
+            QLabel { color: #5a7abf; font-size: 11px; letter-spacing: 2px; padding-bottom: 8px; }
             QLineEdit {
-                background-color: #1c2030; color: #e8ecf0;
-                border: 1px solid #2a3040; border-radius: 4px;
+                background-color: #ffffff; color: #1a2a5e;
+                border: 1px solid #c8d4f0; border-radius: 8px;
                 font-size: 15px; padding: 10px 14px;
             }
-            QLineEdit:focus { border: 1px solid #00e5ff66; }
+            QLineEdit:focus { border: 1px solid #214196; }
             QPushButton#ok-btn {
-                background-color: #1c2030; color: #00e5ff;
-                border: 1px solid #00e5ff; border-radius: 4px;
+                background-color: #214196; color: #ffffff;
+                border: none; border-radius: 8px;
                 font-size: 15px; min-height: 44px;
             }
-            QPushButton#ok-btn:hover { background-color: #1a2a3a; }
+            QPushButton#ok-btn:hover { background-color: #1a3278; }
             QPushButton#cancel-btn {
-                background-color: transparent; color: #6b7a99;
-                border: 1px solid #2a3040; border-radius: 4px;
+                background-color: transparent; color: #5a7abf;
+                border: 1px solid #c8d4f0; border-radius: 8px;
                 font-size: 15px; min-height: 44px;
             }
-            QPushButton#cancel-btn:hover { background-color: #1a1f2e; color: #e8ecf0; border: 1px solid #3a4460; }
+            QPushButton#cancel-btn:hover { background-color: #e8f0ff; color: #214196; border: 1px solid #214196; }
         """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -194,25 +194,25 @@ class WaypointsModeLayout(QMainWindow):
 
         STYLESHEET = """
             QMainWindow, QWidget {
-                background-color: #0d0f12;
-                color: #e8ecf0;
+                background-color: #f0f4ff;
+                color: #1a2a5e;
                 border: none;
             }
             QWidget#left-panel {
-                background-color: #141720;
-                border-right: 2px solid #2a3040;
+                background-color: #214196;
+                border-right: none;
             }
             QWidget#header-bar {
-                background-color: #141720;
-                border-bottom: 1px solid #2a3040;
+                background-color: transparent;
+                
             }
             QWidget#log-panel {
-                background-color: #080a0d;
-                border-top: 1px solid #2a3040;
+                background-color: #ffffff;
+                border-top: 1px solid #c8d4f0;
             }
             QPushButton#action-btn {
                 background-color: transparent;
-                color: #6b7a99;
+                color: #a8bce8;
                 border: none;
                 border-left: 4px solid transparent;
                 border-radius: 0px;
@@ -221,72 +221,71 @@ class WaypointsModeLayout(QMainWindow):
                 font-size: 18px;
             }
             QPushButton#action-btn:hover {
-                background-color: #1a1f2e;
-                color: #e8ecf0;
-                border-left: 4px solid #3a4460;
+                background-color: #1a3278;
+                color: #ffffff;
+                border-left: 4px solid #fcb525;
             }
             QPushButton#action-btn:checked {
-                background-color: #1c2030;
-                color: #00e5ff;
-                border-left: 4px solid #00e5ff;
+                background-color: #1a3278;
+                color: #fcb525;
+                border-left: 4px solid #fcb525;
             }
             QPushButton#wp-btn {
-                background-color: #1c2030;
-                color: #6b7a99;
-                border: 1px solid #2a3040;
-                border-radius: 4px;
+                background-color: #ffffff;
+                color: #5a7abf;
+                border: 1px solid #c8d4f0;
+                border-radius: 8px;
                 font-size: 16px;
                 min-height: 48px;
             }
             QPushButton#wp-btn:hover {
-                background-color: #1a1f2e;
-                color: #e8ecf0;
-                border: 1px solid #3a4460;
+                background-color: #e8f0ff;
+                color: #214196;
+                border: 1px solid #214196;
             }
             QPushButton#wp-btn[filled="true"] {
-                color: #00c853;
-                border: 1px solid #00c853;
+                color: #22c55e;
+                border: 2px solid #22c55e;
+                background-color: #f0fff4;
             }
             QPushButton#wp-btn[selected="true"] {
-                color: #00e5ff;
-                border: 1px solid #00e5ff;
-                background-color: #1c2030;
+                color: #ffffff;
+                border: 2px solid #fcb525;
+                background-color: #214196;
             }
             QTextEdit#log-text {
-                background-color: #080a0d;
-                color: #e8ecf0;
+                background-color: #f8faff;
+                color: #1a2a5e;
                 border: none;
                 font-size: 13px;
             }
             QLabel#log-title {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 11px;
                 letter-spacing: 2px;
             }
             QLabel#section-title {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 11px;
                 letter-spacing: 2px;
                 padding: 12px 24px 4px 24px;
             }
             QLabel#pos-value {
-                color: #e8ecf0;
+                color: #1a2a5e;
                 font-size: 13px;
                 padding: 0px 24px;
             }
             QLabel#clock {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 15px;
             }
             QLabel#header-title {
-                color: #e8ecf0;
+                color: #1a2a5e;
                 font-size: 15px;
             }
-
-            /* ── Panel tab buttons ── */
             QPushButton#panel-tab {
                 background-color: transparent;
-                color: #6b7a99;
+                color: #5a7abf;
                 border: none;
                 border-bottom: 2px solid transparent;
                 border-radius: 0px;
@@ -295,11 +294,11 @@ class WaypointsModeLayout(QMainWindow):
                 letter-spacing: 2px;
             }
             QPushButton#panel-tab:checked {
-                color: #00e5ff;
-                border-bottom: 2px solid #00e5ff;
+                color: #214196;
+                
             }
             QPushButton#panel-tab:hover {
-                color: #e8ecf0;
+                color: #214196;
             }
         """
         self.setStyleSheet(STYLESHEET)
@@ -317,9 +316,9 @@ class WaypointsModeLayout(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        wordmark = QLabel("WAYPOINTS")
+        wordmark = QLabel("ĐIỂM ĐẾN")
         wordmark.setFont(QFont("JetBrains Mono", 14, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
         mono = QFont("JetBrains Mono", 18)
@@ -399,7 +398,7 @@ class WaypointsModeLayout(QMainWindow):
 
         # Map + waypoint grid
         map_container = QWidget()
-        map_container.setStyleSheet("background-color: #0d0f12; padding: 12px;")
+        map_container.setStyleSheet("background-color: #f0f4ff; padding: 12px;")
         map_layout = QVBoxLayout(map_container)
         map_layout.setContentsMargins(12, 12, 12, 12)
         map_layout.setSpacing(8)
@@ -456,7 +455,7 @@ class WaypointsModeLayout(QMainWindow):
 
         log_header = QLabel("SYSTEM LOG")
         log_header.setFont(QFont("DM Sans", 11, QFont.Weight.Bold))
-        log_header.setStyleSheet("color: #00c853; padding: 4px 0;")
+        log_header.setStyleSheet("color: #214196; padding: 4px 0;")
         log_layout.addWidget(log_header)
 
         self.log_text = QTextEdit()
@@ -749,9 +748,9 @@ class WaypointsModeLayout(QMainWindow):
         elif "✓" in message or "completed" in message.lower():
             color = "#00c853"
         else:
-            color = "#e8ecf0"
+            color = "#1a2a5e"
         self.log_text.append(
-            f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
+            f'<span style="color:#8fa3cc">[{ts}]</span> <span style="color:{color}">{message}</span>'
         )
         
     def voice_navigate_to_waypoint(self, slots: str):

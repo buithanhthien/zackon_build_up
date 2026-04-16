@@ -12,28 +12,28 @@ from chat_panel_widget import ChatPanel
 
 STYLESHEET = """
     QMainWindow, QWidget {
-        background-color: #0d0f12;
-        color: #e8ecf0;
+        background-color: #f0f4ff;
+        color: #1a2a5e;
         border: none;
     }
     QWidget#left-panel {
-        background-color: #141720;
-        border-right: 2px solid #2a3040;
+        background-color: #214196;
+        border-right: none;
     }
     QWidget#header-bar {
-        background-color: #141720;
-        border-bottom: 1px solid #2a3040;
+        background-color: transparent;
+        
     }
     QWidget#log-panel {
-        background-color: #080a0d;
-        border-top: 1px solid #2a3040;
+        background-color: #ffffff;
+        border-top: 1px solid #c8d4f0;
     }
     QWidget#content-panel {
-        background-color: #0d0f12;
+        background-color: #f0f4ff;
     }
     QPushButton#action-btn {
         background-color: transparent;
-        color: #6b7a99;
+        color: #a8bce8;
         border: none;
         border-left: 4px solid transparent;
         border-radius: 0px;
@@ -42,77 +42,94 @@ STYLESHEET = """
         font-size: 18px;
     }
     QPushButton#action-btn:hover {
-        background-color: #1a1f2e;
-        color: #e8ecf0;
-        border-left: 4px solid #3a4460;
+        background-color: #1a3278;
+        color: #ffffff;
+        border-left: 4px solid #fcb525;
     }
     QPushButton#action-btn:disabled {
-        color: #3a4460;
+        color: #4a6aaa;
         border-left: 4px solid transparent;
     }
     QPushButton#primary-btn {
-        background-color: #1c2030;
-        color: #00e5ff;
-        border: 1px solid #00e5ff;
-        border-radius: 4px;
+        background-color: #214196;
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
         font-size: 18px;
         min-height: 56px;
         padding: 0px 24px;
     }
     QPushButton#primary-btn:hover {
-        background-color: #1a2a3a;
+        background-color: #1a3278;
     }
     QPushButton#primary-btn:disabled {
-        color: #3a4460;
-        border: 1px solid #3a4460;
+        color: #a8bce8;
+        background-color: #e0e8f8;
     }
     QPushButton#apply-btn {
-        background-color: #1c2030;
-        color: #00c853;
-        border: 1px solid #00c853;
-        border-radius: 4px;
+        background-color: #fcb525;
+        color: #1a2a5e;
+        border: none;
+        border-radius: 8px;
         font-size: 16px;
         min-height: 48px;
         padding: 0px 20px;
     }
     QPushButton#apply-btn:hover {
-        background-color: #0d1f14;
+        background-color: #e8a510;
     }
     QLineEdit#map-input {
-        background-color: #1c2030;
-        color: #e8ecf0;
-        border: 1px solid #2a3040;
-        border-radius: 4px;
+        background-color: #ffffff;
+        color: #1a2a5e;
+        border: 1px solid #c8d4f0;
+        border-radius: 8px;
         font-size: 16px;
         min-height: 48px;
         padding: 0px 12px;
     }
     QLineEdit#map-input:focus {
-        border: 1px solid #3a4460;
+        border: 1px solid #214196;
     }
     QTextEdit#log-text {
-        background-color: #080a0d;
-        color: #e8ecf0;
+        background-color: #f8faff;
+        color: #1a2a5e;
         border: none;
         font-size: 13px;
     }
     QLabel#log-title {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 11px;
         letter-spacing: 2px;
     }
     QLabel#clock {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 15px;
     }
     QLabel#section-label {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 11px;
         letter-spacing: 2px;
     }
     QLabel#info-text {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 14px;
+    }
+    QPushButton#panel-tab {
+        background-color: transparent;
+        color: #5a7abf;
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0px;
+        padding: 6px 16px;
+        font-size: 11px;
+        letter-spacing: 2px;
+    }
+    QPushButton#panel-tab:checked {
+        color: #214196;
+        
+    }
+    QPushButton#panel-tab:hover {
+        color: #214196;
     }
 """
 
@@ -140,9 +157,9 @@ class NewMapUI(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        wordmark = QLabel("NEW MAP")
+        wordmark = QLabel("BẢN ĐỒ MỚI")
         wordmark.setFont(QFont("JetBrains Mono", 14, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
         mono = QFont("JetBrains Mono", 18)
@@ -175,7 +192,7 @@ class NewMapUI(QMainWindow):
 
         header_title = QLabel("SLAM MAPPING")
         header_title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
-        header_title.setStyleSheet("color: #e8ecf0;")
+        header_title.setStyleSheet("color: #1a2a5e;")
 
         self.clock_label = QLabel()
         self.clock_label.setObjectName("clock")
@@ -241,7 +258,7 @@ class NewMapUI(QMainWindow):
         log_title.setObjectName("log-title")
         log_title.setFont(QFont("DM Sans", 11))
         live_badge = QLabel("● LIVE")
-        live_badge.setStyleSheet("color: #00c853; font-size: 11px;")
+        live_badge.setStyleSheet("color: #22c55e; font-size: 11px;")
         log_header.addWidget(log_title)
         log_header.addStretch()
         log_header.addWidget(live_badge)
@@ -258,7 +275,7 @@ class NewMapUI(QMainWindow):
 
         tab_bar = QWidget()
         tab_bar.setFixedHeight(36)
-        tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
+        tab_bar.setStyleSheet("background-color: #f0f4ff; border-top: 1px solid #c8d4f0;")
         tab_layout = QHBoxLayout(tab_bar)
         tab_layout.setContentsMargins(12, 0, 12, 0)
         tab_layout.setSpacing(0)
@@ -272,7 +289,7 @@ class NewMapUI(QMainWindow):
             tab_layout.addWidget(tab)
         tab_layout.addStretch()
         self.tab_live_badge = QLabel("● LIVE")
-        self.tab_live_badge.setStyleSheet("color: #00c853; font-size: 11px; padding-right: 4px;")
+        self.tab_live_badge.setStyleSheet("color: #22c55e; font-size: 11px; padding-right: 4px;")
         tab_layout.addWidget(self.tab_live_badge)
         tab_log.setChecked(True)
         tab_log.clicked.connect(lambda: (log_panel.show(), self.chat_widget.hide(), self.tab_live_badge.show()))
@@ -369,9 +386,9 @@ class NewMapUI(QMainWindow):
         elif "✓" in message:
             color = "#00c853"
         else:
-            color = "#e8ecf0"
+            color = "#1a2a5e"
         self.log_text.append(
-            f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
+            f'<span style="color:#8fa3cc">[{ts}]</span> <span style="color:{color}">{message}</span>'
         )
     
     def closeEvent(self, event):

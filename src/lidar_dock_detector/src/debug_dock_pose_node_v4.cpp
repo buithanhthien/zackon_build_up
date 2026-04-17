@@ -472,7 +472,7 @@ private:
     double px = mx - d * nx;
     double py = my - d * ny;
 
-    pose_out.pose.position.x = -px + 0.51;
+    pose_out.pose.position.x = -px + 0.52;
     pose_out.pose.position.y = py;
     pose_out.pose.position.z = 0.0;
 

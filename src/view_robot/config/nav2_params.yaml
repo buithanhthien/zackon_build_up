@@ -691,6 +691,14 @@ map_server:
     use_sim_time: False
     introspection_mode: "disabled"
 
+lifecycle_manager_localization:
+  ros__parameters:
+    autostart: true
+    node_names: ["map_server", "amcl"]
+    bond_timeout: 4.0
+    attempt_respawn_reconnection: true
+    bond_respawn_max_duration: 15.0
+    
 keepout_filter_mask_server:
   ros__parameters:
     topic_name: "keepout_filter_mask"

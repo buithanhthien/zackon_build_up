@@ -2,11 +2,13 @@
 #include <memory>
 #include <string>
 #include <limits>
+#include <chrono>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include "std_msgs/msg/int32.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 class RearDockingControllerNode : public rclcpp::Node
@@ -36,10 +38,14 @@ public:
     w_max_ = declare_parameter<double>("w_max", 0.4);
 
     // Thresholds
-    stop_distance_ = declare_parameter<double>("stop_distance", 0.15);
+    stop_distance_ = declare_parameter<double>("stop_distance", 0.146);
     slowdown_distance_ = declare_parameter<double>("slowdown_distance", 0.40);
     y_align_threshold_ = declare_parameter<double>("y_align_threshold", 0.10);
     yaw_align_threshold_ = declare_parameter<double>("yaw_align_threshold", 0.25);
+
+    docked_tolerance_ = declare_parameter<double>("docked_tolerance", 0.006);
+    docked_confirm_count_ = declare_parameter<int>("docked_confirm_count", 5);
+    docked_status_topic_ = declare_parameter<std::string>("docked_status_topic", "/rear_docking_status");
 
     // Pose freshness
     dock_pose_timeout_ = declare_parameter<double>("dock_pose_timeout", 0.30);
@@ -67,6 +73,8 @@ public:
 
     cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>(cmd_vel_topic_, 10);
 
+    docked_status_pub_ = create_publisher<std_msgs::msg::Int32>(docked_status_topic_, 10);
+
     timer_ = create_wall_timer(
       std::chrono::duration<double>(1.0 / control_frequency_),
       std::bind(&RearDockingControllerNode::controlLoop, this));
@@ -76,6 +84,7 @@ public:
     RCLCPP_INFO(get_logger(), "odom_topic: %s", odom_topic_.c_str());
     RCLCPP_INFO(get_logger(), "cmd_vel_topic: %s", cmd_vel_topic_.c_str());
     RCLCPP_INFO(get_logger(), "scan_topic: %s", scan_topic_.c_str());
+    RCLCPP_INFO(get_logger(), "docked_status_topic: %s", docked_status_topic_.c_str());
   }
 
 private:
@@ -98,40 +107,15 @@ private:
 
   void dockPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
   {
-    // Check if pose is stale (unchanged)
-    if (has_dock_pose_) {
-      const double dx = msg->pose.position.x - last_dock_pose_.pose.position.x;
-      const double dy = msg->pose.position.y - last_dock_pose_.pose.position.y;
-      const double dz = msg->pose.orientation.z - last_dock_pose_.pose.orientation.z;
-      const double dw = msg->pose.orientation.w - last_dock_pose_.pose.orientation.w;
-      
-      const double pose_diff = std::sqrt(dx*dx + dy*dy + dz*dz + dw*dw);
-      
-      if (pose_diff < 0.001) {  // pose unchanged
-        const double unchanged_time = (now() - last_dock_pose_change_time_).seconds();
-        if (unchanged_time > stale_pose_timeout_) {
-          if (state_ != DockState::SEARCH) {
-            state_ = DockState::SEARCH;
-            search_start_time_ = now();
-            RCLCPP_WARN(
-              get_logger(),
-              "[rear_docking_ctrl] Stale pose detected (unchanged for %.2fs) -> SEARCH MODE",
-              unchanged_time);
-          }
-          return;
-        }
-      } else {
-        last_dock_pose_change_time_ = now();
-      }
-    } else {
-      last_dock_pose_change_time_ = now();
+    // Neu da dock xong thi bo qua pose moi
+    if (state_ == DockState::DOCKED) {
+      return;
     }
 
     last_dock_pose_ = *msg;
     has_dock_pose_ = true;
     last_dock_pose_time_ = now();
 
-    // if pose is reacquired while searching
     if (state_ == DockState::SEARCH) {
       state_ = DockState::TRACK;
 
@@ -177,6 +161,21 @@ private:
     cmd_pub_->publish(cmd);
   }
 
+  void publishDockedStatus(int value)
+  {
+    std_msgs::msg::Int32 msg;
+    msg.data = value;
+    docked_status_pub_->publish(msg);
+  }
+
+  void publishDockedStatusIfChanged(int value)
+  {
+    if (last_docked_status_value_ != value) {
+      publishDockedStatus(value);
+      last_docked_status_value_ = value;
+    }
+  }
+
   void publishSearchMotion()
   {
     geometry_msgs::msg::Twist cmd;
@@ -218,8 +217,26 @@ private:
     }
 
     // ===============================
+    // FINAL STATE: DOCKED
+    // ===============================
+    if (state_ == DockState::DOCKED) {
+      publishDockedStatusIfChanged(1);
+
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "[rear_docking_ctrl] DOCKED HOLD: robot stopped");
+
+      publishStop();
+      return;
+    }
+
+    // ===============================
     // SEARCH / TRACK state handling
     // ===============================
+    publishDockedStatusIfChanged(0);
+
+    publishDockedStatusIfChanged(0);
+
     if (!has_dock_pose_) {
       if (state_ != DockState::SEARCH) {
         state_ = DockState::SEARCH;
@@ -233,6 +250,8 @@ private:
       publishSearchMotion();
       return;
     }
+
+    publishDockedStatusIfChanged(0);
 
     const double pose_age = (now() - last_dock_pose_time_).seconds();
     if (pose_age > dock_pose_timeout_) {
@@ -251,6 +270,8 @@ private:
 
     // valid pose
     state_ = DockState::TRACK;
+
+    publishDockedStatusIfChanged(0);
 
     if (require_fresh_odom_) {
       if (!has_odom_) {
@@ -287,17 +308,41 @@ private:
         get_logger(), *get_clock(), 500,
         "[rear_docking_ctrl] Invalid rear-docking pose: x=%.3f (expected negative)", x);
       publishStop();
+      publishDockedStatusIfChanged(0);
+      docked_counter_ = 0;
       return;
     }
 
-    // Stop condition: longitudinal error is small enough
-    if (std::abs(x) <= stop_distance_) {
+    // ===============================
+    // DOCKED ZONE CHECK
+    // ===============================
+    const double docked_limit = stop_distance_ + docked_tolerance_;
+
+    if (std::abs(x) <= docked_limit) {
+      docked_counter_++;
+
       RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "[rear_docking_ctrl] Docked: x=%.3f y=%.3f yaw=%.3f",
-        x, y, yaw);
+        get_logger(), *get_clock(), 200,
+        "[rear_docking_ctrl] In docked zone: x=%.3f limit=%.3f count=%d/%d",
+        x, docked_limit, docked_counter_, docked_confirm_count_);
+
       publishStop();
+      publishDockedStatusIfChanged(0);
+
+      if (docked_counter_ >= docked_confirm_count_) {
+        state_ = DockState::DOCKED;
+        publishDockedStatusIfChanged(1);
+
+        RCLCPP_INFO(
+          get_logger(),
+          "[rear_docking_ctrl] DOCKED CONFIRMED: x=%.3f y=%.3f yaw=%.3f",
+          x, y, yaw);
+
+        publishStop();
+      }
       return;
+    } else {
+      docked_counter_ = 0;
     }
 
     // Reverse speed from longitudinal error
@@ -331,6 +376,7 @@ private:
       "[rear_docking_ctrl] pose=(x=%.3f y=%.3f yaw=%.3f) cmd=(vx=%.3f wz=%.3f)",
       x, y, yaw, cmd.linear.x, cmd.angular.z);
 
+    publishDockedStatusIfChanged(0);
     cmd_pub_->publish(cmd);
   }
 
@@ -338,14 +384,15 @@ private:
   enum class DockState
   {
     TRACK,
-    SEARCH
+    SEARCH,
+    DOCKED
   };
 
   DockState state_ = DockState::SEARCH;
 
   // search behavior
   // double search_w_ = 0.15;             // rad/s
-  double search_w_ = 0.6;             // rad/s
+  double search_w_ = 0.8;             // rad/s old 0.6
   double search_switch_period_ = 1.0;  // seconds
   rclcpp::Time search_start_time_{0, 0, RCL_ROS_TIME};
 
@@ -353,6 +400,7 @@ private:
   std::string odom_topic_;
   std::string cmd_vel_topic_;
   std::string scan_topic_;
+  std::string docked_status_topic_;
 
   double control_frequency_;
 
@@ -369,6 +417,10 @@ private:
   double y_align_threshold_;
   double yaw_align_threshold_;
 
+  double docked_tolerance_;
+  int docked_confirm_count_;
+  int docked_counter_ = 0;
+
   double dock_pose_timeout_;
   double stale_pose_timeout_;
   bool stop_on_lost_pose_;
@@ -377,6 +429,8 @@ private:
 
   bool require_fresh_odom_;
   double odom_timeout_;
+
+  int last_docked_status_value_ = -1;
 
   bool has_dock_pose_ = false;
   bool has_odom_ = false;
@@ -387,13 +441,13 @@ private:
   sensor_msgs::msg::LaserScan::SharedPtr last_scan_;
 
   rclcpp::Time last_dock_pose_time_{0, 0, RCL_ROS_TIME};
-  rclcpp::Time last_dock_pose_change_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_odom_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr dock_pose_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr docked_status_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

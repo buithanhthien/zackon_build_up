@@ -31,5 +31,6 @@
     "cmake.ignoreCMakeListsMissing": true,
     "code-runner.executorMap": {
         "python": "python3 -u"
-    }
+    },
+    "kiroAgent.configureMCP": "Disabled"
 }

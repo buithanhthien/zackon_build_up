@@ -790,7 +790,7 @@ class RobotUI(QMainWindow):
         subprocess.Popen([
             'gnome-terminal', '--', 'bash', '-c',
             f'source {SOURCE_PATH}/install/setup.bash && '
-            f'python3 {SOURCE_PATH}/robot_ui/docking_sequence.py; exec bash'
+            f'ros2 launch lidar_dock_detector zackon_docking.launch.py; exec bash'
         ])
 
     def load_map(self):

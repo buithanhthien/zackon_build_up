@@ -317,7 +317,7 @@ class TrackingModeUI(QMainWindow):
         self.ros_timer.timeout.connect(lambda: rclpy.spin_once(self.ros_node, timeout_sec=0))
         self.ros_timer.start(50)
         
-        self.log("Mode changed to tracking")
+        self.log("Đã chuyển sang chế độ theo dõi")
     
     def get_current_map_path(self):
         nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
@@ -363,15 +363,15 @@ class TrackingModeUI(QMainWindow):
                 'gnome-terminal', '--', 'bash', '-c',
                 f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/human_following/launch/system.launch.py; exec bash'
             ])
-            self.log("Launched tracking system")
+            self.log("Đã khởi động hệ thống theo dõi")
         except Exception as e:
-            self.log(f"Failed to launch tracking: {e}")
+            self.log(f"Không thể khởi động hệ thống theo dõi: {e}")
     
     def go_back(self):
         if self.launch_process:
             subprocess.run(['pkill', '-f', 'system.launch.py'])
             self.launch_process.terminate()
-            self.log("Stopped tracking system")
+            self.log("Đã dừng hệ thống theo dõi")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
         

@@ -494,17 +494,17 @@ class RobotUI(QMainWindow):
         wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
-        self.btn_tracking   = QPushButton("Theo dõi")
         self.btn_waypoints  = QPushButton("Điểm đến")
-        self.btn_reestimate = QPushButton("Định vị lại")
-        self.btn_new_map    = QPushButton("Bản đồ mới")
-        self.btn_load_map   = QPushButton("Tải bản đồ")
         self.btn_docking    = QPushButton("Về trạm sạc")
+        self.btn_load_map   = QPushButton("Tải bản đồ")
+        self.btn_new_map    = QPushButton("Bản đồ mới")
+        self.btn_tracking   = QPushButton("Theo dõi")
+        self.btn_reestimate = QPushButton("Định vị lại")
         self.btn_nav2       = QPushButton("Nav2")
 
-        mono = QFont("JetBrains Mono", 18)
-        for btn in [self.btn_tracking, self.btn_waypoints, self.btn_reestimate,
-                    self.btn_new_map, self.btn_load_map, self.btn_docking, self.btn_nav2]:
+        mono = QFont("JetBrains Mono", 22)
+        for btn in [self.btn_waypoints, self.btn_docking, self.btn_load_map,
+                    self.btn_new_map, self.btn_tracking, self.btn_reestimate, self.btn_nav2]:
             btn.setObjectName("mode-btn")
             btn.setFont(mono)
             btn.setMinimumHeight(72)
@@ -602,13 +602,32 @@ class RobotUI(QMainWindow):
         self.chat_panel = ChatPanel()
 
         # Mic button fills bottom half of log panel
-        self.chat_panel.voice_btn.setMinimumSize(0, 0)
-        self.chat_panel.voice_btn.setMaximumSize(16777215, 16777215)
-        self.chat_panel.voice_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.chat_panel.voice_btn.setStyleSheet(
-            self.chat_panel.voice_btn.styleSheet() + "font-size: 64px; border-top: 1px solid #c8d4f0;"
-        )
-        log_layout.addWidget(self.chat_panel.voice_btn, 1)
+        mic_btn = self.chat_panel.voice_btn
+        mic_btn.setFixedSize(225, 225)
+        mic_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        mic_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #214196;
+                color: #ffffff;
+                border: 3px solid #a8bce8;
+                border-radius: 112px;
+                font-size: 90px;
+            }
+            QPushButton:hover {
+                background-color: #1a3278;
+                border: 3px solid #fcb525;
+            }
+            QPushButton:checked {
+                background-color: #ef4444;
+                border: 3px solid #fca5a5;
+            }
+        """)
+        mic_label = QLabel("Nhấn vào tôi để nói")
+        mic_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        mic_label.setStyleSheet("color: #5a7abf; font-size: 25px; margin-top: -5px;")
+        mic_label.setFont(QFont("DM Sans", 11))
+        log_layout.addWidget(mic_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+        log_layout.addWidget(mic_label, 0, Qt.AlignmentFlag.AlignHCenter)
 
         # Horizontal splitter for log and chat
         panels_splitter = QWidget()
@@ -703,9 +722,9 @@ class RobotUI(QMainWindow):
                 'source ~/zackon_build_up/install/setup.bash && '
                 'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash'
             ])
-            self.log("Started micro-ROS agent in new terminal")
+            self.log("Đã khởi động micro-ROS agent trong terminal mới")
         except Exception as e:
-            self.log(f"Failed to start micro-ROS agent: {e}")
+            self.log(f"Không thể khởi động micro-ROS agent: {e}")
 
     def update_status(self):
         now = time.monotonic()
@@ -716,7 +735,7 @@ class RobotUI(QMainWindow):
         )
         self._set_card_status(self.stm32_card, stm32_available)
         if self.prev_stm32_status is not None and self.prev_stm32_status != stm32_available:
-            self.log("STM32 connection lost" if not stm32_available else "STM32 connection restored")
+            self.log("Mất kết nối STM32" if not stm32_available else "Đã khôi phục kết nối STM32")
         self.prev_stm32_status = stm32_available
 
         front_available = (
@@ -725,7 +744,7 @@ class RobotUI(QMainWindow):
         )
         self._set_card_status(self.front_lidar_card, front_available)
         if self.prev_lidar_status is not None and self.prev_lidar_status != front_available:
-            self.log("LiDAR Front connection lost" if not front_available else "LiDAR Front connection restored")
+            self.log("Mất kết nối LiDAR trước" if not front_available else "Đã khôi phục kết nối LiDAR trước")
         self.prev_lidar_status = front_available
 
         rear_available = (
@@ -734,11 +753,11 @@ class RobotUI(QMainWindow):
         )
         self._set_card_status(self.rear_lidar_card, rear_available)
         if self.prev_lidar_rear_status is not None and self.prev_lidar_rear_status != rear_available:
-            self.log("LiDAR Rear connection lost" if not rear_available else "LiDAR Rear connection restored")
+            self.log("Mất kết nối LiDAR sau" if not rear_available else "Đã khôi phục kết nối LiDAR sau")
         self.prev_lidar_rear_status = rear_available
 
     def mode_changed(self, mode):
-        self.log(f"Mode changed to {mode}")
+        self.log(f"Đã chuyển sang chế độ {mode}")
         if mode == "Tracking":
             subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
             self.close()
@@ -751,18 +770,18 @@ class RobotUI(QMainWindow):
                     'gnome-terminal', '--', 'bash', '-c',
                     f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py; exec bash'
                 ])
-                self.log("Launched Nav2 navigation system")
+                self.log("Đã khởi động hệ thống điều hướng Nav2")
             except Exception as e:
-                self.log(f"Failed to launch Nav2: {e}")
+                self.log(f"Không thể khởi động Nav2: {e}")
 
     def start_reestimate(self):
         if self.prev_stm32_status == False:
-            self.log("Cannot start localization: STM32 not connected")
+            self.log("Không thể định vị: STM32 chưa kết nối")
             return
         if self.localization_thread and self.localization_thread.is_alive():
-            self.log("Localization already running")
+            self.log("Quá trình định vị đang chạy")
             return
-        self.log("Starting global relocalization")
+        self.log("Bắt đầu định vị toàn cục")
         self._reestimate_pulse_timer.start(600)
 
         self.localization_worker = LocalizationWorker()
@@ -780,12 +799,12 @@ class RobotUI(QMainWindow):
         self.localization_worker = None
 
     def start_new_map(self):
-        self.log("Switching to New Map mode")
+        self.log("Chuyển sang chế độ tạo bản đồ mới")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
         self.close()
 
     def start_docking(self):
-        self.log("Starting docking sequence")
+        self.log("Bắt đầu trình tự về trạm sạc")
         subprocess.Popen([
             'gnome-terminal', '--', 'bash', '-c',
             f'source {SOURCE_PATH}/install/setup.bash && '
@@ -797,7 +816,7 @@ class RobotUI(QMainWindow):
         if dialog.exec():
             map_name = dialog.get_selected_map()
             if map_name:
-                self.log(f"Loading map: {map_name}")
+                self.log(f"Đang tải bản đồ: {map_name}")
                 self.update_map_files(map_name)
 
     def update_map_files(self, map_name):
@@ -812,9 +831,9 @@ class RobotUI(QMainWindow):
             )
             with open(nav2_params, 'w') as f:
                 f.write(updated)
-            self.log("✓ Updated nav2_params.yaml")
+            self.log("✓ Đã cập nhật nav2_params.yaml")
         except Exception as e:
-            self.log(f"✗ Error updating nav2_params.yaml: {e}")
+            self.log(f"✗ Lỗi cập nhật nav2_params.yaml: {e}")
             return
         synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py'
         try:
@@ -826,9 +845,9 @@ class RobotUI(QMainWindow):
             )
             with open(synthesis_launch, 'w') as f:
                 f.write(updated)
-            self.log(f"✓ Updated NAV2_BRINGUP.launch.py")
+            self.log(f"✓ Đã cập nhật NAV2_BRINGUP.launch.py")
         except Exception as e:
-            self.log(f"✗ Error updating NAV2_BRINGUP.launch.py: {e}")
+            self.log(f"✗ Lỗi cập nhật NAV2_BRINGUP.launch.py: {e}")
             return
 
         localization_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_localization.launch.py'
@@ -841,12 +860,12 @@ class RobotUI(QMainWindow):
             )
             with open(localization_launch, 'w') as f:
                 f.write(updated)
-            self.log("✓ Updated zackon_localization.launch.py")
+            self.log("✓ Đã cập nhật zackon_localization.launch.py")
         except Exception as e:
-            self.log(f"✗ Error updating zackon_localization.launch.py: {e}")
+            self.log(f"✗ Lỗi cập nhật zackon_localization.launch.py: {e}")
             return
 
-        self.log("Building workspace...")
+        self.log("Đang build workspace...")
         try:
             subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
@@ -854,9 +873,9 @@ class RobotUI(QMainWindow):
                 '&& source install/setup.bash '
                 '&& echo "Build complete. Closing in 2 seconds..." && sleep 2'
             ])
-            self.log(f"✓ Map '{map_name}' loaded and workspace building")
+            self.log(f"✓ Bản đồ '{map_name}' đã tải và đang build workspace")
         except Exception as e:
-            self.log(f"✗ Error building workspace: {e}")
+            self.log(f"✗ Lỗi build workspace: {e}")
 
     def log(self, message):
         from datetime import datetime
@@ -875,7 +894,7 @@ class RobotUI(QMainWindow):
         )
 
     def _on_ai_action(self, tag: str):
-        self.log(f"[AI-ACTION] {tag}")
+        self.log(f"[AI-HÀNH ĐỘNG] {tag}")
         if tag.startswith("LOAD_MAP:"):
             map_name = tag.split(":", 1)[1].strip()
             self.update_map_files(map_name)
@@ -887,23 +906,23 @@ class RobotUI(QMainWindow):
             self.update_status()
 
     def open_developer_mode(self):
-        self.log("Opening Developer Mode (Claude Code)")
+        self.log("Đang mở chế độ Developer (Claude Code)")
         try:
             subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
                 f'cd {SOURCE_PATH} && source install/setup.bash && claude; exec bash'
             ])
         except Exception as e:
-            self.log(f"[ERROR] Failed to open Developer Mode: {e}. Is 'claude' installed?")
+            self.log(f"[LỖI] Không thể mở chế độ Developer: {e}. 'claude' đã được cài chưa?")
 
     def _voice_go_to_waypoint(self, slots: str):
-        self.log(f"[Voice] Navigating to waypoint(s) {slots}")
+        self.log(f"[Giọng nói] Đang điều hướng đến địa điểm {slots}")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
                           '--go-to', slots])
         self.close()
 
     def _on_voice_ui_command(self, command: str):
-        self.log(f"[Voice] UI command: {command}")
+        self.log(f"[Giọng nói] Lệnh giao diện: {command}")
         if command == "LOAD_MAP":
             self.load_map()
         elif command == "NEW_MAP":

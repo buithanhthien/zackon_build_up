@@ -10,63 +10,63 @@ from config import SOURCE_PATH
 
 STYLESHEET = """
     QDialog {
-        background-color: #0d0f12;
-        color: #e8ecf0;
+        background-color: #f0f4ff;
+        color: #1a2a5e;
     }
     QLabel#title {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 11px;
         letter-spacing: 2px;
         padding-bottom: 8px;
     }
     QListWidget {
-        background-color: #1c2030;
-        color: #e8ecf0;
-        border: 1px solid #2a3040;
-        border-radius: 4px;
+        background-color: #ffffff;
+        color: #1a2a5e;
+        border: 1px solid #c8d4f0;
+        border-radius: 8px;
         font-size: 15px;
         outline: none;
     }
     QListWidget::item {
         padding: 12px 16px;
-        border-bottom: 1px solid #2a3040;
+        border-bottom: 1px solid #e8f0ff;
     }
     QListWidget::item:hover {
-        background-color: #1a1f2e;
-        color: #e8ecf0;
+        background-color: #e8f0ff;
+        color: #214196;
     }
     QListWidget::item:selected {
-        background-color: #1c2030;
-        color: #00e5ff;
-        border-left: 3px solid #00e5ff;
+        background-color: #214196;
+        color: #ffffff;
+        border-left: 3px solid #fcb525;
     }
     QPushButton#ok-btn {
-        background-color: #1c2030;
-        color: #00e5ff;
-        border: 1px solid #00e5ff;
-        border-radius: 4px;
+        background-color: #214196;
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
         font-size: 15px;
         min-height: 44px;
     }
     QPushButton#ok-btn:hover {
-        background-color: #1a2a3a;
+        background-color: #1a3278;
     }
     QPushButton#ok-btn:disabled {
-        color: #3a4460;
-        border: 1px solid #3a4460;
+        color: #a8bce8;
+        background-color: #e0e8f8;
     }
     QPushButton#cancel-btn {
         background-color: transparent;
-        color: #6b7a99;
-        border: 1px solid #2a3040;
-        border-radius: 4px;
+        color: #5a7abf;
+        border: 1px solid #c8d4f0;
+        border-radius: 8px;
         font-size: 15px;
         min-height: 44px;
     }
     QPushButton#cancel-btn:hover {
-        background-color: #1a1f2e;
-        color: #e8ecf0;
-        border: 1px solid #3a4460;
+        background-color: #e8f0ff;
+        color: #214196;
+        border: 1px solid #214196;
     }
 """
 

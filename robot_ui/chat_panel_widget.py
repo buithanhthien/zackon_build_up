@@ -251,11 +251,11 @@ class _ChatBubble(QWidget):
         label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         label.setMaximumWidth(560)
         if role == "user":
-            label.setStyleSheet("background-color:#00e5ff18;color:#e8ecf0;border:1px solid #00e5ff44;border-radius:8px;padding:10px 14px;")
+            label.setStyleSheet("background-color:#e8f0ff;color:#1a2a5e;border:1px solid #c8d4f0;border-radius:8px;padding:10px 14px;")
             layout.addStretch()
             layout.addWidget(label)
         else:
-            label.setStyleSheet("background-color:#1c2030;color:#b0c4d8;border:1px solid #2a3040;border-radius:8px;padding:10px 14px;")
+            label.setStyleSheet("background-color:#ffffff;color:#1a2a5e;border:1px solid #c8d4f0;border-radius:8px;padding:10px 14px;")
             layout.addWidget(label)
             layout.addStretch()
 
@@ -294,7 +294,7 @@ class ChatPanel(QWidget):
         self.chat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self._messages_widget = QWidget()
-        self._messages_widget.setStyleSheet("background-color:#080a0d;")
+        self._messages_widget.setStyleSheet("background-color:#f8faff;")
         self._messages_layout = QVBoxLayout(self._messages_widget)
         self._messages_layout.setContentsMargins(16, 16, 16, 16)
         self._messages_layout.setSpacing(8)
@@ -305,18 +305,18 @@ class ChatPanel(QWidget):
 
         self.typing_label = QLabel("ZACKON is thinking...")
         self.typing_label.setFont(QFont("Fira Code", 11))
-        self.typing_label.setStyleSheet("color:#3a4460;padding:4px 20px;background-color:#080a0d;")
+        self.typing_label.setStyleSheet("color:#8fa3cc;padding:4px 20px;background-color:#f8faff;")
         self.typing_label.hide()
         layout.addWidget(self.typing_label)
 
         self.voice_status_label = QLabel("")
         self.voice_status_label.setFont(QFont("Fira Code", 11, QFont.Weight.Bold))
-        self.voice_status_label.setStyleSheet("color:#6b7a99;padding:0 20px;background-color:#080a0d;")
+        self.voice_status_label.setStyleSheet("color:#5a7abf;padding:0 20px;background-color:#f8faff;")
         self.voice_status_label.hide()
         layout.addWidget(self.voice_status_label)
 
         input_row = QWidget()
-        input_row.setStyleSheet("background-color:#0d0f12;border-top:1px solid #2a3040;")
+        input_row.setStyleSheet("background-color:#ffffff;border-top:1px solid #c8d4f0;")
         input_layout = QHBoxLayout(input_row)
         input_layout.setContentsMargins(16, 10, 16, 10)
         input_layout.setSpacing(10)
@@ -619,11 +619,11 @@ class ChatPanel(QWidget):
         self.voice_status_label.show()
         self.voice_status_label.setText(state)
         if "LISTENING" in state:
-            self.voice_status_label.setStyleSheet("color:#00e5ff;padding:0 20px;background-color:#080a0d;")
+            self.voice_status_label.setStyleSheet("color:#214196;padding:0 20px;background-color:#f8faff;")
         elif "SPEAKING" in state:
-            self.voice_status_label.setStyleSheet("color:#00c853;padding:0 20px;background-color:#080a0d;")
+            self.voice_status_label.setStyleSheet("color:#22c55e;padding:0 20px;background-color:#f8faff;")
         else:
-            self.voice_status_label.setStyleSheet("color:#6b7a99;padding:0 20px;background-color:#080a0d;")
+            self.voice_status_label.setStyleSheet("color:#5a7abf;padding:0 20px;background-color:#f8faff;")
 
     def _on_voice_transcript(self, text):
         text = text.strip().capitalize()

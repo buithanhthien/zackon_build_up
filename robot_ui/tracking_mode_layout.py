@@ -18,25 +18,25 @@ from chat_panel_widget import ChatPanel
 
 STYLESHEET = """
     QMainWindow, QWidget {
-        background-color: #0d0f12;
-        color: #e8ecf0;
+        background-color: #f0f4ff;
+        color: #1a2a5e;
         border: none;
     }
     QWidget#left-panel {
-        background-color: #141720;
-        border-right: 2px solid #2a3040;
+        background-color: #214196;
+        border-right: none;
     }
     QWidget#header-bar {
-        background-color: #141720;
-        border-bottom: 1px solid #2a3040;
+        background-color: transparent;
+        
     }
     QWidget#log-panel {
-        background-color: #080a0d;
-        border-top: 1px solid #2a3040;
+        background-color: #ffffff;
+        border-top: 1px solid #c8d4f0;
     }
     QPushButton#action-btn {
         background-color: transparent;
-        color: #6b7a99;
+        color: #a8bce8;
         border: none;
         border-left: 4px solid transparent;
         border-radius: 0px;
@@ -45,35 +45,52 @@ STYLESHEET = """
         font-size: 18px;
     }
     QPushButton#action-btn:hover {
-        background-color: #1a1f2e;
-        color: #e8ecf0;
-        border-left: 4px solid #3a4460;
+        background-color: #1a3278;
+        color: #ffffff;
+        border-left: 4px solid #fcb525;
     }
     QTextEdit#log-text {
-        background-color: #080a0d;
-        color: #e8ecf0;
+        background-color: #f8faff;
+        color: #1a2a5e;
         border: none;
         font-size: 13px;
     }
     QLabel#log-title {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 11px;
         letter-spacing: 2px;
     }
     QLabel#clock {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 15px;
     }
     QLabel#section-title {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 11px;
         letter-spacing: 2px;
         padding: 12px 24px 4px 24px;
     }
     QLabel#pos-value {
-        color: #e8ecf0;
+        color: #1a2a5e;
         font-size: 13px;
         padding: 0px 24px;
+    }
+    QPushButton#panel-tab {
+        background-color: transparent;
+        color: #5a7abf;
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0px;
+        padding: 6px 16px;
+        font-size: 11px;
+        letter-spacing: 2px;
+    }
+    QPushButton#panel-tab:checked {
+        color: #214196;
+        
+    }
+    QPushButton#panel-tab:hover {
+        color: #214196;
     }
 """
 
@@ -148,9 +165,9 @@ class TrackingModeUI(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        wordmark = QLabel("TRACKING")
+        wordmark = QLabel("THEO DÕI")
         wordmark.setFont(QFont("JetBrains Mono", 14, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
         self.btn_back = QPushButton("Back")
@@ -197,7 +214,7 @@ class TrackingModeUI(QMainWindow):
 
         header_title = QLabel("TRACKING MODE")
         header_title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
-        header_title.setStyleSheet("color: #e8ecf0;")
+        header_title.setStyleSheet("color: #1a2a5e;")
 
         self.clock_label = QLabel()
         self.clock_label.setObjectName("clock")
@@ -210,7 +227,7 @@ class TrackingModeUI(QMainWindow):
 
         # Map
         map_container = QWidget()
-        map_container.setStyleSheet("background-color: #0d0f12; padding: 12px;")
+        map_container.setStyleSheet("background-color: #f0f4ff; padding: 12px;")
         map_layout = QVBoxLayout(map_container)
         map_layout.setContentsMargins(12, 12, 12, 12)
 
@@ -235,7 +252,7 @@ class TrackingModeUI(QMainWindow):
         log_title.setObjectName("log-title")
         log_title.setFont(QFont("DM Sans", 11))
         live_badge = QLabel("● LIVE")
-        live_badge.setStyleSheet("color: #00c853; font-size: 11px;")
+        live_badge.setStyleSheet("color: #22c55e; font-size: 11px;")
         log_header.addWidget(log_title)
         log_header.addStretch()
         log_header.addWidget(live_badge)
@@ -252,7 +269,7 @@ class TrackingModeUI(QMainWindow):
 
         tab_bar = QWidget()
         tab_bar.setFixedHeight(36)
-        tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
+        tab_bar.setStyleSheet("background-color: #f0f4ff; border-top: 1px solid #c8d4f0;")
         tab_layout = QHBoxLayout(tab_bar)
         tab_layout.setContentsMargins(12, 0, 12, 0)
         tab_layout.setSpacing(0)
@@ -266,7 +283,7 @@ class TrackingModeUI(QMainWindow):
             tab_layout.addWidget(tab)
         tab_layout.addStretch()
         self.tab_live_badge = QLabel("● LIVE")
-        self.tab_live_badge.setStyleSheet("color: #00c853; font-size: 11px; padding-right: 4px;")
+        self.tab_live_badge.setStyleSheet("color: #22c55e; font-size: 11px; padding-right: 4px;")
         tab_layout.addWidget(self.tab_live_badge)
         tab_log.setChecked(True)
         tab_log.clicked.connect(lambda: (log_panel.show(), self.chat_widget.hide(), self.tab_live_badge.show()))
@@ -300,7 +317,7 @@ class TrackingModeUI(QMainWindow):
         self.ros_timer.timeout.connect(lambda: rclpy.spin_once(self.ros_node, timeout_sec=0))
         self.ros_timer.start(50)
         
-        self.log("Mode changed to tracking")
+        self.log("Đã chuyển sang chế độ theo dõi")
     
     def get_current_map_path(self):
         nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
@@ -346,15 +363,15 @@ class TrackingModeUI(QMainWindow):
                 'gnome-terminal', '--', 'bash', '-c',
                 f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/human_following/launch/system.launch.py; exec bash'
             ])
-            self.log("Launched tracking system")
+            self.log("Đã khởi động hệ thống theo dõi")
         except Exception as e:
-            self.log(f"Failed to launch tracking: {e}")
+            self.log(f"Không thể khởi động hệ thống theo dõi: {e}")
     
     def go_back(self):
         if self.launch_process:
             subprocess.run(['pkill', '-f', 'system.launch.py'])
             self.launch_process.terminate()
-            self.log("Stopped tracking system")
+            self.log("Đã dừng hệ thống theo dõi")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
         
@@ -368,9 +385,9 @@ class TrackingModeUI(QMainWindow):
         elif "✓" in message:
             color = "#00c853"
         else:
-            color = "#e8ecf0"
+            color = "#1a2a5e"
         self.log_text.append(
-            f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
+            f'<span style="color:#8fa3cc">[{ts}]</span> <span style="color:{color}">{message}</span>'
         )
     
     def closeEvent(self, event):

@@ -281,38 +281,38 @@ class RobotUI(QMainWindow):
     # ══════════════════════════════════════════════════════════════════════════
 
     def init_ui(self):
-        self.setWindowTitle("Robot Control Interface")
+        self.setWindowTitle("IUH Robot – Giao diện điều khiển")
 
         STYLESHEET = """
             QMainWindow, QWidget {
-                background-color: #0d0f12;
-                color: #e8ecf0;
+                background-color: #f0f4ff;
+                color: #1a2a5e;
                 border: none;
             }
             QWidget#left-panel {
-                background-color: #141720;
-                border-right: 2px solid #2a3040;
+                background-color: #214196;
+                border-right: none;
             }
             QWidget#header-bar {
-                background-color: #141720;
-                border-bottom: 1px solid #2a3040;
+                background-color: transparent;
+                
             }
             QWidget#status-card {
-                background-color: #1c2030;
-                border: 1px solid #2a3040;
-                border-radius: 4px;
+                background-color: #ffffff;
+                border: 1px solid #c8d4f0;
+                border-radius: 8px;
             }
             QWidget#log-panel {
-                background-color: #080a0d;
-                border-top: 1px solid #2a3040;
+                background-color: #ffffff;
+                border-top: 1px solid #c8d4f0;
             }
             QWidget#chat-panel {
-                background-color: #080a0d;
-                border-top: 1px solid #2a3040;
+                background-color: #ffffff;
+                border-top: 1px solid #c8d4f0;
             }
             QPushButton#mode-btn {
                 background-color: transparent;
-                color: #6b7a99;
+                color: #a8bce8;
                 border: none;
                 border-left: 4px solid transparent;
                 border-radius: 0px;
@@ -321,59 +321,59 @@ class RobotUI(QMainWindow):
                 font-size: 18px;
             }
             QPushButton#mode-btn:hover {
-                background-color: #1a1f2e;
-                color: #e8ecf0;
-                border-left: 4px solid #3a4460;
+                background-color: #1a3278;
+                color: #ffffff;
+                border-left: 4px solid #fcb525;
             }
             QPushButton#mode-btn:checked {
-                background-color: #1c2030;
-                color: #00e5ff;
-                border-left: 4px solid #00e5ff;
+                background-color: #1a3278;
+                color: #fcb525;
+                border-left: 4px solid #fcb525;
             }
             QPushButton#mode-btn:disabled {
-                color: #3a4460;
+                color: #4a6aaa;
                 border-left: 4px solid transparent;
             }
             QTextEdit#log-text {
-                background-color: #080a0d;
-                color: #e8ecf0;
+                background-color: #f8faff;
+                color: #1a2a5e;
                 border: none;
                 font-size: 13px;
             }
             QLabel#log-title {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 11px;
                 letter-spacing: 2px;
             }
             QLabel#clock {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 15px;
             }
             QLabel#mode-title {
-                color: #e8ecf0;
+                color: #1a2a5e;
                 font-size: 15px;
             }
             QLabel#device-name {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 11px;
             }
             QLabel#status-ok {
-                color: #00c853;
+                color: #22c55e;
                 font-size: 14px;
             }
             QLabel#status-error {
-                color: #ff3b3b;
+                color: #ef4444;
                 font-size: 14px;
             }
             QLabel#status-checking {
-                color: #6b7a99;
+                color: #5a7abf;
                 font-size: 14px;
             }
 
             /* ── Panel tab buttons ── */
             QPushButton#panel-tab {
                 background-color: transparent;
-                color: #6b7a99;
+                color: #5a7abf;
                 border: none;
                 border-bottom: 2px solid transparent;
                 border-radius: 0px;
@@ -382,93 +382,93 @@ class RobotUI(QMainWindow):
                 letter-spacing: 2px;
             }
             QPushButton#panel-tab:checked {
-                color: #00e5ff;
-                border-bottom: 2px solid #00e5ff;
+                color: #214196;
+                
             }
             QPushButton#panel-tab:hover {
-                color: #e8ecf0;
+                color: #214196;
             }
 
             /* ── Chat input ── */
             QLineEdit#chat-input {
-                background-color: #141720;
-                color: #e8ecf0;
-                border: 1px solid #2a3040;
+                background-color: #f0f4ff;
+                color: #1a2a5e;
+                border: 1px solid #c8d4f0;
                 border-radius: 6px;
                 padding: 10px 14px;
                 font-size: 13px;
-                selection-background-color: #00e5ff44;
+                selection-background-color: #fcb52544;
             }
             QLineEdit#chat-input:focus {
-                border: 1px solid #00e5ff66;
+                border: 1px solid #214196;
             }
 
             /* ── Send button ── */
             QPushButton#send-btn {
-                background-color: #00e5ff18;
-                color: #00e5ff;
-                border: 1px solid #00e5ff44;
+                background-color: #214196;
+                color: #ffffff;
+                border: none;
                 border-radius: 6px;
                 padding: 10px 20px;
                 font-size: 13px;
             }
             QPushButton#send-btn:hover {
-                background-color: #00e5ff30;
-                border: 1px solid #00e5ff88;
+                background-color: #1a3278;
             }
             QPushButton#send-btn:pressed {
-                background-color: #00e5ff44;
+                background-color: #fcb525;
+                color: #214196;
             }
             QPushButton#send-btn:disabled {
-                color: #3a4460;
-                background-color: transparent;
-                border: 1px solid #2a3040;
+                color: #a8bce8;
+                background-color: #e0e8f8;
+                border: none;
             }
 
             /* ── Voice toggle button ── */
             QPushButton#voice-btn {
-                background-color: transparent;
-                color: #6b7a99;
-                border: 1px solid #2a3040;
+                background-color: #f0f4ff;
+                color: #5a7abf;
+                border: 1px solid #c8d4f0;
                 border-radius: 6px;
                 font-size: 26px;
                 padding: 10px;
             }
             QPushButton#voice-btn:checked {
-                background-color: #ff3b3b18;
-                color: #ff3b3b;
-                border: 1px solid #ff3b3b44;
+                background-color: #fff0f0;
+                color: #ef4444;
+                border: 1px solid #ef444466;
             }
 
             /* ── Clear chat button ── */
             QPushButton#clear-btn {
                 background-color: transparent;
-                color: #3a4460;
+                color: #a8bce8;
                 border: none;
                 font-size: 11px;
                 padding: 4px 8px;
             }
             QPushButton#clear-btn:hover {
-                color: #6b7a99;
+                color: #5a7abf;
             }
 
             /* ── Scroll area ── */
             QScrollArea {
-                background-color: #080a0d;
+                background-color: #ffffff;
                 border: none;
             }
             QScrollBar:vertical {
-                background-color: #0d0f12;
+                background-color: #f0f4ff;
                 width: 6px;
                 border-radius: 3px;
             }
             QScrollBar::handle:vertical {
-                background-color: #2a3040;
+                background-color: #c8d4f0;
                 border-radius: 3px;
                 min-height: 20px;
             }
             QScrollBar::handle:vertical:hover {
-                background-color: #3a4460;
+                background-color: #214196;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
@@ -489,27 +489,26 @@ class RobotUI(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        wordmark = QLabel("ZACKON")
+        wordmark = QLabel("IUH ROBOT")
         wordmark.setFont(QFont("JetBrains Mono", 16, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
-        self.btn_tracking   = QPushButton("Theo dõi")
         self.btn_waypoints  = QPushButton("Điểm đến")
-        self.btn_reestimate = QPushButton("Định vị lại")
-        self.btn_new_map    = QPushButton("Bản đồ mới")
-        self.btn_load_map   = QPushButton("Tải bản đồ")
         self.btn_docking    = QPushButton("Về trạm sạc")
+        self.btn_load_map   = QPushButton("Tải bản đồ")
+        self.btn_new_map    = QPushButton("Bản đồ mới")
+        self.btn_tracking   = QPushButton("Theo dõi")
+        self.btn_reestimate = QPushButton("Định vị lại")
         self.btn_nav2       = QPushButton("Nav2")
 
-        mono = QFont("JetBrains Mono", 18)
-        for btn in [self.btn_tracking, self.btn_waypoints, self.btn_reestimate,
-                    self.btn_new_map, self.btn_load_map, self.btn_docking, self.btn_nav2]:
+        mono = QFont("JetBrains Mono", 22)
+        for btn in [self.btn_waypoints, self.btn_docking, self.btn_load_map,
+                    self.btn_new_map, self.btn_tracking, self.btn_reestimate, self.btn_nav2]:
             btn.setObjectName("mode-btn")
             btn.setFont(mono)
             btn.setMinimumHeight(72)
-            btn.setCheckable(True)
-            btn.setAutoExclusive(False)
+            btn.setCheckable(False)
             left_layout.addWidget(btn)
 
         left_layout.addStretch()
@@ -520,8 +519,8 @@ class RobotUI(QMainWindow):
         self.btn_dev.setMinimumHeight(56)
         self.btn_dev.setCheckable(False)
         self.btn_dev.setStyleSheet(
-            "QPushButton#mode-btn { color: #ffb300; border-left: 4px solid #ffb30044; }"
-            "QPushButton#mode-btn:hover { background-color: #1a1f2e; border-left: 4px solid #ffb300; }"
+            "QPushButton#mode-btn { color: #fcb525; border-left: 4px solid #fcb52544; }"
+            "QPushButton#mode-btn:hover { background-color: #1a3278; border-left: 4px solid #fcb525; }"
         )
         left_layout.addWidget(self.btn_dev)
 
@@ -562,7 +561,7 @@ class RobotUI(QMainWindow):
 
         # Status cards row
         cards_widget = QWidget()
-        cards_widget.setStyleSheet("background-color: #0d0f12; padding: 12px;")
+        cards_widget.setStyleSheet("background-color: #f0f4ff; padding: 12px;")
         cards_layout = QHBoxLayout(cards_widget)
         cards_layout.setContentsMargins(12, 12, 12, 12)
         cards_layout.setSpacing(12)
@@ -578,7 +577,7 @@ class RobotUI(QMainWindow):
         # ── Panel switcher (LOG / AI CHAT) ────────────────────────────────────
         tab_bar = QWidget()
         tab_bar.setFixedHeight(36)
-        tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
+        tab_bar.setStyleSheet("background-color: #f0f4ff; border-top: 1px solid #c8d4f0;")
         # Remove tab bar - show both panels side by side
         right_layout.addWidget(QLabel())  # spacer
 
@@ -591,7 +590,7 @@ class RobotUI(QMainWindow):
 
         log_header = QLabel("SYSTEM LOG")
         log_header.setFont(QFont("DM Sans", 11, QFont.Weight.Bold))
-        log_header.setStyleSheet("color: #00c853; padding: 4px 0;")
+        log_header.setStyleSheet("color: #214196; padding: 4px 0;")
         log_layout.addWidget(log_header)
 
         self.log_text = QTextEdit()
@@ -603,13 +602,32 @@ class RobotUI(QMainWindow):
         self.chat_panel = ChatPanel()
 
         # Mic button fills bottom half of log panel
-        self.chat_panel.voice_btn.setMinimumSize(0, 0)
-        self.chat_panel.voice_btn.setMaximumSize(16777215, 16777215)
-        self.chat_panel.voice_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.chat_panel.voice_btn.setStyleSheet(
-            self.chat_panel.voice_btn.styleSheet() + "font-size: 64px; border-top: 1px solid #2a3040;"
-        )
-        log_layout.addWidget(self.chat_panel.voice_btn, 1)
+        mic_btn = self.chat_panel.voice_btn
+        mic_btn.setFixedSize(225, 225)
+        mic_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        mic_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #214196;
+                color: #ffffff;
+                border: 3px solid #a8bce8;
+                border-radius: 112px;
+                font-size: 90px;
+            }
+            QPushButton:hover {
+                background-color: #1a3278;
+                border: 3px solid #fcb525;
+            }
+            QPushButton:checked {
+                background-color: #ef4444;
+                border: 3px solid #fca5a5;
+            }
+        """)
+        mic_label = QLabel("Nhấn vào tôi để nói")
+        mic_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        mic_label.setStyleSheet("color: #5a7abf; font-size: 25px; margin-top: -5px;")
+        mic_label.setFont(QFont("DM Sans", 11))
+        log_layout.addWidget(mic_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+        log_layout.addWidget(mic_label, 0, Qt.AlignmentFlag.AlignHCenter)
 
         # Horizontal splitter for log and chat
         panels_splitter = QWidget()
@@ -651,7 +669,7 @@ class RobotUI(QMainWindow):
         layout.setContentsMargins(16, 12, 20, 12)
 
         dot = QLabel("●")
-        dot.setStyleSheet("color: #6b7a99; font-size: 12px;")
+        dot.setStyleSheet("color: #8fa3cc; font-size: 12px;")
         dot.setFixedWidth(20)
 
         info = QVBoxLayout()
@@ -673,8 +691,8 @@ class RobotUI(QMainWindow):
         return {"widget": card, "dot": dot, "state": state_lbl}
 
     def _set_card_status(self, card, available):
-        color  = "#00c853" if available else "#ff3b3b"
-        text   = "Available" if available else "Unavailable"
+        color  = "#22c55e" if available else "#ef4444"
+        text   = "Hoạt động" if available else "Mất kết nối"
         obj    = "status-ok" if available else "status-error"
         card["dot"].setStyleSheet(f"color: {color}; font-size: 12px;")
         card["state"].setText(text)
@@ -682,7 +700,7 @@ class RobotUI(QMainWindow):
         card["state"].setStyleSheet(f"color: {color}; font-size: 14px;")
         border_side = f"border-left: 4px solid {color};"
         card["widget"].setStyleSheet(
-            f"QWidget#status-card {{ background-color: #1c2030; border: 1px solid #2a3040; "
+            f"QWidget#status-card {{ background-color: #ffffff; border: 1px solid #c8d4f0; "
             f"border-radius: 4px; {border_side} }}"
         )
 
@@ -692,9 +710,9 @@ class RobotUI(QMainWindow):
 
     def _pulse_reestimate(self):
         self._pulse_state = not self._pulse_state
-        color = "#00e5ff" if self._pulse_state else "#3a4460"
+        color = "#fcb525" if self._pulse_state else "#8fa3cc"
         self.btn_reestimate.setStyleSheet(
-            f"QPushButton#mode-btn {{ border-left: 4px solid {color}; color: #00e5ff; background-color: #1c2030; }}"
+            f"QPushButton#mode-btn {{ border-left: 4px solid {color}; color: #fcb525; background-color: #1a3278; }}"
         )
 
     def start_micro_ros(self):
@@ -704,9 +722,9 @@ class RobotUI(QMainWindow):
                 'source ~/zackon_build_up/install/setup.bash && '
                 'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash'
             ])
-            self.log("Started micro-ROS agent in new terminal")
+            self.log("Đã khởi động micro-ROS agent trong terminal mới")
         except Exception as e:
-            self.log(f"Failed to start micro-ROS agent: {e}")
+            self.log(f"Không thể khởi động micro-ROS agent: {e}")
 
     def update_status(self):
         now = time.monotonic()
@@ -717,7 +735,7 @@ class RobotUI(QMainWindow):
         )
         self._set_card_status(self.stm32_card, stm32_available)
         if self.prev_stm32_status is not None and self.prev_stm32_status != stm32_available:
-            self.log("STM32 connection lost" if not stm32_available else "STM32 connection restored")
+            self.log("Mất kết nối STM32" if not stm32_available else "Đã khôi phục kết nối STM32")
         self.prev_stm32_status = stm32_available
 
         front_available = (
@@ -726,7 +744,7 @@ class RobotUI(QMainWindow):
         )
         self._set_card_status(self.front_lidar_card, front_available)
         if self.prev_lidar_status is not None and self.prev_lidar_status != front_available:
-            self.log("LiDAR Front connection lost" if not front_available else "LiDAR Front connection restored")
+            self.log("Mất kết nối LiDAR trước" if not front_available else "Đã khôi phục kết nối LiDAR trước")
         self.prev_lidar_status = front_available
 
         rear_available = (
@@ -735,11 +753,11 @@ class RobotUI(QMainWindow):
         )
         self._set_card_status(self.rear_lidar_card, rear_available)
         if self.prev_lidar_rear_status is not None and self.prev_lidar_rear_status != rear_available:
-            self.log("LiDAR Rear connection lost" if not rear_available else "LiDAR Rear connection restored")
+            self.log("Mất kết nối LiDAR sau" if not rear_available else "Đã khôi phục kết nối LiDAR sau")
         self.prev_lidar_rear_status = rear_available
 
     def mode_changed(self, mode):
-        self.log(f"Mode changed to {mode}")
+        self.log(f"Đã chuyển sang chế độ {mode}")
         if mode == "Tracking":
             subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
             self.close()
@@ -752,18 +770,18 @@ class RobotUI(QMainWindow):
                     'gnome-terminal', '--', 'bash', '-c',
                     f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py; exec bash'
                 ])
-                self.log("Launched Nav2 navigation system")
+                self.log("Đã khởi động hệ thống điều hướng Nav2")
             except Exception as e:
-                self.log(f"Failed to launch Nav2: {e}")
+                self.log(f"Không thể khởi động Nav2: {e}")
 
     def start_reestimate(self):
         if self.prev_stm32_status == False:
-            self.log("Cannot start localization: STM32 not connected")
+            self.log("Không thể định vị: STM32 chưa kết nối")
             return
         if self.localization_thread and self.localization_thread.is_alive():
-            self.log("Localization already running")
+            self.log("Quá trình định vị đang chạy")
             return
-        self.log("Starting global relocalization")
+        self.log("Bắt đầu định vị toàn cục")
         self._reestimate_pulse_timer.start(600)
 
         self.localization_worker = LocalizationWorker()
@@ -781,12 +799,12 @@ class RobotUI(QMainWindow):
         self.localization_worker = None
 
     def start_new_map(self):
-        self.log("Switching to New Map mode")
+        self.log("Chuyển sang chế độ tạo bản đồ mới")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
         self.close()
 
     def start_docking(self):
-        self.log("Starting docking sequence")
+        self.log("Bắt đầu trình tự về trạm sạc")
         subprocess.Popen([
             'gnome-terminal', '--', 'bash', '-c',
             f'source {SOURCE_PATH}/install/setup.bash && '
@@ -798,7 +816,7 @@ class RobotUI(QMainWindow):
         if dialog.exec():
             map_name = dialog.get_selected_map()
             if map_name:
-                self.log(f"Loading map: {map_name}")
+                self.log(f"Đang tải bản đồ: {map_name}")
                 self.update_map_files(map_name)
 
     def update_map_files(self, map_name):
@@ -813,9 +831,9 @@ class RobotUI(QMainWindow):
             )
             with open(nav2_params, 'w') as f:
                 f.write(updated)
-            self.log("✓ Updated nav2_params.yaml")
+            self.log("✓ Đã cập nhật nav2_params.yaml")
         except Exception as e:
-            self.log(f"✗ Error updating nav2_params.yaml: {e}")
+            self.log(f"✗ Lỗi cập nhật nav2_params.yaml: {e}")
             return
         synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py'
         try:
@@ -827,9 +845,9 @@ class RobotUI(QMainWindow):
             )
             with open(synthesis_launch, 'w') as f:
                 f.write(updated)
-            self.log(f"✓ Updated NAV2_BRINGUP.launch.py")
+            self.log(f"✓ Đã cập nhật NAV2_BRINGUP.launch.py")
         except Exception as e:
-            self.log(f"✗ Error updating NAV2_BRINGUP.launch.py: {e}")
+            self.log(f"✗ Lỗi cập nhật NAV2_BRINGUP.launch.py: {e}")
             return
 
         localization_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_localization.launch.py'
@@ -842,12 +860,12 @@ class RobotUI(QMainWindow):
             )
             with open(localization_launch, 'w') as f:
                 f.write(updated)
-            self.log("✓ Updated zackon_localization.launch.py")
+            self.log("✓ Đã cập nhật zackon_localization.launch.py")
         except Exception as e:
-            self.log(f"✗ Error updating zackon_localization.launch.py: {e}")
+            self.log(f"✗ Lỗi cập nhật zackon_localization.launch.py: {e}")
             return
 
-        self.log("Building workspace...")
+        self.log("Đang build workspace...")
         try:
             subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
@@ -855,28 +873,28 @@ class RobotUI(QMainWindow):
                 '&& source install/setup.bash '
                 '&& echo "Build complete. Closing in 2 seconds..." && sleep 2'
             ])
-            self.log(f"✓ Map '{map_name}' loaded and workspace building")
+            self.log(f"✓ Bản đồ '{map_name}' đã tải và đang build workspace")
         except Exception as e:
-            self.log(f"✗ Error building workspace: {e}")
+            self.log(f"✗ Lỗi build workspace: {e}")
 
     def log(self, message):
         from datetime import datetime
         ts = datetime.now().strftime("%H:%M:%S")
         if "[ERROR]" in message:
-            color = "#ff3b3b"
+            color = "#ef4444"
         elif "[WARN]" in message:
-            color = "#ffb300"
+            color = "#f59e0b"
         elif "✓" in message or "restored" in message or "complete" in message.lower():
-            color = "#00c853"
+            color = "#22c55e"
         else:
-            color = "#e8ecf0"
+            color = "#1a2a5e"
         self.log_text.append(
-            f'<span style="color:#6b7a99">[{ts}]</span> '
+            f'<span style="color:#8fa3cc">[{ts}]</span> '
             f'<span style="color:{color}">{message}</span>'
         )
 
     def _on_ai_action(self, tag: str):
-        self.log(f"[AI-ACTION] {tag}")
+        self.log(f"[AI-HÀNH ĐỘNG] {tag}")
         if tag.startswith("LOAD_MAP:"):
             map_name = tag.split(":", 1)[1].strip()
             self.update_map_files(map_name)
@@ -888,23 +906,23 @@ class RobotUI(QMainWindow):
             self.update_status()
 
     def open_developer_mode(self):
-        self.log("Opening Developer Mode (Claude Code)")
+        self.log("Đang mở chế độ Developer (Claude Code)")
         try:
             subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
                 f'cd {SOURCE_PATH} && source install/setup.bash && claude; exec bash'
             ])
         except Exception as e:
-            self.log(f"[ERROR] Failed to open Developer Mode: {e}. Is 'claude' installed?")
+            self.log(f"[LỖI] Không thể mở chế độ Developer: {e}. 'claude' đã được cài chưa?")
 
     def _voice_go_to_waypoint(self, slots: str):
-        self.log(f"[Voice] Navigating to waypoint(s) {slots}")
+        self.log(f"[Giọng nói] Đang điều hướng đến địa điểm {slots}")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
                           '--go-to', slots])
         self.close()
 
     def _on_voice_ui_command(self, command: str):
-        self.log(f"[Voice] UI command: {command}")
+        self.log(f"[Giọng nói] Lệnh giao diện: {command}")
         if command == "LOAD_MAP":
             self.load_map()
         elif command == "NEW_MAP":

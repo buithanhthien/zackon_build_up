@@ -12,28 +12,28 @@ from chat_panel_widget import ChatPanel
 
 STYLESHEET = """
     QMainWindow, QWidget {
-        background-color: #0d0f12;
-        color: #e8ecf0;
+        background-color: #f0f4ff;
+        color: #1a2a5e;
         border: none;
     }
     QWidget#left-panel {
-        background-color: #141720;
-        border-right: 2px solid #2a3040;
+        background-color: #214196;
+        border-right: none;
     }
     QWidget#header-bar {
-        background-color: #141720;
-        border-bottom: 1px solid #2a3040;
+        background-color: transparent;
+        
     }
     QWidget#log-panel {
-        background-color: #080a0d;
-        border-top: 1px solid #2a3040;
+        background-color: #ffffff;
+        border-top: 1px solid #c8d4f0;
     }
     QWidget#content-panel {
-        background-color: #0d0f12;
+        background-color: #f0f4ff;
     }
     QPushButton#action-btn {
         background-color: transparent;
-        color: #6b7a99;
+        color: #a8bce8;
         border: none;
         border-left: 4px solid transparent;
         border-radius: 0px;
@@ -42,77 +42,94 @@ STYLESHEET = """
         font-size: 18px;
     }
     QPushButton#action-btn:hover {
-        background-color: #1a1f2e;
-        color: #e8ecf0;
-        border-left: 4px solid #3a4460;
+        background-color: #1a3278;
+        color: #ffffff;
+        border-left: 4px solid #fcb525;
     }
     QPushButton#action-btn:disabled {
-        color: #3a4460;
+        color: #4a6aaa;
         border-left: 4px solid transparent;
     }
     QPushButton#primary-btn {
-        background-color: #1c2030;
-        color: #00e5ff;
-        border: 1px solid #00e5ff;
-        border-radius: 4px;
+        background-color: #214196;
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
         font-size: 18px;
         min-height: 56px;
         padding: 0px 24px;
     }
     QPushButton#primary-btn:hover {
-        background-color: #1a2a3a;
+        background-color: #1a3278;
     }
     QPushButton#primary-btn:disabled {
-        color: #3a4460;
-        border: 1px solid #3a4460;
+        color: #a8bce8;
+        background-color: #e0e8f8;
     }
     QPushButton#apply-btn {
-        background-color: #1c2030;
-        color: #00c853;
-        border: 1px solid #00c853;
-        border-radius: 4px;
+        background-color: #fcb525;
+        color: #1a2a5e;
+        border: none;
+        border-radius: 8px;
         font-size: 16px;
         min-height: 48px;
         padding: 0px 20px;
     }
     QPushButton#apply-btn:hover {
-        background-color: #0d1f14;
+        background-color: #e8a510;
     }
     QLineEdit#map-input {
-        background-color: #1c2030;
-        color: #e8ecf0;
-        border: 1px solid #2a3040;
-        border-radius: 4px;
+        background-color: #ffffff;
+        color: #1a2a5e;
+        border: 1px solid #c8d4f0;
+        border-radius: 8px;
         font-size: 16px;
         min-height: 48px;
         padding: 0px 12px;
     }
     QLineEdit#map-input:focus {
-        border: 1px solid #3a4460;
+        border: 1px solid #214196;
     }
     QTextEdit#log-text {
-        background-color: #080a0d;
-        color: #e8ecf0;
+        background-color: #f8faff;
+        color: #1a2a5e;
         border: none;
         font-size: 13px;
     }
     QLabel#log-title {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 11px;
         letter-spacing: 2px;
     }
     QLabel#clock {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 15px;
     }
     QLabel#section-label {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 11px;
         letter-spacing: 2px;
     }
     QLabel#info-text {
-        color: #6b7a99;
+        color: #5a7abf;
         font-size: 14px;
+    }
+    QPushButton#panel-tab {
+        background-color: transparent;
+        color: #5a7abf;
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0px;
+        padding: 6px 16px;
+        font-size: 11px;
+        letter-spacing: 2px;
+    }
+    QPushButton#panel-tab:checked {
+        color: #214196;
+        
+    }
+    QPushButton#panel-tab:hover {
+        color: #214196;
     }
 """
 
@@ -140,9 +157,9 @@ class NewMapUI(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        wordmark = QLabel("NEW MAP")
+        wordmark = QLabel("BẢN ĐỒ MỚI")
         wordmark.setFont(QFont("JetBrains Mono", 14, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
         mono = QFont("JetBrains Mono", 18)
@@ -175,7 +192,7 @@ class NewMapUI(QMainWindow):
 
         header_title = QLabel("SLAM MAPPING")
         header_title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
-        header_title.setStyleSheet("color: #e8ecf0;")
+        header_title.setStyleSheet("color: #1a2a5e;")
 
         self.clock_label = QLabel()
         self.clock_label.setObjectName("clock")
@@ -193,7 +210,7 @@ class NewMapUI(QMainWindow):
         content_layout.setContentsMargins(32, 24, 32, 24)
         content_layout.setSpacing(16)
 
-        info = QLabel("Start SLAM Toolbox to generate a new map. Drive the robot to explore the environment, then save.")
+        info = QLabel("Khởi động SLAM Toolbox để tạo bản đồ mới, sau đó lưu lại. Điều khiển robot để khám phá môi trường")
         info.setObjectName("info-text")
         info.setFont(QFont("DM Sans", 14))
         info.setWordWrap(True)
@@ -206,7 +223,7 @@ class NewMapUI(QMainWindow):
         content_layout.addWidget(self.btn_start)
 
         # Save map row
-        save_label = QLabel("SAVE MAP")
+        save_label = QLabel("LƯU BẢN ĐỒ")
         save_label.setObjectName("section-label")
         save_label.setFont(QFont("DM Sans", 11))
         content_layout.addWidget(save_label)
@@ -241,7 +258,7 @@ class NewMapUI(QMainWindow):
         log_title.setObjectName("log-title")
         log_title.setFont(QFont("DM Sans", 11))
         live_badge = QLabel("● LIVE")
-        live_badge.setStyleSheet("color: #00c853; font-size: 11px;")
+        live_badge.setStyleSheet("color: #22c55e; font-size: 11px;")
         log_header.addWidget(log_title)
         log_header.addStretch()
         log_header.addWidget(live_badge)
@@ -254,33 +271,15 @@ class NewMapUI(QMainWindow):
         log_layout.addWidget(self.log_text)
 
         self.chat_widget = ChatPanel()
-        self.chat_widget.hide()
 
-        tab_bar = QWidget()
-        tab_bar.setFixedHeight(36)
-        tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
-        tab_layout = QHBoxLayout(tab_bar)
-        tab_layout.setContentsMargins(12, 0, 12, 0)
-        tab_layout.setSpacing(0)
-        tab_log  = QPushButton("SYSTEM LOG")
-        tab_chat = QPushButton("AI CHAT")
-        for tab in [tab_log, tab_chat]:
-            tab.setObjectName("panel-tab")
-            tab.setFont(QFont("DM Sans", 11))
-            tab.setCheckable(True)
-            tab.setAutoExclusive(True)
-            tab_layout.addWidget(tab)
-        tab_layout.addStretch()
-        self.tab_live_badge = QLabel("● LIVE")
-        self.tab_live_badge.setStyleSheet("color: #00c853; font-size: 11px; padding-right: 4px;")
-        tab_layout.addWidget(self.tab_live_badge)
-        tab_log.setChecked(True)
-        tab_log.clicked.connect(lambda: (log_panel.show(), self.chat_widget.hide(), self.tab_live_badge.show()))
-        tab_chat.clicked.connect(lambda: (log_panel.hide(), self.chat_widget.show(), self.tab_live_badge.hide(), self.chat_widget.focus_input()))
+        panels_splitter = QWidget()
+        panels_layout = QHBoxLayout(panels_splitter)
+        panels_layout.setContentsMargins(0, 0, 0, 0)
+        panels_layout.setSpacing(8)
+        panels_layout.addWidget(log_panel, 1)
+        panels_layout.addWidget(self.chat_widget, 1)
 
-        right_layout.addWidget(tab_bar)
-        right_layout.addWidget(log_panel, 1)
-        right_layout.addWidget(self.chat_widget, 1)
+        right_layout.addWidget(panels_splitter, 1)
 
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
@@ -299,63 +298,63 @@ class NewMapUI(QMainWindow):
             # Kill any leftover nav2/AMCL/map_server processes that may still publish old map
             for proc in ['nav2', 'amcl', 'map_server', 'lifecycle_manager', 'MAP_NAVIGATION']:
                 subprocess.run(['pkill', '-f', proc], check=False)
-            self.log("Killed leftover navigation processes")
+            self.log("Đã dừng các tiến trình điều hướng cũ")
 
             self.mapping_process = subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
                 'source ~/zackon_build_up/install/setup.bash && ros2 launch view_robot_pkg MAP_GENERATING.launch.py; exec bash'
             ])
-            self.log("✓ Started MAP_GENERATING.launch.py")
-            self.log("SLAM mapping is now active")
-            self.log("Drive the robot to explore the environment")
-            self.log("Enter a map name and click Apply to save")
+            self.log("✓ Đã khởi động MAP_GENERATING.launch.py")
+            self.log("SLAM đang hoạt động")
+            self.log("Điều khiển robot để khám phá môi trường")
+            self.log("Nhập tên bản đồ và nhấn Áp dụng để lưu")
             self.btn_start.setEnabled(False)
             self.btn_start.setText("Mapping Active...")
         except Exception as e:
-            self.log(f"[ERROR] Failed to start mapping: {e}")
+            self.log(f"[LỖI] Không thể bắt đầu lập bản đồ: {e}")
     
     def cancel_mapping(self):
-        self.log("Cancelling SLAM mapping process...")
+        self.log("Đang hủy quá trình lập bản đồ SLAM...")
         try:
             subprocess.run(['pkill', '-f', 'MAP_GENERATING.launch.py'], check=False)
             subprocess.run(['pkill', '-f', 'rviz2'], check=False)
-            self.log("Killed MAP_GENERATING and RViz2 processes")
+            self.log("Đã dừng MAP_GENERATING và RViz2")
         except Exception as e:
-            self.log(f"Error killing processes: {e}")
+            self.log(f"Lỗi khi dừng tiến trình: {e}")
         finally:
             self.mapping_process = None
             self.btn_start.setEnabled(True)
-            self.btn_start.setText("Start")
-            self.log("Start button restored to normal state")
+            self.btn_start.setText("Bắt đầu lập bản đồ")
+            self.log("Nút Bắt đầu đã được khôi phục")
     
     def save_map(self):
         map_name = self.map_name_input.text().strip()
         if not map_name:
-            self.log("Error: Please enter a map name")
+            self.log("Lỗi: Vui lòng nhập tên bản đồ")
             return
         
         map_path = f"{SOURCE_PATH}/src/view_robot/maps/{map_name}"
-        self.log(f"Saving map as '{map_name}' to maps folder...")
+        self.log(f"Đang lưu bản đồ '{map_name}' vào thư mục maps...")
         try:
             subprocess.Popen([
                 'gnome-terminal', '--', 'bash', '-c',
                 f'source ~/zackon_build_up/install/setup.bash && cd {SOURCE_PATH}/src/view_robot/maps && ros2 run nav2_map_server map_saver_cli -f {map_name}; exec bash'
             ])
-            self.log(f"Map saved to: {map_path}")
+            self.log(f"Đã lưu bản đồ tại: {map_path}")
         except Exception as e:
-            self.log(f"Failed to save map: {e}")
+            self.log(f"Không thể lưu bản đồ: {e}")
     
     def go_back(self):
-        self.log("Returning to main UI")
+        self.log("Quay về giao diện chính")
         if self.mapping_process:
-            self.log("Stopping SLAM mapping process...")
+            self.log("Đang dừng quá trình SLAM...")
             try:
                 self.mapping_process.terminate()
                 self.mapping_process.wait(timeout=3)
-                self.log("SLAM process terminated")
+                self.log("Đã dừng tiến trình SLAM")
             except:
                 self.mapping_process.kill()
-                self.log("SLAM process killed")
+                self.log("Đã buộc dừng tiến trình SLAM")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
@@ -369,9 +368,9 @@ class NewMapUI(QMainWindow):
         elif "✓" in message:
             color = "#00c853"
         else:
-            color = "#e8ecf0"
+            color = "#1a2a5e"
         self.log_text.append(
-            f'<span style="color:#6b7a99">[{ts}]</span> <span style="color:{color}">{message}</span>'
+            f'<span style="color:#8fa3cc">[{ts}]</span> <span style="color:{color}">{message}</span>'
         )
     
     def closeEvent(self, event):

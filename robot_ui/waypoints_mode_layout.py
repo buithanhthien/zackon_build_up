@@ -4,9 +4,9 @@ import json
 import subprocess
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                              QLabel, QGridLayout, QTextEdit, QApplication, QMainWindow, QSizePolicy,
-                              QDialog, QLineEdit)
-from PyQt6.QtCore import Qt, QTimer, QPointF, QMetaObject, Q_ARG
+                              QLabel, QListWidget, QListWidgetItem, QTextEdit,
+                              QApplication, QMainWindow, QSizePolicy, QDialog, QLineEdit)
+from PyQt6.QtCore import Qt, QTimer, QPointF, QMetaObject, Q_ARG, pyqtSignal
 from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform, QFontDatabase
 import rclpy
@@ -19,6 +19,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
 from chat_panel_widget import ChatPanel, _AIChatWorker
+from load_map_dialog import LoadMapDialog
 from PyQt6.QtCore import QThread
 
 
@@ -160,6 +161,337 @@ class NewWaypointDialog(QDialog):
 
     def get_name(self):
         return self.name_input.text().strip()
+
+
+class WaypointPickerDialog(QDialog):
+    def __init__(self, waypoints, current_map_name, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Chọn địa điểm")
+        self.setModal(True)
+        self.resize(480, 560)
+        self._selected_key = None
+        self.setStyleSheet("""
+            QDialog { background-color: #f0f4ff; color: #1a2a5e; }
+            QLabel#title { color: #5a7abf; font-size: 11px; letter-spacing: 2px; padding-bottom: 8px; }
+            QListWidget {
+                background-color: #ffffff; color: #1a2a5e;
+                border: 1px solid #c8d4f0; border-radius: 8px;
+                font-size: 15px; outline: none;
+            }
+            QListWidget::item { padding: 12px 16px; border-bottom: 1px solid #e8f0ff; }
+            QListWidget::item:hover { background-color: #e8f0ff; color: #214196; }
+            QListWidget::item:selected { background-color: #214196; color: #ffffff; border-left: 3px solid #fcb525; }
+            QPushButton#ok-btn {
+                background-color: #214196; color: #ffffff;
+                border: none; border-radius: 8px; font-size: 15px; min-height: 44px;
+            }
+            QPushButton#ok-btn:hover { background-color: #1a3278; }
+            QPushButton#ok-btn:disabled { color: #a8bce8; background-color: #e0e8f8; }
+            QPushButton#cancel-btn {
+                background-color: transparent; color: #5a7abf;
+                border: 1px solid #c8d4f0; border-radius: 8px; font-size: 15px; min-height: 44px;
+            }
+            QPushButton#cancel-btn:hover { background-color: #e8f0ff; color: #214196; border: 1px solid #214196; }
+        """)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        title = QLabel("ĐỊA ĐIỂM")
+        title.setObjectName("title")
+        title.setFont(QFont("DM Sans", 11))
+        layout.addWidget(title)
+
+        self.list_widget = QListWidget()
+        self.list_widget.setFont(QFont("JetBrains Mono", 15))
+        for key, data in waypoints.items():
+            if data.get('map_name') == current_map_name:
+                self.list_widget.addItem(QListWidgetItem(key))
+        self.list_widget.itemClicked.connect(lambda item: setattr(self, '_selected_key', item.text()))
+        self.list_widget.itemDoubleClicked.connect(lambda item: (setattr(self, '_selected_key', item.text()), self.accept()))
+        layout.addWidget(self.list_widget)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        self.btn_ok = QPushButton("Đi tới")
+        self.btn_ok.setObjectName("ok-btn")
+        self.btn_ok.setFont(QFont("JetBrains Mono", 15))
+        self.btn_ok.setEnabled(False)
+        self.btn_ok.clicked.connect(self.accept)
+        self.list_widget.itemClicked.connect(lambda: self.btn_ok.setEnabled(True))
+        btn_cancel = QPushButton("Hủy")
+        btn_cancel.setObjectName("cancel-btn")
+        btn_cancel.setFont(QFont("JetBrains Mono", 15))
+        btn_cancel.clicked.connect(self.reject)
+        btn_row.addWidget(self.btn_ok)
+        btn_row.addWidget(btn_cancel)
+        layout.addLayout(btn_row)
+
+    def get_selected_key(self):
+        return self._selected_key
+
+
+DIALOG_STYLE = """
+    QDialog { background-color: #f0f4ff; color: #1a2a5e; }
+    QLabel#title { color: #5a7abf; font-size: 11px; letter-spacing: 2px; padding-bottom: 4px; }
+    QLabel#seq-label { color: #5a7abf; font-size: 11px; letter-spacing: 2px; padding-bottom: 4px; }
+    QListWidget {
+        background-color: #ffffff; color: #1a2a5e;
+        border: 1px solid #c8d4f0; border-radius: 8px; font-size: 15px; outline: none;
+    }
+    QListWidget::item { padding: 10px 16px; border-bottom: 1px solid #e8f0ff; }
+    QListWidget::item:hover { background-color: #e8f0ff; color: #214196; }
+    QListWidget::item:selected { background-color: #214196; color: #ffffff; border-left: 3px solid #fcb525; }
+    QTextEdit { background-color: #ffffff; color: #1a2a5e; border: 1px solid #c8d4f0; border-radius: 8px; font-size: 14px; padding: 8px; }
+    QLineEdit {
+        background-color: #ffffff; color: #1a2a5e;
+        border: 1px solid #c8d4f0; border-radius: 8px; font-size: 15px; padding: 10px 14px;
+    }
+    QLineEdit:focus { border: 1px solid #214196; }
+    QPushButton#primary-btn {
+        background-color: #214196; color: #ffffff;
+        border: none; border-radius: 8px; font-size: 15px; min-height: 44px;
+    }
+    QPushButton#primary-btn:hover { background-color: #1a3278; }
+    QPushButton#primary-btn:disabled { color: #a8bce8; background-color: #e0e8f8; }
+    QPushButton#secondary-btn {
+        background-color: transparent; color: #5a7abf;
+        border: 1px solid #c8d4f0; border-radius: 8px; font-size: 15px; min-height: 44px;
+    }
+    QPushButton#secondary-btn:hover { background-color: #e8f0ff; color: #214196; border: 1px solid #214196; }
+"""
+
+
+class PathManagerDialog(QDialog):
+    """Shows saved paths from multi_waypoints.json. Run path / New path / Back."""
+    run_path_requested = pyqtSignal(list)   # emits sequence of keys
+
+    def __init__(self, multi_wp_file, current_map, parent=None):
+        super().__init__(parent)
+        self.multi_wp_file = multi_wp_file
+        self.current_map = current_map
+        self.setWindowTitle("Tạo lộ trình")
+        self.setModal(True)
+        self.resize(480, 520)
+        self.setStyleSheet(DIALOG_STYLE)
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        title = QLabel("LỘ TRÌNH ĐÃ LƯU")
+        title.setObjectName("title")
+        title.setFont(QFont("DM Sans", 11))
+        layout.addWidget(title)
+
+        self.list_widget = QListWidget()
+        self.list_widget.setFont(QFont("JetBrains Mono", 15))
+        self._reload_list()
+        layout.addWidget(self.list_widget)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        self.btn_run = QPushButton("Run path")
+        self.btn_run.setObjectName("primary-btn")
+        self.btn_run.setFont(QFont("JetBrains Mono", 15))
+        self.btn_run.setEnabled(False)
+        self.btn_run.clicked.connect(self._on_run)
+
+        btn_new = QPushButton("New path")
+        btn_new.setObjectName("primary-btn")
+        btn_new.setFont(QFont("JetBrains Mono", 15))
+        btn_new.clicked.connect(self._on_new)
+
+        btn_remove = QPushButton("Remove path")
+        btn_remove.setObjectName("secondary-btn")
+        btn_remove.setFont(QFont("JetBrains Mono", 15))
+        btn_remove.clicked.connect(self._on_remove)
+
+        btn_back = QPushButton("Back")
+        btn_back.setObjectName("secondary-btn")
+        btn_back.setFont(QFont("JetBrains Mono", 15))
+        btn_back.clicked.connect(self.reject)
+
+        btn_row.addWidget(self.btn_run)
+        btn_row.addWidget(btn_new)
+        btn_row.addWidget(btn_remove)
+        btn_row.addWidget(btn_back)
+        layout.addLayout(btn_row)
+
+        self.list_widget.itemClicked.connect(lambda: self.btn_run.setEnabled(True))
+
+    def _reload_list(self):
+        self.list_widget.clear()
+        try:
+            with open(self.multi_wp_file) as f:
+                data = json.load(f)
+            for name, info in data.items():
+                if info.get('map_name') == self.current_map:
+                    seq = ', '.join(info.get('sequence', []))
+                    self.list_widget.addItem(QListWidgetItem(f"{name}  [{seq}]"))
+        except Exception:
+            pass
+
+    def _on_run(self):
+        item = self.list_widget.currentItem()
+        if not item:
+            return
+        path_name = item.text().split('  [')[0]
+        try:
+            with open(self.multi_wp_file) as f:
+                data = json.load(f)
+            sequence = data[path_name]['sequence']
+            self.run_path_requested.emit(sequence)
+            self.accept()
+        except Exception:
+            pass
+
+    def _on_new(self):
+        self.done(2)   # custom code 2 = open NewPathDialog
+
+    def _on_remove(self):
+        item = self.list_widget.currentItem()
+        if not item:
+            return
+        path_name = item.text().split('  [')[0]
+        from PyQt6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self, "Xác nhận xóa",
+            f"Bạn có chắc muốn xóa lộ trình '{path_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            with open(self.multi_wp_file) as f:
+                data = json.load(f)
+            if path_name in data:
+                del data[path_name]
+                with open(self.multi_wp_file, 'w') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                self._reload_list()
+                self.btn_run.setEnabled(False)
+        except Exception:
+            pass
+
+
+class NewPathDialog(QDialog):
+    """Select goals in sequence, name the path, confirm to save."""
+
+    def __init__(self, waypoints, current_map, multi_wp_file, parent=None):
+        super().__init__(parent)
+        self.waypoints = waypoints
+        self.current_map = current_map
+        self.multi_wp_file = multi_wp_file
+        self.sequence = []
+        self.setWindowTitle("Lộ trình mới")
+        self.setModal(True)
+        self.resize(700, 520)
+        self.setStyleSheet(DIALOG_STYLE)
+        self._build_ui()
+
+    def _build_ui(self):
+        root = QHBoxLayout(self)
+        root.setContentsMargins(20, 20, 20, 20)
+        root.setSpacing(16)
+
+        # ── Left: sequence preview ──
+        left = QVBoxLayout()
+        seq_label = QLabel("THỨ TỰ LỘ TRÌNH")
+        seq_label.setObjectName("seq-label")
+        seq_label.setFont(QFont("DM Sans", 11))
+        left.addWidget(seq_label)
+
+        self.seq_text = QTextEdit()
+        self.seq_text.setReadOnly(True)
+        self.seq_text.setFont(QFont("JetBrains Mono", 14))
+        self.seq_text.setPlaceholderText("(chưa chọn)")
+        left.addWidget(self.seq_text, 1)
+
+        name_label = QLabel("TÊN LỘ TRÌNH")
+        name_label.setObjectName("seq-label")
+        name_label.setFont(QFont("DM Sans", 11))
+        left.addWidget(name_label)
+
+        self.name_input = QLineEdit()
+        self.name_input.setFont(QFont("JetBrains Mono", 14))
+        self.name_input.setPlaceholderText("Nhập tên...")
+        left.addWidget(self.name_input)
+
+        root.addLayout(left, 1)
+
+        # ── Right: goal list + buttons ──
+        right = QVBoxLayout()
+        goal_label = QLabel("ĐỊA ĐIỂM")
+        goal_label.setObjectName("title")
+        goal_label.setFont(QFont("DM Sans", 11))
+        right.addWidget(goal_label)
+
+        self.goal_list = QListWidget()
+        self.goal_list.setFont(QFont("JetBrains Mono", 14))
+        for key, data in self.waypoints.items():
+            if data.get('map_name') == self.current_map:
+                self.goal_list.addItem(QListWidgetItem(key))
+        self.goal_list.itemClicked.connect(self._add_goal)
+        right.addWidget(self.goal_list, 1)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        btn_confirm = QPushButton("Confirm")
+        btn_confirm.setObjectName("primary-btn")
+        btn_confirm.setFont(QFont("JetBrains Mono", 14))
+        btn_confirm.clicked.connect(self._confirm)
+
+        btn_undo = QPushButton("Undo")
+        btn_undo.setObjectName("secondary-btn")
+        btn_undo.setFont(QFont("JetBrains Mono", 14))
+        btn_undo.clicked.connect(self._undo)
+
+        btn_back = QPushButton("Back")
+        btn_back.setObjectName("secondary-btn")
+        btn_back.setFont(QFont("JetBrains Mono", 14))
+        btn_back.clicked.connect(self.reject)
+
+        btn_row.addWidget(btn_confirm)
+        btn_row.addWidget(btn_undo)
+        btn_row.addWidget(btn_back)
+        right.addLayout(btn_row)
+
+        root.addLayout(right, 1)
+
+    def _add_goal(self, item):
+        self.sequence.append(item.text())
+        self._refresh_preview()
+
+    def _undo(self):
+        if self.sequence:
+            self.sequence.pop()
+            self._refresh_preview()
+
+    def _refresh_preview(self):
+        lines = [f"{i+1}. {k}" for i, k in enumerate(self.sequence)]
+        self.seq_text.setPlainText('\n'.join(lines))
+
+    def _confirm(self):
+        name = self.name_input.text().strip()
+        if not name:
+            self.name_input.setPlaceholderText("⚠ Nhập tên trước!")
+            return
+        if not self.sequence:
+            return
+        try:
+            with open(self.multi_wp_file) as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+        data[name] = {'map_name': self.current_map, 'sequence': self.sequence}
+        with open(self.multi_wp_file, 'w') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        self.accept()
 
 
 class WaypointsModeLayout(QMainWindow):
@@ -322,21 +654,19 @@ class WaypointsModeLayout(QMainWindow):
         left_layout.addWidget(wordmark)
 
         mono = QFont("JetBrains Mono", 18)
-        self.save_btn  = QPushButton("Save")
-        self.clear_btn = QPushButton("Clear")
-        self.run_btn   = QPushButton("Run")
-        self.reset_btn = QPushButton("Reset")
-        self.stop_btn  = QPushButton("Stop")
-        self.new_btn   = QPushButton("New")
-        self.back_btn  = QPushButton("Back")
+        self.load_map_btn   = QPushButton("Tải bản đồ")
+        self.waypoints_btn  = QPushButton("Địa điểm")
+        self.lo_trinh_btn   = QPushButton("Tạo lộ trình")
+        self.new_btn        = QPushButton("Tạo địa điểm mới")
+        self.stop_btn       = QPushButton("Dừng")
+        self.back_btn       = QPushButton("Quay lại")
 
-        for btn in [self.save_btn, self.clear_btn, self.run_btn,
-                    self.reset_btn, self.stop_btn, self.new_btn, self.back_btn]:
+        for btn in [self.load_map_btn, self.waypoints_btn, self.lo_trinh_btn,
+                    self.new_btn, self.stop_btn, self.back_btn]:
             btn.setObjectName("action-btn")
             btn.setFont(mono)
             btn.setMinimumHeight(64)
-            btn.setCheckable(True)
-            btn.setAutoExclusive(False)
+            btn.setCheckable(False)
             left_layout.addWidget(btn)
 
         # Position section
@@ -362,12 +692,11 @@ class WaypointsModeLayout(QMainWindow):
 
         left_layout.addStretch()
 
-        self.save_btn.clicked.connect(lambda: self.set_mode('save'))
-        self.clear_btn.clicked.connect(lambda: self.set_mode('clear'))
-        self.run_btn.clicked.connect(self.run_sequence)
-        self.reset_btn.clicked.connect(self.reset_sequence)
-        self.stop_btn.clicked.connect(self.stop_navigation)
+        self.load_map_btn.clicked.connect(self.load_map)
+        self.waypoints_btn.clicked.connect(self.open_waypoint_picker)
+        self.lo_trinh_btn.clicked.connect(self.open_path_manager)
         self.new_btn.clicked.connect(self.open_new_waypoint_dialog)
+        self.stop_btn.clicked.connect(self.stop_navigation)
         self.back_btn.clicked.connect(self.go_back)
 
         # ── Right area ────────────────────────────────────────────────────────
@@ -386,6 +715,7 @@ class WaypointsModeLayout(QMainWindow):
         header_title = QLabel("WAYPOINTS MODE")
         header_title.setObjectName("header-title")
         header_title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
+        header_title.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
 
         self.clock_label = QLabel()
         self.clock_label.setObjectName("clock")
@@ -396,12 +726,12 @@ class WaypointsModeLayout(QMainWindow):
         header_layout.addWidget(self.clock_label)
         right_layout.addWidget(header)
 
-        # Map + waypoint grid
+        # Map + mic
         map_container = QWidget()
         map_container.setStyleSheet("background-color: #f0f4ff; padding: 12px;")
         map_layout = QVBoxLayout(map_container)
-        map_layout.setContentsMargins(12, 12, 12, 12)
-        map_layout.setSpacing(8)
+        map_layout.setContentsMargins(12, 12, 12, 0)
+        map_layout.setSpacing(0)
 
         map_yaml_path = self.get_current_map_path()
         map_dir = os.path.dirname(map_yaml_path)
@@ -429,20 +759,7 @@ class WaypointsModeLayout(QMainWindow):
         map_and_mic_layout.setSpacing(8)
         map_and_mic_layout.addWidget(self.map_widget, 3)
         map_and_mic_layout.addWidget(mic_btn, 1)
-        map_layout.addWidget(map_and_mic, 2)
-
-        grid_layout = QGridLayout()
-        grid_layout.setSpacing(6)
-        self.waypoint_btns = []
-        for i in range(10):
-            btn = QPushButton(str(i + 1))
-            btn.setObjectName("wp-btn")
-            btn.setFont(QFont("JetBrains Mono", 16))
-            btn.setMinimumHeight(48)
-            btn.clicked.connect(lambda checked, idx=i: self.waypoint_clicked(idx))
-            grid_layout.addWidget(btn, i // 5, i % 5)
-            self.waypoint_btns.append(btn)
-        map_layout.addLayout(grid_layout)
+        map_layout.addWidget(map_and_mic)
 
         right_layout.addWidget(map_container, 2)
 
@@ -482,13 +799,11 @@ class WaypointsModeLayout(QMainWindow):
         self.clock_timer.start(1000)
         self._update_clock()
 
-        self.update_button_colors()
+        self.update_map_waypoints()
         self.log("Mode changed to waypoints")
 
         if not self.ros_node.nav_server_available:
             self.log("[WARN] Nav2 action server not available")
-            for btn in self.waypoint_btns:
-                btn.setEnabled(False)
 
     def _auto_start_voice(self):
         self.chat_widget._voice_enabled = True
@@ -537,69 +852,6 @@ class WaypointsModeLayout(QMainWindow):
             self.orient_label.setText(f"qx: {o.x:.2f}   qy: {o.y:.2f}\nqz: {o.z:.2f}   qw: {o.w:.2f}")
             self.map_widget.set_robot_pose(msg)
     
-    def set_mode(self, mode):
-        if self.current_mode == mode:
-            self.current_mode = None
-            self.log(f'Mode: {mode.capitalize()} cancelled')
-        else:
-            self.current_mode = mode
-            self.log(f'Mode: {mode.capitalize()} - select a slot')
-        
-    def waypoint_clicked(self, idx):
-        slot_num = idx + 1
-        
-        if self.current_mode == 'save':
-            self.save_waypoint(slot_num)
-            self.current_mode = None
-        elif self.current_mode == 'clear':
-            self.clear_waypoint(slot_num)
-            self.current_mode = None
-        else:
-            if str(slot_num) not in self.waypoints:
-                self.log(f'Slot {slot_num} is empty')
-                return
-            
-            if self.selected_sequence and self.selected_sequence[-1] == slot_num:
-                self.log(f'Cannot select slot {slot_num} consecutively')
-                return
-            
-            self.selected_sequence.append(slot_num)
-            self.log(f'Added slot {slot_num} to sequence: {self.selected_sequence}')
-            self.update_button_colors()
-        
-    def save_waypoint(self, slot_num):
-        if str(slot_num) in self.waypoints:
-            self.log(f'Slot {slot_num} already has data. Clear it first.')
-            return
-            
-        if self.ros_node.current_pose:
-            pose = self.ros_node.current_pose
-            self.waypoints[str(slot_num)] = {
-                'x': pose.pose.pose.position.x,
-                'y': pose.pose.pose.position.y,
-                'z': pose.pose.pose.position.z,
-                'qx': pose.pose.pose.orientation.x,
-                'qy': pose.pose.pose.orientation.y,
-                'qz': pose.pose.pose.orientation.z,
-                'qw': pose.pose.pose.orientation.w
-            }
-            self.save_waypoints()
-            self.log(f'Saved to slot {slot_num}')
-            self.update_button_colors()
-            self.map_widget.set_waypoints(self.waypoints)
-        else:
-            self.log('No pose data available')
-            
-    def clear_waypoint(self, slot_num):
-        if str(slot_num) in self.waypoints:
-            del self.waypoints[str(slot_num)]
-            self.save_waypoints()
-            self.log(f'Cleared slot {slot_num}')
-            self.update_button_colors()
-            self.map_widget.set_waypoints(self.waypoints)
-        else:
-            self.log(f'Slot {slot_num} is already empty')
-            
     def navigate_to_waypoint(self, slot_num):
         if str(slot_num) not in self.waypoints:
             self.log(f'[NAV] Slot "{slot_num}" not found in waypoints')
@@ -715,15 +967,52 @@ class WaypointsModeLayout(QMainWindow):
         self.selected_sequence = []
         self.log('Sequence cleared')
         
-    def update_button_colors(self):
-        for i, btn in enumerate(self.waypoint_btns):
-            filled = str(i + 1) in self.waypoints
-            selected = (i + 1) in self.selected_sequence
-            btn.setProperty("filled", "true" if filled else "false")
-            btn.setProperty("selected", "true" if selected else "false")
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
-                
+    def update_map_waypoints(self):
+        """Show only waypoints belonging to the current map on the map widget."""
+        current_map = self._get_current_map_name()
+        filtered = {k: v for k, v in self.waypoints.items()
+                    if v.get('map_name') == current_map}
+        self.map_widget.set_waypoints(filtered)
+
+    def _get_current_map_name(self):
+        """Return the stem of the current map file (e.g. 'X5_130426')."""
+        path = self.get_current_map_path()
+        return os.path.splitext(os.path.basename(path))[0]
+
+    def open_waypoint_picker(self):
+        dialog = WaypointPickerDialog(self.waypoints, self._get_current_map_name(), self)
+        if dialog.exec():
+            key = dialog.get_selected_key()
+            if key:
+                self.log(f'Navigating to: {key}')
+                self.selected_sequence = [key]
+                self.running_sequence = True
+                self.current_sequence_index = 0
+                self.navigate_to_waypoint(key)
+
+    def open_path_manager(self):
+        multi_wp_file = f'{SOURCE_PATH}/robot_ui/multi_waypoints.json'
+        current_map = self._get_current_map_name()
+        while True:
+            dlg = PathManagerDialog(multi_wp_file, current_map, self)
+            dlg.run_path_requested.connect(self._run_multi_path)
+            result = dlg.exec()
+            if result == 2:   # New path
+                new_dlg = NewPathDialog(self.waypoints, current_map, multi_wp_file, self)
+                new_dlg.exec()
+                # loop back to PathManagerDialog with refreshed list
+                continue
+            break   # accepted (run) or rejected (back)
+
+    def _run_multi_path(self, sequence):
+        if not sequence:
+            return
+        self.log(f'Running path: {sequence}')
+        self.selected_sequence = sequence
+        self.running_sequence = True
+        self.current_sequence_index = 0
+        self.navigate_to_waypoint(sequence[0])
+
     def load_waypoints(self):
         try:
             with open(self.waypoints_file, 'r') as f:
@@ -839,10 +1128,83 @@ class WaypointsModeLayout(QMainWindow):
                 'qy': pose.pose.pose.orientation.y,
                 'qz': pose.pose.pose.orientation.z,
                 'qw': pose.pose.pose.orientation.w,
+                'map_name': self._get_current_map_name(),
             }
             self.save_waypoints()
-            self.map_widget.set_waypoints(self.waypoints)
+            self.update_map_waypoints()
             self.log(f'Saved new waypoint: {name}')
+
+    def load_map(self):
+        dialog = LoadMapDialog(self)
+        if dialog.exec():
+            map_name = dialog.get_selected_map()
+            if map_name:
+                self.log(f"Loading map: {map_name}")
+                self.update_map_files(map_name)
+
+    def update_map_files(self, map_name):
+        import re
+        map_path = f'{SOURCE_PATH}/src/view_robot/maps/{map_name}.yaml'
+        nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
+        try:
+            with open(nav2_params, 'r') as f:
+                content = f.read()
+            updated = re.sub(r'(yaml_filename:\s*")[^"]*(")', rf'\1{map_path}\2', content)
+            with open(nav2_params, 'w') as f:
+                f.write(updated)
+            self.log("✓ Updated nav2_params.yaml")
+        except Exception as e:
+            self.log(f"✗ Error updating nav2_params.yaml: {e}")
+            return
+        synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py'
+        try:
+            with open(synthesis_launch, 'r') as f:
+                content = f.read()
+            updated = re.sub(
+                r"(map_file_path\s*=\s*PathJoinSubstitution\(\[pkg_dir,\s*'maps',\s*')[^']*('\]\))",
+                rf"\1{map_name}.yaml\2", content
+            )
+            with open(synthesis_launch, 'w') as f:
+                f.write(updated)
+            self.log("✓ Updated NAV2_BRINGUP.launch.py")
+        except Exception as e:
+            self.log(f"✗ Error updating NAV2_BRINGUP.launch.py: {e}")
+            return
+        localization_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_localization.launch.py'
+        try:
+            with open(localization_launch, 'r') as f:
+                content = f.read()
+            updated = re.sub(
+                r"(default_value=os\.path\.join\(bringup_dir,\s*'maps',\s*')[^']*('\))",
+                rf"\1{map_name}.yaml\2", content
+            )
+            with open(localization_launch, 'w') as f:
+                f.write(updated)
+            self.log("✓ Updated zackon_localization.launch.py")
+        except Exception as e:
+            self.log(f"✗ Error updating zackon_localization.launch.py: {e}")
+            return
+        self.log("Building workspace...")
+        try:
+            subprocess.Popen([
+                'gnome-terminal', '--', 'bash', '-c',
+                'cd ~/zackon_build_up && colcon build --packages-select view_robot_pkg '
+                '&& source install/setup.bash '
+                '&& echo "Build complete. Closing in 2 seconds..." && sleep 2'
+            ])
+            self.log(f"✓ Map '{map_name}' loaded and workspace building")
+            # Reload map display with new map image
+            map_yaml_path = self.get_current_map_path()
+            map_dir = os.path.dirname(map_yaml_path)
+            yaml_data = self.load_map_yaml(map_yaml_path)
+            map_image_path = os.path.join(map_dir, yaml_data['image'])
+            self.map_widget.map_image = QPixmap(map_image_path)
+            self.map_widget.resolution = yaml_data['resolution']
+            self.map_widget.origin = yaml_data['origin']
+            self.update_map_waypoints()
+            self.map_widget.update()
+        except Exception as e:
+            self.log(f"✗ Error building workspace: {e}")
 
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:

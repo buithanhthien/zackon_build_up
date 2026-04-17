@@ -508,8 +508,7 @@ class RobotUI(QMainWindow):
             btn.setObjectName("mode-btn")
             btn.setFont(mono)
             btn.setMinimumHeight(72)
-            btn.setCheckable(True)
-            btn.setAutoExclusive(False)
+            btn.setCheckable(False)
             left_layout.addWidget(btn)
 
         left_layout.addStretch()

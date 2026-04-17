@@ -59,6 +59,20 @@ public:
     require_fresh_odom_ = declare_parameter<bool>("require_fresh_odom", false);
     odom_timeout_ = declare_parameter<double>("odom_timeout", 0.50);
 
+    // PREALIGN thresholds
+    prealign_y_threshold_ = declare_parameter<double>("prealign_y_threshold", 0.05);
+    prealign_yaw_threshold_ = declare_parameter<double>("prealign_yaw_threshold", 0.15);
+
+    // PREALIGN gains
+    // k_prealign_y_ = declare_parameter<double>("k_prealign_y", 2.5);
+    k_prealign_y_ = declare_parameter<double>("k_prealign_y", 4.5);
+
+    k_prealign_yaw_ = declare_parameter<double>("k_prealign_yaw", 0.8);
+
+    // PREALIGN velocity limits
+    v_prealign_max_ = declare_parameter<double>("v_prealign_max", 0.08);
+    w_prealign_max_ = declare_parameter<double>("w_prealign_max", 0.5);
+
     dock_pose_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       dock_pose_topic_, 10,
       std::bind(&RearDockingControllerNode::dockPoseCallback, this, std::placeholders::_1));
@@ -201,6 +215,42 @@ private:
     cmd_pub_->publish(cmd);
   }
 
+  void publishPrealignMotion(double x, double y, double yaw)
+  {
+    geometry_msgs::msg::Twist cmd;
+
+    // Angular control: prioritize reducing y, then yaw
+    double w_cmd = -k_prealign_y_ * y - k_prealign_yaw_ * yaw;
+    w_cmd = clamp(w_cmd, -w_prealign_max_, w_prealign_max_);
+
+    // Linear control: small adjustments to help alignment
+    double v_cmd = 0.0;
+
+    if (std::abs(y) < 0.08) {
+      if (x < -0.55) {
+        v_cmd = -0.04;  // reverse slightly if too far
+      } else if (x > -0.40) {
+        v_cmd = 0.04;   // forward slightly if too close
+      } else {
+        v_cmd = 0.0;
+      }
+    } else {
+      v_cmd = 0.0;  // prioritize rotation when y is large
+    }
+
+    v_cmd = clamp(v_cmd, -v_prealign_max_, v_prealign_max_);
+
+    cmd.linear.x = v_cmd;
+    cmd.angular.z = w_cmd;
+
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 200,
+      "[rear_docking_ctrl] PREALIGN pose=(x=%.3f y=%.3f yaw=%.3f) cmd=(vx=%.3f wz=%.3f)",
+      x, y, yaw, cmd.linear.x, cmd.angular.z);
+
+    cmd_pub_->publish(cmd);
+  }
+
   void controlLoop()
   {
     // ===============================
@@ -314,6 +364,31 @@ private:
     }
 
     // ===============================
+    // PREALIGN GATE
+    // ===============================
+    const bool need_prealign =
+      (std::abs(y) > prealign_y_threshold_) ||
+      (std::abs(yaw) > prealign_yaw_threshold_);
+
+    if (need_prealign) {
+      state_ = DockState::PREALIGN;
+    } else {
+      if (state_ == DockState::PREALIGN) {
+        RCLCPP_INFO(
+          get_logger(),
+          "[rear_docking_ctrl] PREALIGN completed -> TRACK MODE");
+      }
+      state_ = DockState::TRACK;
+    }
+
+    if (state_ == DockState::PREALIGN) {
+      publishDockedStatusIfChanged(0);
+      docked_counter_ = 0;
+      publishPrealignMotion(x, y, yaw);
+      return;
+    }
+
+    // ===============================
     // DOCKED ZONE CHECK
     // ===============================
     const double docked_limit = stop_distance_ + docked_tolerance_;
@@ -385,6 +460,7 @@ private:
   {
     TRACK,
     SEARCH,
+    PREALIGN,
     DOCKED
   };
 
@@ -429,6 +505,15 @@ private:
 
   bool require_fresh_odom_;
   double odom_timeout_;
+
+  double prealign_y_threshold_;
+  double prealign_yaw_threshold_;
+
+  double k_prealign_y_;
+  double k_prealign_yaw_;
+
+  double v_prealign_max_;
+  double w_prealign_max_;
 
   int last_docked_status_value_ = -1;
 

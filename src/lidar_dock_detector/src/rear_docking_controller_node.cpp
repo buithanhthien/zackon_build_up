@@ -38,12 +38,14 @@ public:
     w_max_ = declare_parameter<double>("w_max", 0.4);
 
     // Thresholds
-    stop_distance_ = declare_parameter<double>("stop_distance", 0.146);
+    stop_distance_ = declare_parameter<double>("stop_distance", 0.15);
     slowdown_distance_ = declare_parameter<double>("slowdown_distance", 0.40);
     y_align_threshold_ = declare_parameter<double>("y_align_threshold", 0.10);
     yaw_align_threshold_ = declare_parameter<double>("yaw_align_threshold", 0.25);
 
-    docked_tolerance_ = declare_parameter<double>("docked_tolerance", 0.006);
+    // docked_tolerance_ = declare_parameter<double>("docked_tolerance", 0.006);
+    docked_tolerance_ = declare_parameter<double>("docked_tolerance", 0.012);
+
     docked_confirm_count_ = declare_parameter<int>("docked_confirm_count", 5);
     docked_status_topic_ = declare_parameter<std::string>("docked_status_topic", "/rear_docking_status");
 

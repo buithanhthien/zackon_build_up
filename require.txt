@@ -1,349 +1,88 @@
-============================================================
-PREALIGN - CAC THAY DOI TOI THIEU CAN THEM VAO CONTROLLER
-MUC TIEU:
-- KHONG SUA LOGIC TRACK HIEN TAI
-- CHI THEM 1 LOP PREALIGN O PHIA TRUOC
-- KHI POSE CHUA DEP -> PREALIGN
-- KHI POSE DEP ROI -> TRA VE TRACK CU
-============================================================
-
-
-==============================
-1. THEM STATE PREALIGN
-==============================
-
-Tim doan nay:
+Hiuen tai khi robot da bao trsng thai docked nhu nay "
+bug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1748 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=48.0 right_peak=45.0
+[debug_dock_pose_node_v4-3] [INFO] [1776477214.356193957] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=140 x=0.335 y=-0.185 Ipeak=45.0 Ivalley=0.0 beta=0.000
+[rear_docking_controller_node-4] [INFO] [1776477214.742172472] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
+[debug_dock_pose_node_v4-3] [INFO] [1776477215.251430514] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.161 y=0.005 yaw=0.022 rad
+[debug_dock_pose_node_v4-3] [INFO] [1776477215.364114593] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
+[debug_dock_pose_node_v4-3] [INFO] [1776477215.364156993] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1749 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=48.0 right_peak=45.0
+[debug_dock_pose_node_v4-3] [INFO] [1776477215.364170909] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=139 x=0.335 y=-0.184 Ipeak=45.0 Ivalley=0.0 beta=0.000
+[rear_docking_controller_node-4] [INFO] [1776477215.775489891] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
+[debug_dock_pose_node_v4-3] [INFO] [1776477216.259245583] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.162 y=0.005 yaw=0.025 rad
+[debug_dock_pose_node_v4-3] [INFO] [1776477216.451820438] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
+[debug_dock_pose_node_v4-3] [INFO] [1776477216.451874179] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1750 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=49.0 right_peak=45.0
+[debug_dock_pose_node_v4-3] [INFO] [1776477216.451906249] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=139 x=0.336 y=-0.185 Ipeak=45.0 Ivalley=0.0 beta=0.000
+[rear_docking_controller_node-4] [INFO] [1776477216.775521334] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
+[debug_dock_pose_node_v4-3] [INFO] [1776477217.364448898] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.161 y=0.006 yaw=0.023 rad
+[debug_dock_pose_node_v4-3] [INFO] [1776477217.460439204] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
+[debug_dock_pose_node_v4-3] [INFO] [1776477217.460516369] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1749 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=48.0 right_peak=45.0
+[debug_dock_pose_node_v4-3] [INFO] [1776477217.460550442] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=139 x=0.335 y=-0.184 Ipeak=45.0 Ivalley=0.0 beta=0.000
+[rear_docking_controller_node-4] [INFO] [1776477217.808832191] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
+[debug_dock_pose_node_v4-3] [INFO] [1776477218.451323905] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.161 y=0.006 yaw=0.023 rad
+[debug_dock_pose_node_v4-3] [INFO] [1776477218.563051601] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
+[debug_dock_pose_node_v4-3] [INFO] [1776477218.563103739] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1749 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=49.0 right_peak=45.0
+[debug_dock_pose_node_v4-3] [INFO] [1776477218.563129377] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=139 x=0.335 y=-0.184 Ipeak=45.0 Ivalley=0.0 beta=0.000
+[rear_docking_controller_node-4] [INFO] [1776477218.808849738] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
+[debug_dock_pose_node_v4-3] [INFO] [1776477219.459718491] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.161 y=0.004 yaw=0.024 rad
+[debug_dock_pose_node_v4-3] [INFO] [1776477219.651113354] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
+[debug_dock_pose_node_v4-3] [INFO] [1776477219.651156855] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1748 local_rej=1 valley_rej=0 range_rej=0 beta_rej=0 left_peak=49.0 right_peak=45.0
+[debug_dock_pose_node_v4-3] [INFO] [1776477219.651173046] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=140 x=0.336 y=-0.186 Ipeak=45.0 Ivalley=0.0 beta=0.000
+[rear_docking_controller_node-4] [INFO] [1776477219.842158661] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
+
+"
+
+Toi muon thasy doi mot chut logic o nut nhan ve trsm sac trong giao dien in file '/home/khoaiuh/zackon_build_up/robot_ui/startup_layout.py'. La khi nhan vao nut do thi no se hien len mot man hinh hien thi trang thai 
+ va cac nut nhan.
+
+Giao dien hien thi ben phai hien thi trang thai va nut nhan nhu sau 
+Nut nhan:
++ Dock: robot se chay file '/home/khoaiuh/zackon_build_up/src/lidar_dock_detector/launch/zackon_docking.launch.py'
+- Khi nhan nut dock se co cac den trang thai nhu sau 
+Docking: Se sang kjhi ma chua co bao docked hold nhu tren. Hay la khi nguoi dung 
+Docked: se sang khi robot nhan duoc 5 lan bao "[rear_docking_controller_node-4] [INFO] [1776477219.842158661] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
+" ban co the kiem xem thang bao publish cai do roi sub de lay du lieu de biet nhu o tren. Roi sau do tat terminal hien tai dang chay de khong can gui van toc nua.
+Baan co the dung cach tat giong nut ban do moi trong giao dien. Khi nut nay bat thi tat sang nut docking
++ Undock: Khi nhan vao nut nay thi se 
+
+Giao dien hien thi ben trai hay lam giong nut ban do moi trong giao dien. Nhung chi can nut Back la duoc. 
+
+1/
+Undock buttton: I use it to notify for users to know robot can use return 
+Altough robot don't need tp 
+2/ After the docked button turn om. Kill the terminal is running dock. The reason why docked light is need to notify users robot have docked so I need to kill the terminal to it don't send /cmd_vel because after robot receive docked hold 5 times 
+This is evidence to know robot dock. 
+
+
+although in terminal is running UI 
+"
+
+ oke it works. But i want to change logic. I want to addd 2 light 
+
+ the first, undock light 
+ second, charging light.
+and 1 button 
+under start dock make charge button. 
+ And I want to add instruction at now under Charge button. You can mofiy it to more exactly if i write wrong sentence kaka
+Specific Function:
+
+-Button
+Start Dock: Start to make docing process
+Chagre: send msg to charge to charging for robot.
+-Light
+Docking: When it turn on roboot is in processing docking
+Docked: When it turn on robot has docked 
+Charging: When it turn on, robot is charging. Robot is waiting for charge. If it turn off, the meaning is robot don't receive msg from charge
+Undock: When it turn on. Robot ready to use 
+
+And under back button i want to make a bar energy near Docking control to symbolize for battery msg from charge 
+From 0 - 100%
+
+I think need to add Undock button undeer Start dock. Wheun users click to undock , light of ready is turned on 
+
+And i want to add instruction for button 
+
+Start Dock 
+Undock 
+into instructions
+
+And i want words in instruction is large more 
 
-enum class DockState
-{
-  TRACK,
-  SEARCH,
-  DOCKED
-};
-
-Sua thanh:
-
-enum class DockState
-{
-  TRACK,
-  SEARCH,
-  PREALIGN,
-  DOCKED
-};
-
-
-==============================
-2. THEM PARAMETER PREALIGN
-==============================
-
-Trong constructor, sau nhom parameter hien tai, them cac dong sau:
-
-// PREALIGN thresholds
-prealign_y_threshold_ = declare_parameter<double>("prealign_y_threshold", 0.03);
-prealign_yaw_threshold_ = declare_parameter<double>("prealign_yaw_threshold", 0.10);
-
-// PREALIGN gains
-k_prealign_y_ = declare_parameter<double>("k_prealign_y", 2.5);
-k_prealign_yaw_ = declare_parameter<double>("k_prealign_yaw", 0.8);
-
-// PREALIGN velocity limits
-v_prealign_max_ = declare_parameter<double>("v_prealign_max", 0.08);
-w_prealign_max_ = declare_parameter<double>("w_prealign_max", 0.5);
-
-
-==============================
-3. THEM BIEN PRIVATE
-==============================
-
-Trong phan private variables, them:
-
-double prealign_y_threshold_;
-double prealign_yaw_threshold_;
-
-double k_prealign_y_;
-double k_prealign_yaw_;
-
-double v_prealign_max_;
-double w_prealign_max_;
-
-
-==============================
-4. THEM HAM publishPrealignMotion()
-==============================
-
-Dat ham nay gan cac ham publishStop(), publishSearchMotion(), ...
-
-void publishPrealignMotion(double x, double y, double yaw)
-{
-  geometry_msgs::msg::Twist cmd;
-
-  // Muc tieu:
-  // - uu tien giam |y|
-  // - yaw la phu
-  // - co the tien/lui/xoay nhe de dua pose ve dep
-
-  // Dieu khien goc:
-  double w_cmd = -k_prealign_y_ * y - k_prealign_yaw_ * yaw;
-  w_cmd = clamp(w_cmd, -w_prealign_max_, w_prealign_max_);
-
-  // Dieu khien linear:
-  // Neu lech y qua lon thi giam linear de tranh robot vua lao vua lech
-  double v_cmd = 0.0;
-
-  if (std::abs(y) < 0.08) {
-    // Cho phep chuyen dong nhe de ho tro dua y ve dep
-    // x < 0 nghia la dock dang o phia sau robot
-    // o PREALIGN chi cho toc do nho
-    if (x < -0.55) {
-      // Robot dang con xa, cho lui nhe
-      v_cmd = -0.04;
-    } else if (x > -0.40) {
-      // Robot dang hoi gan qua, cho tien nhe len de co khong gian chinh
-      v_cmd = 0.04;
-    } else {
-      v_cmd = 0.0;
-    }
-  } else {
-    // Neu y lech qua lon, uu tien xoay/chinh hon la di chuyen
-    v_cmd = 0.0;
-  }
-
-  v_cmd = clamp(v_cmd, -v_prealign_max_, v_prealign_max_);
-
-  cmd.linear.x = v_cmd;
-  cmd.angular.z = w_cmd;
-
-  RCLCPP_INFO_THROTTLE(
-    get_logger(), *get_clock(), 200,
-    "[rear_docking_ctrl] PREALIGN pose=(x=%.3f y=%.3f yaw=%.3f) cmd=(vx=%.3f wz=%.3f)",
-    x, y, yaw, cmd.linear.x, cmd.angular.z);
-
-  cmd_pub_->publish(cmd);
-}
-
-
-==============================
-5. THEM LOGIC CHUYEN STATE PREALIGN
-==============================
-
-Trong ham controlLoop(), giu nguyen tat ca logic hien tai:
-- SAFETY CHECK
-- DOCKED HOLD
-- SEARCH
-- has_dock_pose
-- pose timeout
-- odom check
-- invalid x >= 0
-- DOCKED ZONE CHECK
-- TRACK logic cu
-
-CHI THEM 1 KHOI LOGIC MOI NGAY SAU KHI DA CO:
-- x
-- y
-- yaw
-- va da qua duoc check x >= 0
-
-Tuc la sau doan nay:
-
-const double x = last_dock_pose_.pose.position.x;
-const double y = last_dock_pose_.pose.position.y;
-
-const double yaw = normalizeAngle(
-  2.0 * std::atan2(
-    last_dock_pose_.pose.orientation.z,
-    last_dock_pose_.pose.orientation.w));
-
-if (x >= 0.0) {
-  RCLCPP_WARN_THROTTLE(
-    get_logger(), *get_clock(), 500,
-    "[rear_docking_ctrl] Invalid rear-docking pose: x=%.3f (expected negative)", x);
-  publishStop();
-  publishDockedStatusIfChanged(0);
-  docked_counter_ = 0;
-  return;
-}
-
-THEM DOAN NAY NGAY SAU NO:
-
-// ===============================
-// PREALIGN GATE
-// ===============================
-// Neu pose chua dep thi dua qua PREALIGN.
-// Khi pose dep roi thi tra ve TRACK hien tai.
-
-const bool need_prealign =
-  (std::abs(y) > prealign_y_threshold_) ||
-  (std::abs(yaw) > prealign_yaw_threshold_);
-
-if (need_prealign) {
-  state_ = DockState::PREALIGN;
-} else {
-  if (state_ == DockState::PREALIGN) {
-    RCLCPP_INFO(
-      get_logger(),
-      "[rear_docking_ctrl] PREALIGN completed -> TRACK MODE");
-  }
-  state_ = DockState::TRACK;
-}
-
-if (state_ == DockState::PREALIGN) {
-  publishDockedStatusIfChanged(0);
-  docked_counter_ = 0;   // dang tinh chinh thi chua duoc tinh docked
-  publishPrealignMotion(x, y, yaw);
-  return;
-}
-
-
-==============================
-6. KHONG SUA LOGIC TRACK CU
-==============================
-
-Sau khi them PREALIGN gate o tren, GIU NGUYEN phan duoi nhu hien tai:
-- DOCKED ZONE CHECK
-- Reverse speed from longitudinal error
-- Angular correction
-- badly_misaligned
-- cmd.linear.x = -v_mag
-- cmd.angular.z = w_cmd
-- publish cmd_vel
-
-Tuc la TRACK hien tai cua ban van y nguyen.
-
-
-==============================
-7. KHONG SUA dockPoseCallback()
-==============================
-
-Giu nguyen logic hien tai cua dockPoseCallback(), vi ban noi chi muon them phan tinh chinh chu khong sua logic cu.
-
-Tuc la van de nguyen:
-
-void dockPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
-{
-  if (state_ == DockState::DOCKED) {
-    return;
-  }
-
-  last_dock_pose_ = *msg;
-  has_dock_pose_ = true;
-  last_dock_pose_time_ = now();
-
-  if (state_ == DockState::SEARCH) {
-    state_ = DockState::TRACK;
-
-    RCLCPP_INFO(
-      get_logger(),
-      "[rear_docking_ctrl] Dock pose reacquired -> TRACK MODE");
-  }
-}
-
-Khong bat buoc phai sua doan nay.
-ControlLoop se tu chuyen sang PREALIGN neu pose chua dep.
-
-
-==============================
-8. NHUNG GIA TRI NEN TEST DAU TIEN
-==============================
-
-prealign_y_threshold = 0.03
-prealign_yaw_threshold = 0.10
-
-k_prealign_y = 2.5
-k_prealign_yaw = 0.8
-
-v_prealign_max = 0.08
-w_prealign_max = 0.5
-
-Y nghia:
-- Neu |y| > 3 cm hoac |yaw| > 0.10 rad thi chua cho vao TRACK
-- PREALIGN se tim cach tinh chinh truoc
-- Khi |y| va |yaw| nho hon nguong thi tu dong roi ve TRACK cu
-
-
-==============================
-9. NEU BAN MUON UU TIEN Y MANH HON NUA
-==============================
-
-Tang:
-
-k_prealign_y = 3.0
-
-Giam:
-
-k_prealign_yaw = 0.5
-
-Luc do controller PREALIGN se nhay hon theo y, it nhay hon theo yaw.
-
-Neu robot van xoay chua du:
-- tang w_prealign_max len 0.6
-
-Neu robot di chuyen linear hoi nhieu:
-- giam v_prealign_max xuong 0.05
-
-
-==============================
-10. FLOW SAU KHI TICH HOP
-==============================
-
-SEARCH
-  -> khi co dock pose
-
-Neu y/yaw chua dep
-  -> PREALIGN
-
-Khi y/yaw dep
-  -> TRACK (logic cu)
-
-Khi dat docked zone va confirm du so lan
-  -> DOCKED
-
-DOCKED
-  -> giu stop, publish status 1
-
-
-==============================
-11. DIEU QUAN TRONG NHAT
-==============================
-
-Ban KHONG CAN doi ten TRACK.
-Ban KHONG CAN sua logic docking cu.
-Ban CHI THEM:
-- 1 state PREALIGN
-- 1 ham publishPrealignMotion()
-- 1 doan gate truoc TRACK
-
-Toan bo logic cu phia sau van duoc giu nguyen.
-
-
-==============================
-12. GOI Y TEST
-==============================
-
-Case 1:
-x = -0.739
-y =  0.081
-yaw = 0.009
-
-=> need_prealign = true
-=> vao PREALIGN
-=> KHONG duoc lùi theo logic TRACK ngay
-
-Case 2:
-x = -0.767
-y = -0.020
-yaw = 0.029
-
-=> need_prealign = false
-=> vao TRACK
-=> controller docking cu se work
-
-
-==============================
-13. LUU Y
-==============================
-
-Neu sau nay ban thay PREALIGN chi xoay ma y khong giam duoc nhieu, thi minh se nang cap tiep logic linear trong publishPrealignMotion().
-Nhung truoc mat, day la phien ban tich hop toi thieu, an toan, de test voi code hien tai ma khong pha logic cu.
-============================================================
-HET
-============================================================

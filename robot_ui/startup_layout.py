@@ -804,12 +804,12 @@ class RobotUI(QMainWindow):
         self.close()
 
     def start_docking(self):
-        self.log("Bắt đầu trình tự về trạm sạc")
-        subprocess.Popen([
-            'gnome-terminal', '--', 'bash', '-c',
-            f'source {SOURCE_PATH}/install/setup.bash && '
-            f'ros2 launch lidar_dock_detector zackon_docking.launch.py; exec bash'
-        ])
+        self.show_docking_screen()
+
+    def start_docking(self):
+        self.log("Chuyển sang chế độ docking")
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/docking_layout.py'])
+        self.close()
 
     def load_map(self):
         dialog = LoadMapDialog(self)

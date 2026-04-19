@@ -59,8 +59,9 @@ class VoiceEngine(QObject):
 
     def __init__(self):
         super().__init__()
-        self._play_lock  = threading.Lock()
-        self._stop_flag  = threading.Event()
+        self._play_lock    = threading.Lock()
+        self._stop_flag    = threading.Event()
+        self._listen_lock  = threading.Lock()
 
         self.recognizer = sr.Recognizer()
         self.recognizer.dynamic_energy_threshold = False
@@ -78,6 +79,9 @@ class VoiceEngine(QObject):
             print("[TTS] VieNeu-TTS ready")
 
     def listen_once(self):
+        if not self._listen_lock.acquire(blocking=False):
+            print("[VoiceEngine] already listening, ignoring duplicate request")
+            return
         threading.Thread(target=self._listen_thread, daemon=True).start()
 
     def _listen_thread(self):
@@ -132,6 +136,7 @@ class VoiceEngine(QObject):
         if mic is None:
             print("[VoiceEngine] no usable microphone found")
             self.state_changed.emit("")
+            self._listen_lock.release()
             return
 
         try:
@@ -143,7 +148,6 @@ class VoiceEngine(QObject):
                     print(f"[VoiceEngine] audio captured, sending to Google STT...")
                 except sr.WaitTimeoutError:
                     print(f"[VoiceEngine] timeout — no speech detected")
-                    self.state_changed.emit("")
                     return
             self._set_state(VoiceState.THINKING)
             try:
@@ -156,6 +160,7 @@ class VoiceEngine(QObject):
                 print(f"[VoiceEngine] STT error: {e}")
         finally:
             self.state_changed.emit("")
+            self._listen_lock.release()
 
     def stop_speaking(self):
         self._stop_flag.set()

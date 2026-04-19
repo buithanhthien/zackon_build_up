@@ -191,7 +191,7 @@ controller_server:
     # min_theta_velocity_threshold: 0.3           # Minimum angular velocity threshold [rad/s]
 
     progress_checker_plugins: ["progress_checker"]   # Plugin for stuck detection
-    goal_checker_plugins: ["goal_checker"]           # Plugin for goal tolerance check
+    goal_checker_plugins: ["goal_checker"]    #"docking_goal_checker"          # Plugin for goal tolerance check
     controller_plugins: ["FollowPath"]               # Active controller list
 
     progress_checker:
@@ -201,9 +201,15 @@ controller_server:
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25                     # Goal position tolerance [m]
-      yaw_goal_tolerance: 0.25                    # Final yaw tolerance [rad]
+      xy_goal_tolerance: 0.25 #0.25                     # Goal position tolerance [m]
+      yaw_goal_tolerance: 0.25 #0.25                    # Final yaw tolerance [rad]
       stateful: true                              # Remember goal reached state
+
+    # docking_goal_checker:
+    #   plugin: "nav2_controller::SimpleGoalChecker"
+    #   xy_goal_tolerance: 0.1
+    #   yaw_goal_tolerance: 0.1
+    #   stateful: true
 
     # --- Wrapper controller: rotate-in-place when needed ---
     FollowPath:

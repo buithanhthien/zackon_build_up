@@ -7,22 +7,44 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     # Stage 1: Send navigation goal 5 times, each waits for "Goal succeeded" before next
+    # send_nav_goal = ExecuteProcess(
+    #     cmd=[
+    #         'bash', '-c',
+    #         'for i in 1 2 3 4 5; do '
+    #         'echo "=== Nav goal attempt $i/5 ==="; '
+    #         'ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose '
+    #         "\"{pose: {header: {frame_id: 'map'}, pose: {position: {x: -0.61, y: 1.14, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: -0.80, w: 0.59}}}}\" "
+    #         '2>&1 | grep -m1 "Goal succeeded"; '
+    #         'echo "Attempt $i done"; '
+    #         'done; '
+    #         'echo "All 5 nav goals sent"'
+    #     ],
+    #     output='screen',
+    #     name='send_nav_goal'
+    # )
     send_nav_goal = ExecuteProcess(
         cmd=[
             'bash', '-c',
-            'for i in 1 2 3 4 5; do '
-            'echo "=== Nav goal attempt $i/5 ==="; '
+            # 🔹 set tolerance cho docking
+            'ros2 param set /controller_server goal_checker.xy_goal_tolerance 0.18; '
+            'ros2 param set /controller_server goal_checker.yaw_goal_tolerance 0.2; '
+
+            'echo "=== Nav goal attempt ==="; '
+
             'ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose '
             "\"{pose: {header: {frame_id: 'map'}, pose: {position: {x: -0.61, y: 1.14, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: -0.80, w: 0.59}}}}\" "
             '2>&1 | grep -m1 "Goal succeeded"; '
-            'echo "Attempt $i done"; '
-            'done; '
-            'echo "All 5 nav goals sent"'
+
+            'echo "Nav goal done"; '
+
+            # 🔹 reset lại tolerance bình thường
+            'ros2 param set /controller_server goal_checker.xy_goal_tolerance 0.25; '
+            'ros2 param set /controller_server goal_checker.yaw_goal_tolerance 0.25; '
+
         ],
         output='screen',
         name='send_nav_goal'
     )
-
     delayed_nav_goal = TimerAction(
         period=3.0,
         actions=[send_nav_goal]

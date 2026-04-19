@@ -192,29 +192,131 @@ private:
     }
   }
 
+  // void publishSearchMotion()
+  // {
+  //   geometry_msgs::msg::Twist cmd;
+  //   cmd.linear.x = 0.0;
+
+  //   const double t = (now() - search_start_time_).seconds();
+
+  //   // alternate left-right every 1 second
+  //   const int phase =
+  //     static_cast<int>(t / search_switch_period_) % 2;
+
+  //   if (phase == 0) {
+  //     cmd.angular.z = search_w_;
+  //   } else {
+  //     cmd.angular.z = -search_w_;
+  //   }
+
+  //   RCLCPP_WARN_THROTTLE(
+  //     get_logger(), *get_clock(), 500,
+  //     "[rear_docking_ctrl] SEARCH MODE wz=%.3f",
+  //     cmd.angular.z);
+
+  //   cmd_pub_->publish(cmd);
+  // }
   void publishSearchMotion()
   {
     geometry_msgs::msg::Twist cmd;
     cmd.linear.x = 0.0;
 
-    const double t = (now() - search_start_time_).seconds();
-
-    // alternate left-right every 1 second
-    const int phase =
-      static_cast<int>(t / search_switch_period_) % 2;
-
-    if (phase == 0) {
+    // Nếu chưa có odom thì fallback quay theo 1 chiều
+    if (!has_odom_) {
       cmd.angular.z = search_w_;
-    } else {
-      cmd.angular.z = -search_w_;
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "[rear_docking_ctrl] SEARCH MODE (no odom) wz=%.3f",
+        cmd.angular.z);
+      cmd_pub_->publish(cmd);
+      return;
     }
+
+    if (!search_initialized_) {
+      resetSearchPattern();
+    }
+
+    const double yaw_now = getRobotYawFromOdom();
+    double yaw_error = normalizeAngle(search_target_yaw_ - yaw_now);
+
+    // Nếu đã gần target hiện tại thì đổi sang target phía đối diện
+    const double yaw_reach_threshold = 3.0 * M_PI / 180.0;   // 3 deg
+
+    if (std::abs(yaw_error) < yaw_reach_threshold) {
+      if (search_direction_ == 1) {
+        // đã quay xong bên trái -> chuyển sang bên phải cùng biên độ
+        search_direction_ = -1;
+        search_half_cycle_done_ = true;
+
+        const double amp_rad = search_amplitude_deg_ * M_PI / 180.0;
+        search_target_yaw_ = normalizeAngle(search_center_yaw_ - amp_rad);
+
+        RCLCPP_INFO(
+          get_logger(),
+          "[rear_docking_ctrl] SEARCH switch: RIGHT target=%.3f rad (amp=%.1f deg)",
+          search_target_yaw_, search_amplitude_deg_);
+      } else {
+        // đã quay xong bên phải -> hoàn tất 1 chu kỳ trái+phải
+        search_direction_ = 1;
+
+        if (search_half_cycle_done_) {
+          search_amplitude_deg_ += search_step_deg_;
+          if (search_amplitude_deg_ > search_amplitude_max_deg_) {
+            search_amplitude_deg_ = search_amplitude_max_deg_;
+          }
+        }
+
+        search_half_cycle_done_ = false;
+
+        const double amp_rad = search_amplitude_deg_ * M_PI / 180.0;
+        search_target_yaw_ = normalizeAngle(search_center_yaw_ + amp_rad);
+
+        RCLCPP_INFO(
+          get_logger(),
+          "[rear_docking_ctrl] SEARCH new cycle: LEFT target=%.3f rad (amp=%.1f deg)",
+          search_target_yaw_, search_amplitude_deg_);
+      }
+
+      yaw_error = normalizeAngle(search_target_yaw_ - yaw_now);
+    }
+
+    // điều khiển quay theo sai số góc
+    const double k_search_yaw = 1.5;
+    cmd.angular.z = clamp(k_search_yaw * yaw_error, -search_w_, search_w_);
 
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 500,
-      "[rear_docking_ctrl] SEARCH MODE wz=%.3f",
-      cmd.angular.z);
+      "[rear_docking_ctrl] SEARCH MODE yaw=%.3f target=%.3f err=%.3f wz=%.3f amp=%.1f deg",
+      yaw_now, search_target_yaw_, yaw_error, cmd.angular.z, search_amplitude_deg_);
 
     cmd_pub_->publish(cmd);
+  }
+
+  double getRobotYawFromOdom() const
+  {
+    if (!has_odom_) {
+      return 0.0;
+    }
+
+    const auto & q = last_odom_.pose.pose.orientation;
+    return normalizeAngle(2.0 * std::atan2(q.z, q.w));
+  }
+
+  void resetSearchPattern()
+  {
+    search_center_yaw_ = getRobotYawFromOdom();
+    search_amplitude_deg_ = 15.0;
+    search_direction_ = 1;   // bắt đầu quay trái trước
+    search_initialized_ = true;
+    search_half_cycle_done_ = false;
+
+    const double amp_rad = search_amplitude_deg_ * M_PI / 180.0;
+    search_target_yaw_ = normalizeAngle(search_center_yaw_ + amp_rad);
+
+    RCLCPP_INFO(
+      get_logger(),
+      "[rear_docking_ctrl] Reset angular search: center=%.3f rad, amp=%.1f deg, first target=%.3f rad",
+      search_center_yaw_, search_amplitude_deg_, search_target_yaw_);
   }
 
   void publishPrealignMotion(double x, double y, double yaw)
@@ -293,6 +395,9 @@ private:
       if (state_ != DockState::SEARCH) {
         state_ = DockState::SEARCH;
         search_start_time_ = now();
+        search_initialized_ = false;
+        //current_search_period_ = search_switch_period_;  // reset về mặc định
+        //last_phase_ = -1;
       }
 
       RCLCPP_WARN_THROTTLE(
@@ -310,6 +415,7 @@ private:
       if (state_ != DockState::SEARCH) {
         state_ = DockState::SEARCH;
         search_start_time_ = now();
+        search_initialized_ = false;
 
         RCLCPP_WARN(
           get_logger(),
@@ -471,7 +577,17 @@ private:
   // search behavior
   // double search_w_ = 0.15;             // rad/s
   double search_w_ = 0.8;             // rad/s old 0.6
-  double search_switch_period_ = 1.0;  // seconds
+  //double search_switch_period_ = 1.0;  // seconds
+  //double current_search_period_ = 1.0;   // giá trị ban đầu
+  //int last_phase_ = -1;                  // để detect chuyển phase
+  double search_center_yaw_ = 0.0;
+  double search_target_yaw_ = 0.0;
+  double search_amplitude_deg_ = 15.0;
+  double search_step_deg_ = 5.0;
+  double search_amplitude_max_deg_ = 45.0;
+  int search_direction_ = 1;   // +1: left, -1: right
+  bool search_initialized_ = false;
+  bool search_half_cycle_done_ = false;
   rclcpp::Time search_start_time_{0, 0, RCL_ROS_TIME};
 
   std::string dock_pose_topic_;

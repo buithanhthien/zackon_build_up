@@ -48,7 +48,7 @@ _NO_EXEC_PATTERN = re.compile(
 )
 _TOUR_WAYPOINTS = ['x5.4', 'x5.10', 'X5.11', 'x5.12']
 _RETURN_HERE_PATTERN = re.compile(
-    r'(quay lại đây|quay lại|quay về đây|quay về|trở về đây|trở về|về đây|về chỗ cũ|về chỗ ban đầu|về vị trí cũ|về vị trí ban đầu|rồi quay lại|sau đó quay lại|rồi trở về|xong thì quay về)',
+    r'(quay trở về đây|quay trở về|quay trở lại đây|quay trở lại|quay lại đây|quay lại|quay về đây|quay về|trở về đây|trở về|về đây|về chỗ cũ|về chỗ ban đầu|về vị trí cũ|về vị trí ban đầu|rồi quay lại|sau đó quay lại|rồi trở về|xong thì quay về)',
     re.IGNORECASE
 )
 _RETURN_HERE_WAYPOINT_KEY = '__return_here__'
@@ -434,11 +434,15 @@ class ChatPanel(QWidget):
             self._show_response(reply, [], _TOUR_WAYPOINTS)
             return
 
-        if (_MULTI_NAV_PATTERN.search(text) or _REVERSE_NAV_PATTERN.search(text)) and not _NO_EXEC_PATTERN.search(text):
+        if (_MULTI_NAV_PATTERN.search(text) or _REVERSE_NAV_PATTERN.search(text) or _RETURN_HERE_PATTERN.search(text)) and not _NO_EXEC_PATTERN.search(text):
             wps = _load_waypoints()
             # Match waypoints by checking key and aliases, preserving order of appearance
             found = []
             text_lower = text.lower()
+            # Normalize STT artifacts: "x 5.12" → "x5.12", "x 5 12" → "x5.12", "5,12" → "5.12"
+            text_lower = re.sub(r'(\d),(\d)', r'\1.\2', text_lower)
+            text_lower = re.sub(r'\bx\s+(\d)', r'x\1', text_lower)
+            text_lower = re.sub(r'(\d)\s+(\d)', r'\1.\2', text_lower)
             text_plain = _strip_diacritics(text_lower)
             for k, data in wps.items():
                 aliases = data.get('aliases', []) if isinstance(data, dict) else []
@@ -471,7 +475,7 @@ class ChatPanel(QWidget):
                     # No pose available — use a sentinel so we still intercept the request
                     found.append(_RETURN_HERE_WAYPOINT_KEY)
 
-            if len(found) >= 2:
+            if len(found) >= 2 or (return_here and len(found) >= 1):
                 if _REVERSE_NAV_PATTERN.search(text):
                     found = list(reversed(found))
                 display = [k for k in found if not k.startswith(_RETURN_HERE_WAYPOINT_KEY)]
@@ -615,7 +619,13 @@ class ChatPanel(QWidget):
             clean, tags, nav_keys, tour_keys = self._pending_response
             self._pending_response = None
             self._show_response(clean, tags, nav_keys, tour_keys)
-        
+
+        if not state:
+            self._voice_enabled = False
+            self.voice_btn.setChecked(False)
+            self.voice_status_label.hide()
+            return
+
         self.voice_status_label.show()
         self.voice_status_label.setText(state)
         if "LISTENING" in state:

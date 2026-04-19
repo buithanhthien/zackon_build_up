@@ -25,7 +25,8 @@ MIC_DEVICE_PRIORITY = [
     "sysdefault",
     "default",
 ]
-MIC_JACK_KEYWORDS = ["sn6140", "analog", "hd-audio generic"]  # 3.5mm jack identifiers
+MIC_JACK_KEYWORDS = ["sn6140", "analog"]  # 3.5mm jack identifiers (exclude HDMI)
+MIC_JACK_EXCLUDE  = ["hdmi", "iec958", "spdif"]  # never treat these as mic input
 MIC_FORCE_INDEX = None
 MIC_SAMPLE_RATE = 16000
 STT_LANGUAGE    = "vi-VN"
@@ -84,7 +85,8 @@ class VoiceEngine(QObject):
 
         # Log jack mic availability
         jack_idx = next((i for i, n in enumerate(available)
-                         if any(k in n.lower() for k in MIC_JACK_KEYWORDS)), None)
+                         if any(k in n.lower() for k in MIC_JACK_KEYWORDS)
+                         and not any(x in n.lower() for x in MIC_JACK_EXCLUDE)), None)
         if jack_idx is not None:
             print(f"[VoiceEngine] 3.5mm jack mic detected: index={jack_idx} ({available[jack_idx]})")
         else:
@@ -108,15 +110,24 @@ class VoiceEngine(QObject):
         for idx in candidates:
             try:
                 candidate = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
-                with candidate as source:
+                # Open the stream first to verify the device is usable
+                candidate.__enter__()
+                try:
                     with _suppress_stderr():
-                        self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                mic = candidate
-                chosen_idx = idx
-                print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
-                break
+                        self.recognizer.adjust_for_ambient_noise(candidate, duration=0.5)
+                    mic = candidate
+                    chosen_idx = idx
+                    print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
+                    break
+                except Exception as e:
+                    print(f"[VoiceEngine] mic index={idx} failed: {e}")
+                finally:
+                    try:
+                        candidate.__exit__(None, None, None)
+                    except Exception:
+                        pass
             except Exception as e:
-                print(f"[VoiceEngine] mic index={idx} failed: {e}")
+                print(f"[VoiceEngine] mic index={idx} open failed: {e}")
 
         if mic is None:
             print("[VoiceEngine] no usable microphone found")

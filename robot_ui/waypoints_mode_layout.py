@@ -934,7 +934,7 @@ class WaypointsModeLayout(QMainWindow):
         """Dynamically set yaw_goal_tolerance on controller_server via ros2 param."""
         subprocess.Popen([
             'ros2', 'param', 'set', '/controller_server',
-            'general_goal_checker.yaw_goal_tolerance', str(value)
+            'goal_checker.yaw_goal_tolerance', str(value)
         ])
 
     def _goal_result_callback(self, future):

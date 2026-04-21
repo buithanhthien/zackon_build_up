@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from voice_engine import VoiceEngine, VoiceState
+from chat_history import get_chat_history, save_chat_history, clear_chat_history
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -43,7 +44,7 @@ _REVERSE_NAV_PATTERN = re.compile(
     re.IGNORECASE
 )
 _NO_EXEC_PATTERN = re.compile(
-    r'\b(không|chỉ|just|only|answer|trả lời|cho biết|là gì|có không|bao nhiêu|mấy|ở đâu|khi nào|tại sao|vì sao|có phải|có đúng|được không|đúng không|hay không)\b',
+    r'\b(không|chỉ|just|only|answer|trả lời|cho biết|là gì|có không|bao nhiêu|mấy|ở đâu|khi nào|tại sao|vì sao|có phải|có đúng|được không|đúng không|hay không|trước đó|trước khi|sau khi|đã|rồi|vừa rồi|lúc nãy|hồi nãy|lịch sử)\b',
     re.IGNORECASE
 )
 _TOUR_WAYPOINTS = ['x5.4', 'x5.10', 'X5.11', 'x5.12']
@@ -152,8 +153,24 @@ SYSTEM_PROMPT = (
     "Bạn là ZACKON, AI trợ lý tích hợp trong robot ROS 2 của hệ thống Zackon.\n"
     "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn và thân thiện.\n"
     "Không sử dụng dấu ngoặc kép (\") trong câu trả lời.\n\n"
-    "Hãy trả lời ngắn gọn trong 2 đến 3 câu"
-    "Các phòng trọng điểm của khoa điện bao gòm: X5.4 - phòng thí nghiệm robot và đièu khiển thông minh, X5.10 - phòng thực hành plc mitsu, X5.11 - phòng SCADA, X5.12 - phòng lập trình plc siemen\n"
+    "Hãy trả lời ngắn gọn trong 2 đến 3 câu\n"
+    "Các phòng trọng điểm của khoa điện bao gòm: X5.4 - phòng thí nghiệm robot và đièu khiển thông minh, X5.10 - phòng thực hành plc mitsu, X5.11 - phòng SCADA, X5.12 - phòng lập trình plc siemen\n\n"
+
+    "## QUAN TRỌNG: Truy cập lịch sử hội thoại\n"
+    "Khi người dùng hỏi về lịch sử di chuyển:\n"
+    "1. XEM LẠI toàn bộ cuộc hội thoại từ đầu đến giờ\n"
+    "2. Tìm TẤT CẢ các lệnh điều hướng theo thứ tự thời gian\n"
+    "3. Hiểu đúng ngữ cảnh:\n"
+    "   - 'trước đó' = lần trước lần hiện tại\n"
+    "   - 'vừa rồi' = lần gần nhất\n"
+    "   - 'đã đi những đâu' = liệt kê tất cả\n"
+    "4. KHÔNG BAO GIỜ nói 'chưa có dữ liệu' nếu đã có lệnh điều hướng\n\n"
+
+    "Ví dụ:\n"
+    "- User: 'Đi X5.4' → Bot: 'Đang dẫn bạn tới X5.4! <NAVIGATE:x5.4>'\n"
+    "- User: 'Đi X5.6' → Bot: 'Đang dẫn bạn tới X5.6! <NAVIGATE:x5.6>'\n"
+    "- User: 'Trước đó tôi ở đâu?' → Bot: 'Trước X5.6, bạn đã đi tới X5.4.'\n"
+    "- User: 'Tôi đã đi những đâu?' → Bot: 'Bạn đã đi qua X5.4 và X5.6.'\n\n"
 
     "## Kiến trúc hệ thống\n"
     "Giao diện chính (startup_layout) có thanh bên trái với các nút:\n"
@@ -192,13 +209,23 @@ SYSTEM_PROMPT = (
     "- Khi người dùng muốn đi đến một địa điểm: THỰC HIỆN NGAY, không hỏi xác nhận, không hỏi về chế độ hiện tại\n\n"
 
     "## Thẻ hành động\n"
-    "Chỉ dùng khi cần thực thi trực tiếp trên robot. Tối đa một thẻ mỗi phản hồi. Không dùng khi trò chuyện thông thường.\n"
+    "QUAN TRỌNG: Khi thực hiện điều hướng, BẮT BUỘC phải có thẻ hành động. KHÔNG BAO GIỜ nói 'đang dẫn' hoặc 'đi tới' mà không có thẻ.\n"
+    "Chỉ dùng khi cần thực thi trực tiếp trên robot. Tối đa một thẻ mỗi phản hồi.\n\n"
     "- <STATUS_CHECK>: kiểm tra trạng thái STM32 và LiDAR\n"
-    "- <LOCALIZE>: chạy lại định vị (Định vị lại)\n"
+    "- <LOCALIZE>: chạy lại định vị\n"
     "- <DOCK>: gửi robot về trạm sạc\n"
-    "- <NAVIGATE:key>: điều hướng đến MỘT địa điểm. key là tên chính xác trong waypoints.json. Ví dụ: 'Đang dẫn bạn tới X5.4! <NAVIGATE:x5.4>'\n"
-    "- <TOUR:key1,key2,key3,...>: điều hướng lần lượt qua NHIỀU địa điểm theo thứ tự. Dùng khi người dùng muốn đi nhiều nơi. Ví dụ: 'Bắt đầu tham quan! <TOUR:x5.11,x5.4,x5.12>'\n"
-    "- <HELP>: hiển thị hướng dẫn sử dụng\n"
+    "- <NAVIGATE:key>: điều hướng đến MỘT địa điểm. LUÔN LUÔN đi kèm với câu xác nhận.\n"
+    "  ĐÚNG: 'Đang dẫn bạn tới X5.4! <NAVIGATE:x5.4>'\n"
+    "  SAI: 'Đang dẫn bạn tới X5.4!' (thiếu thẻ)\n"
+    "- <TOUR:key1,key2,key3,...>: điều hướng lần lượt qua NHIỀU địa điểm. LUÔN LUÔN đi kèm với câu xác nhận.\n"
+    "  ĐÚNG: 'Bắt đầu tham quan! <TOUR:x5.11,x5.4,x5.12>'\n"
+    "  SAI: 'Bắt đầu tham quan!' (thiếu thẻ)\n"
+    "- <HELP>: hiển thị hướng dẫn sử dụng\n\n"
+    
+    "QUY TẮC VÀNG:\n"
+    "- Nếu người dùng YÊU CẦU điều hướng → PHẢI có thẻ NAVIGATE hoặc TOUR\n"
+    "- Nếu người dùng HỎI về địa điểm → KHÔNG có thẻ, chỉ trả lời\n"
+    "- Nếu không chắc → KHÔNG thêm thẻ\n\n"
 
     "## Danh sách địa điểm đã lưu (dùng key chính xác trong <NAVIGATE:key>)\n"
     + _load_waypoint_keys() + "\n\n"
@@ -266,7 +293,13 @@ class ChatPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # Load shared history or initialize with system prompt
+        loaded_history = get_chat_history()
+        if loaded_history and len(loaded_history) > 0:
+            self._chat_history = loaded_history
+        else:
+            self._chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
+        
         self._ai_worker = None
         self._ai_thread = None
         self._voice_enabled = False
@@ -278,11 +311,11 @@ class ChatPanel(QWidget):
         self._return_here_pose = None
 
         self._build_ui()
-        self._add_bubble(
-            "Xin chào! Tôi là ZACKON, trợ lý robot của bạn. Hãy hỏi tôi về trạng thái robot, "
-            "định vị, điều hướng, hoặc bất cứ điều gì khác.",
-            "assistant"
-        )
+        
+        # Restore chat bubbles from history
+        for msg in self._chat_history:
+            if msg['role'] != 'system':
+                self._add_bubble(msg['content'], msg['role'])
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -420,6 +453,7 @@ class ChatPanel(QWidget):
             reply = f"Đang dẫn bạn tham quan toàn bộ khoa điện, sau đó quay về X5.4!"
             self._chat_history.append({"role": "user", "content": text})
             self._chat_history.append({"role": "assistant", "content": reply})
+            save_chat_history(self._chat_history)  # Persist
             if self._voice_enabled:
                 self._voice_engine.speak(reply)
             self._show_response(reply, [], all_keys)
@@ -429,6 +463,7 @@ class ChatPanel(QWidget):
             reply = "Đang dẫn bạn tham quan lần lượt các phòng trọng điểm của khoa điện!"
             self._chat_history.append({"role": "user", "content": text})
             self._chat_history.append({"role": "assistant", "content": reply})
+            save_chat_history(self._chat_history)  # Persist
             if self._voice_enabled:
                 self._voice_engine.speak(reply)
             self._show_response(reply, [], _TOUR_WAYPOINTS)
@@ -483,12 +518,14 @@ class ChatPanel(QWidget):
                 reply = f"Đang dẫn bạn lần lượt tới {', '.join(display)}{suffix}!"
                 self._chat_history.append({"role": "user", "content": text})
                 self._chat_history.append({"role": "assistant", "content": reply})
+                save_chat_history(self._chat_history)  # Persist
                 if self._voice_enabled:
                     self._voice_engine.speak(reply)
                 self._show_response(reply, [], found)
                 return
 
         self._chat_history.append({"role": "user", "content": text})
+        save_chat_history(self._chat_history)  # Persist after user message
 
         history = list(self._chat_history)
         if _LOCATION_PATTERNS.search(text):
@@ -527,9 +564,15 @@ class ChatPanel(QWidget):
 
     def _fallback_nav_key(self, text: str) -> list:
         """If AI forgot the <NAVIGATE:key> tag, try to find a waypoint key in the text.
+        Only matches if the waypoint appears in a navigation context (not in a list).
         Skips numeric-only keys. Matches longest candidate first to avoid substring collisions."""
         wps = _load_waypoints()
         text_lower = text.lower()
+        
+        # Don't extract if text is just listing options (contains "hoặc" or commas with multiple locations)
+        if 'hoặc' in text_lower or text_lower.count(',') >= 2:
+            return []
+        
         # Build (candidate_str, key) pairs, skip pure-numeric keys, sort longest first
         pairs = []
         for key, data in wps.items():
@@ -549,18 +592,9 @@ class ChatPanel(QWidget):
     def _on_response(self, reply):
         clean, tags, nav_keys, tour_keys = self._strip_tags(reply)
 
-        # Fallback: AI said it's navigating but forgot the tag
-        if not nav_keys and not tour_keys:
-            _NAV_INTENT = re.compile(
-                r'(đang dẫn|dẫn bạn|đi tới|điều hướng|navigate|going to)',
-                re.IGNORECASE
-            )
-            if _NAV_INTENT.search(clean):
-                nav_keys = self._fallback_nav_key(clean)
-                if nav_keys:
-                    print(f"[CHAT] Fallback nav key resolved: {nav_keys}")
-
         self._chat_history.append({"role": "assistant", "content": clean})
+        save_chat_history(self._chat_history)  # Persist after each message
+        
         print(f"[CHAT] Assistant: {clean}")
         if nav_keys:
             print(f"[CHAT] Navigation triggered: {nav_keys}")
@@ -648,6 +682,7 @@ class ChatPanel(QWidget):
             if item.widget():
                 item.widget().deleteLater()
         self._chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
+        clear_chat_history()  # Clear persisted history
         self._add_bubble("Chat cleared. How can I help you?", "assistant")
 
     def focus_input(self):
@@ -657,3 +692,4 @@ class ChatPanel(QWidget):
     def cleanup(self):
         if self._voice_enabled:
             self._voice_engine.stop_speaking()
+        clear_chat_history()  # Reset chat on app close

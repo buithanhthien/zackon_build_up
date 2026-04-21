@@ -233,6 +233,7 @@ class RobotUI(QMainWindow):
         self._stm32_last_msg_time        = None
         self._front_lidar_last_msg_time  = None
         self._rear_lidar_last_msg_time   = None
+        self._switching_layout       = False  # Track if switching to another layout
 
         try:
             rclpy.init()
@@ -649,6 +650,7 @@ class RobotUI(QMainWindow):
 
     def _voice_go_to_waypoint(self, slots: str):
         self.log(f"[Giọng nói] Đang điều hướng đến địa điểm {slots}")
+        self._switching_layout = True  # Flag to prevent history clear
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
                           '--go-to', slots])
         self.close()
@@ -667,7 +669,9 @@ class RobotUI(QMainWindow):
             self.localization_worker.stop()
         self._ros_spin_timer.stop()
         self._ros_node.destroy_node()
-        self.chat_panel.cleanup()
+        # Only clear history if truly closing, not switching layouts
+        if not self._switching_layout:
+            self.chat_panel.cleanup()
         self.process_mgr.cleanup_all()
         event.accept()
 

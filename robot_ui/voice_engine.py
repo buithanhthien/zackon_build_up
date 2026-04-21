@@ -95,67 +95,56 @@ class VoiceEngine(QObject):
             print(f"[VoiceEngine] 3.5mm jack mic detected: index={jack_idx} ({available[jack_idx]})")
         else:
             print("[VoiceEngine] 3.5mm jack mic NOT detected")
+
         if MIC_FORCE_INDEX is not None:
             candidates = [MIC_FORCE_INDEX, None]
         else:
             candidates = []
-            # Prioritize 3.5mm jack if detected
             if jack_idx is not None:
                 candidates.append(jack_idx)
-            # Then try priority list
             for name in MIC_DEVICE_PRIORITY:
                 idx = next((i for i, n in enumerate(available) if name.lower() in n.lower()), None)
                 if idx is not None and idx not in candidates:
                     candidates.append(idx)
-            candidates.append(None)  # system default as final fallback
+            candidates.append(None)
 
-        mic = None
-        chosen_idx = None
-        for idx in candidates:
-            try:
-                candidate = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
-                # Open the stream first to verify the device is usable
-                candidate.__enter__()
-                try:
-                    with _suppress_stderr():
-                        self.recognizer.adjust_for_ambient_noise(candidate, duration=0.5)
-                    mic = candidate
-                    chosen_idx = idx
-                    print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
-                    break
-                except Exception as e:
-                    print(f"[VoiceEngine] mic index={idx} failed: {e}")
-                finally:
-                    try:
-                        candidate.__exit__(None, None, None)
-                    except Exception:
-                        pass
-            except Exception as e:
-                print(f"[VoiceEngine] mic index={idx} open failed: {e}")
-
-        if mic is None:
-            print("[VoiceEngine] no usable microphone found")
-            self.state_changed.emit("")
-            self._listen_lock.release()
-            return
-
+        audio = None
         try:
-            with mic as source:
-                print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
-                self._set_state(VoiceState.LISTENING)
+            for idx in candidates:
                 try:
-                    audio = self.recognizer.listen(source, timeout=10.0, phrase_time_limit=15.0)
-                    print(f"[VoiceEngine] audio captured, sending to Google STT...")
-                except sr.WaitTimeoutError:
-                    print(f"[VoiceEngine] timeout — no speech detected")
-                    return
+                    mic = sr.Microphone(device_index=idx, sample_rate=MIC_SAMPLE_RATE)
+                    with mic as source:
+                        try:
+                            with _suppress_stderr():
+                                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                        except Exception as e:
+                            print(f"[VoiceEngine] mic index={idx} failed: {e}")
+                            continue
+                        print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
+                        print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
+                        self._set_state(VoiceState.LISTENING)
+                        try:
+                            audio = self.recognizer.listen(source, timeout=10.0, phrase_time_limit=15.0)
+                            print("[VoiceEngine] audio captured, sending to Google STT...")
+                        except sr.WaitTimeoutError:
+                            print("[VoiceEngine] timeout — no speech detected")
+                        break  # mic worked; stop trying candidates
+                except Exception as e:
+                    print(f"[VoiceEngine] mic index={idx} open failed: {e}")
+            else:
+                print("[VoiceEngine] no usable microphone found")
+                return
+
+            if audio is None:
+                return
+
             self._set_state(VoiceState.THINKING)
             try:
                 text = self.recognizer.recognize_google(audio, language=STT_LANGUAGE)
                 print(f"[VoiceEngine] recognized: '{text}'")
                 self.transcript_ready.emit(text)
             except sr.UnknownValueError:
-                print(f"[VoiceEngine] could not understand audio")
+                print("[VoiceEngine] could not understand audio")
             except Exception as e:
                 print(f"[VoiceEngine] STT error: {e}")
         finally:

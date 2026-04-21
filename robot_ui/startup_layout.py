@@ -21,6 +21,10 @@ from load_map_dialog import LoadMapDialog
 from chat_panel_widget import ChatPanel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
+from styles import MAIN_STYLESHEET
+from ui_utils import append_log, setup_clock_timer
+from map_utils import update_map_files
+from process_manager import ProcessManager
 
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
@@ -219,6 +223,7 @@ class LocalizationWorker(QObject):
 class RobotUI(QMainWindow):
     def __init__(self, skip_micro_ros=False):
         super().__init__()
+        self.process_mgr = ProcessManager()
         self.prev_stm32_status       = None
         self.prev_lidar_status       = None
         self.prev_lidar_rear_status  = None
@@ -283,198 +288,7 @@ class RobotUI(QMainWindow):
     def init_ui(self):
         self.setWindowTitle("IUH Robot – Giao diện điều khiển")
 
-        STYLESHEET = """
-            QMainWindow, QWidget {
-                background-color: #f0f4ff;
-                color: #1a2a5e;
-                border: none;
-            }
-            QWidget#left-panel {
-                background-color: #214196;
-                border-right: none;
-            }
-            QWidget#header-bar {
-                background-color: transparent;
-                
-            }
-            QWidget#status-card {
-                background-color: #ffffff;
-                border: 1px solid #c8d4f0;
-                border-radius: 8px;
-            }
-            QWidget#log-panel {
-                background-color: #ffffff;
-                border-top: 1px solid #c8d4f0;
-            }
-            QWidget#chat-panel {
-                background-color: #ffffff;
-                border-top: 1px solid #c8d4f0;
-            }
-            QPushButton#mode-btn {
-                background-color: transparent;
-                color: #a8bce8;
-                border: none;
-                border-left: 4px solid transparent;
-                border-radius: 0px;
-                padding: 20px 20px 20px 24px;
-                text-align: left;
-                font-size: 18px;
-            }
-            QPushButton#mode-btn:hover {
-                background-color: #1a3278;
-                color: #ffffff;
-                border-left: 4px solid #fcb525;
-            }
-            QPushButton#mode-btn:checked {
-                background-color: #1a3278;
-                color: #fcb525;
-                border-left: 4px solid #fcb525;
-            }
-            QPushButton#mode-btn:disabled {
-                color: #4a6aaa;
-                border-left: 4px solid transparent;
-            }
-            QTextEdit#log-text {
-                background-color: #f8faff;
-                color: #1a2a5e;
-                border: none;
-                font-size: 13px;
-            }
-            QLabel#log-title {
-                color: #5a7abf;
-                font-size: 11px;
-                letter-spacing: 2px;
-            }
-            QLabel#clock {
-                color: #5a7abf;
-                font-size: 15px;
-            }
-            QLabel#mode-title {
-                color: #1a2a5e;
-                font-size: 15px;
-            }
-            QLabel#device-name {
-                color: #5a7abf;
-                font-size: 11px;
-            }
-            QLabel#status-ok {
-                color: #22c55e;
-                font-size: 14px;
-            }
-            QLabel#status-error {
-                color: #ef4444;
-                font-size: 14px;
-            }
-            QLabel#status-checking {
-                color: #5a7abf;
-                font-size: 14px;
-            }
-
-            /* ── Panel tab buttons ── */
-            QPushButton#panel-tab {
-                background-color: transparent;
-                color: #5a7abf;
-                border: none;
-                border-bottom: 2px solid transparent;
-                border-radius: 0px;
-                padding: 6px 16px;
-                font-size: 11px;
-                letter-spacing: 2px;
-            }
-            QPushButton#panel-tab:checked {
-                color: #214196;
-                
-            }
-            QPushButton#panel-tab:hover {
-                color: #214196;
-            }
-
-            /* ── Chat input ── */
-            QLineEdit#chat-input {
-                background-color: #f0f4ff;
-                color: #1a2a5e;
-                border: 1px solid #c8d4f0;
-                border-radius: 6px;
-                padding: 10px 14px;
-                font-size: 13px;
-                selection-background-color: #fcb52544;
-            }
-            QLineEdit#chat-input:focus {
-                border: 1px solid #214196;
-            }
-
-            /* ── Send button ── */
-            QPushButton#send-btn {
-                background-color: #214196;
-                color: #ffffff;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-size: 13px;
-            }
-            QPushButton#send-btn:hover {
-                background-color: #1a3278;
-            }
-            QPushButton#send-btn:pressed {
-                background-color: #fcb525;
-                color: #214196;
-            }
-            QPushButton#send-btn:disabled {
-                color: #a8bce8;
-                background-color: #e0e8f8;
-                border: none;
-            }
-
-            /* ── Voice toggle button ── */
-            QPushButton#voice-btn {
-                background-color: #f0f4ff;
-                color: #5a7abf;
-                border: 1px solid #c8d4f0;
-                border-radius: 6px;
-                font-size: 26px;
-                padding: 10px;
-            }
-            QPushButton#voice-btn:checked {
-                background-color: #fff0f0;
-                color: #ef4444;
-                border: 1px solid #ef444466;
-            }
-
-            /* ── Clear chat button ── */
-            QPushButton#clear-btn {
-                background-color: transparent;
-                color: #a8bce8;
-                border: none;
-                font-size: 11px;
-                padding: 4px 8px;
-            }
-            QPushButton#clear-btn:hover {
-                color: #5a7abf;
-            }
-
-            /* ── Scroll area ── */
-            QScrollArea {
-                background-color: #ffffff;
-                border: none;
-            }
-            QScrollBar:vertical {
-                background-color: #f0f4ff;
-                width: 6px;
-                border-radius: 3px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #c8d4f0;
-                border-radius: 3px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #214196;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(MAIN_STYLESHEET)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -647,10 +461,7 @@ class RobotUI(QMainWindow):
         self.status_timer.timeout.connect(self.update_status)
         self.status_timer.start(5000)
 
-        self.clock_timer = QTimer()
-        self.clock_timer.timeout.connect(self._update_clock)
-        self.clock_timer.start(1000)
-        self._update_clock()
+        self.clock_timer = setup_clock_timer(self.clock_label)
 
         self._reestimate_pulse_timer = QTimer()
         self._reestimate_pulse_timer.timeout.connect(self._pulse_reestimate)
@@ -716,15 +527,12 @@ class RobotUI(QMainWindow):
         )
 
     def start_micro_ros(self):
-        try:
-            subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                'source ~/zackon_build_up/install/setup.bash && '
-                'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash'
-            ])
-            self.log("Đã khởi động micro-ROS agent trong terminal mới")
-        except Exception as e:
-            self.log(f"Không thể khởi động micro-ROS agent: {e}")
+        self.process_mgr.launch_terminal(
+            'source ~/zackon_build_up/install/setup.bash && '
+            'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash',
+            'micro-ROS agent'
+        )
+        self.log("Đã khởi động micro-ROS agent trong terminal mới")
 
     def update_status(self):
         now = time.monotonic()
@@ -765,14 +573,12 @@ class RobotUI(QMainWindow):
             subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py'])
             self.close()
         elif mode == "Nav2":
-            try:
-                subprocess.Popen([
-                    'gnome-terminal', '--', 'bash', '-c',
-                    f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py; exec bash'
-                ])
-                self.log("Đã khởi động hệ thống điều hướng Nav2")
-            except Exception as e:
-                self.log(f"Không thể khởi động Nav2: {e}")
+            self.process_mgr.launch_terminal(
+                f'source {SOURCE_PATH}/install/setup.bash && '
+                f'ros2 launch {SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py; exec bash',
+                'Nav2'
+            )
+            self.log("Đã khởi động hệ thống điều hướng Nav2")
 
     def start_reestimate(self):
         if self.prev_stm32_status == False:
@@ -817,81 +623,10 @@ class RobotUI(QMainWindow):
             map_name = dialog.get_selected_map()
             if map_name:
                 self.log(f"Đang tải bản đồ: {map_name}")
-                self.update_map_files(map_name)
-
-    def update_map_files(self, map_name):
-        map_path = f'{SOURCE_PATH}/src/view_robot/maps/{map_name}.yaml'
-
-        nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
-        try:
-            with open(nav2_params, 'r') as f:
-                content = f.read()
-            updated = re.sub(
-                r'(yaml_filename:\s*")[^"]*(")', rf'\1{map_path}\2', content
-            )
-            with open(nav2_params, 'w') as f:
-                f.write(updated)
-            self.log("✓ Đã cập nhật nav2_params.yaml")
-        except Exception as e:
-            self.log(f"✗ Lỗi cập nhật nav2_params.yaml: {e}")
-            return
-        synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py'
-        try:
-            with open(synthesis_launch, 'r') as f:
-                content = f.read()
-            updated = re.sub(
-                r"(map_file_path\s*=\s*PathJoinSubstitution\(\[pkg_dir,\s*'maps',\s*')[^']*('\]\))",
-                rf"\1{map_name}.yaml\2", content
-            )
-            with open(synthesis_launch, 'w') as f:
-                f.write(updated)
-            self.log(f"✓ Đã cập nhật NAV2_BRINGUP.launch.py")
-        except Exception as e:
-            self.log(f"✗ Lỗi cập nhật NAV2_BRINGUP.launch.py: {e}")
-            return
-
-        localization_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_localization.launch.py'
-        try:
-            with open(localization_launch, 'r') as f:
-                content = f.read()
-            updated = re.sub(
-                r"(default_value=os\.path\.join\(bringup_dir,\s*'maps',\s*')[^']*('\))",
-                rf"\1{map_name}.yaml\2", content
-            )
-            with open(localization_launch, 'w') as f:
-                f.write(updated)
-            self.log("✓ Đã cập nhật zackon_localization.launch.py")
-        except Exception as e:
-            self.log(f"✗ Lỗi cập nhật zackon_localization.launch.py: {e}")
-            return
-
-        self.log("Đang build workspace...")
-        try:
-            subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                'cd ~/zackon_build_up && colcon build --packages-select view_robot_pkg '
-                '&& source install/setup.bash '
-                '&& echo "Build complete. Closing in 2 seconds..." && sleep 2'
-            ])
-            self.log(f"✓ Bản đồ '{map_name}' đã tải và đang build workspace")
-        except Exception as e:
-            self.log(f"✗ Lỗi build workspace: {e}")
+                update_map_files(map_name, self.log)
 
     def log(self, message):
-        from datetime import datetime
-        ts = datetime.now().strftime("%H:%M:%S")
-        if "[ERROR]" in message:
-            color = "#ef4444"
-        elif "[WARN]" in message:
-            color = "#f59e0b"
-        elif "✓" in message or "restored" in message or "complete" in message.lower():
-            color = "#22c55e"
-        else:
-            color = "#1a2a5e"
-        self.log_text.append(
-            f'<span style="color:#8fa3cc">[{ts}]</span> '
-            f'<span style="color:{color}">{message}</span>'
-        )
+        append_log(self.log_text, message)
 
     def _on_ai_action(self, tag: str):
         self.log(f"[AI-HÀNH ĐỘNG] {tag}")
@@ -907,13 +642,10 @@ class RobotUI(QMainWindow):
 
     def open_developer_mode(self):
         self.log("Đang mở chế độ Developer (Claude Code)")
-        try:
-            subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                f'cd {SOURCE_PATH} && source install/setup.bash && claude; exec bash'
-            ])
-        except Exception as e:
-            self.log(f"[LỖI] Không thể mở chế độ Developer: {e}. 'claude' đã được cài chưa?")
+        self.process_mgr.launch_terminal(
+            f'cd {SOURCE_PATH} && source install/setup.bash && claude; exec bash',
+            'Developer Mode'
+        )
 
     def _voice_go_to_waypoint(self, slots: str):
         self.log(f"[Giọng nói] Đang điều hướng đến địa điểm {slots}")
@@ -936,6 +668,7 @@ class RobotUI(QMainWindow):
         self._ros_spin_timer.stop()
         self._ros_node.destroy_node()
         self.chat_panel.cleanup()
+        self.process_mgr.cleanup_all()
         event.accept()
 
 

@@ -3,146 +3,27 @@ import sys
 import subprocess
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QTextEdit, QLabel, QLineEdit)
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
 from chat_panel_widget import ChatPanel
-
-STYLESHEET = """
-    QMainWindow, QWidget {
-        background-color: #f0f4ff;
-        color: #1a2a5e;
-        border: none;
-    }
-    QWidget#left-panel {
-        background-color: #214196;
-        border-right: none;
-    }
-    QWidget#header-bar {
-        background-color: transparent;
-        
-    }
-    QWidget#log-panel {
-        background-color: #ffffff;
-        border-top: 1px solid #c8d4f0;
-    }
-    QWidget#content-panel {
-        background-color: #f0f4ff;
-    }
-    QPushButton#action-btn {
-        background-color: transparent;
-        color: #a8bce8;
-        border: none;
-        border-left: 4px solid transparent;
-        border-radius: 0px;
-        padding: 16px 20px 16px 24px;
-        text-align: left;
-        font-size: 18px;
-    }
-    QPushButton#action-btn:hover {
-        background-color: #1a3278;
-        color: #ffffff;
-        border-left: 4px solid #fcb525;
-    }
-    QPushButton#action-btn:disabled {
-        color: #4a6aaa;
-        border-left: 4px solid transparent;
-    }
-    QPushButton#primary-btn {
-        background-color: #214196;
-        color: #ffffff;
-        border: none;
-        border-radius: 8px;
-        font-size: 18px;
-        min-height: 56px;
-        padding: 0px 24px;
-    }
-    QPushButton#primary-btn:hover {
-        background-color: #1a3278;
-    }
-    QPushButton#primary-btn:disabled {
-        color: #a8bce8;
-        background-color: #e0e8f8;
-    }
-    QPushButton#apply-btn {
-        background-color: #fcb525;
-        color: #1a2a5e;
-        border: none;
-        border-radius: 8px;
-        font-size: 16px;
-        min-height: 48px;
-        padding: 0px 20px;
-    }
-    QPushButton#apply-btn:hover {
-        background-color: #e8a510;
-    }
-    QLineEdit#map-input {
-        background-color: #ffffff;
-        color: #1a2a5e;
-        border: 1px solid #c8d4f0;
-        border-radius: 8px;
-        font-size: 16px;
-        min-height: 48px;
-        padding: 0px 12px;
-    }
-    QLineEdit#map-input:focus {
-        border: 1px solid #214196;
-    }
-    QTextEdit#log-text {
-        background-color: #f8faff;
-        color: #1a2a5e;
-        border: none;
-        font-size: 13px;
-    }
-    QLabel#log-title {
-        color: #5a7abf;
-        font-size: 11px;
-        letter-spacing: 2px;
-    }
-    QLabel#clock {
-        color: #5a7abf;
-        font-size: 15px;
-    }
-    QLabel#section-label {
-        color: #5a7abf;
-        font-size: 11px;
-        letter-spacing: 2px;
-    }
-    QLabel#info-text {
-        color: #5a7abf;
-        font-size: 14px;
-    }
-    QPushButton#panel-tab {
-        background-color: transparent;
-        color: #5a7abf;
-        border: none;
-        border-bottom: 2px solid transparent;
-        border-radius: 0px;
-        padding: 6px 16px;
-        font-size: 11px;
-        letter-spacing: 2px;
-    }
-    QPushButton#panel-tab:checked {
-        color: #214196;
-        
-    }
-    QPushButton#panel-tab:hover {
-        color: #214196;
-    }
-"""
+from styles import MAIN_STYLESHEET
+from ui_utils import append_log, setup_clock_timer
+from process_manager import ProcessManager
 
 
 class NewMapUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.process_mgr = ProcessManager()
         self.mapping_process = None
         self.init_ui()
 
     def init_ui(self):
         self.setWindowTitle("New Map - SLAM Mapping")
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(MAIN_STYLESHEET)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -284,26 +165,23 @@ class NewMapUI(QMainWindow):
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
 
-        self.clock_timer = QTimer()
-        self.clock_timer.timeout.connect(self._update_clock)
-        self.clock_timer.start(1000)
-        self._update_clock()
+        self.clock_timer = setup_clock_timer(self.clock_label)
 
-    def _update_clock(self):
-        from datetime import datetime
-        self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
+    def log(self, message):
+        append_log(self.log_text, message)
         
     def start_mapping(self):
         try:
-            # Kill any leftover nav2/AMCL/map_server processes that may still publish old map
+            # Kill any leftover nav2/AMCL/map_server processes
             for proc in ['nav2', 'amcl', 'map_server', 'lifecycle_manager', 'MAP_NAVIGATION']:
-                subprocess.run(['pkill', '-f', proc], check=False)
+                self.process_mgr.kill_by_pattern(proc)
             self.log("Đã dừng các tiến trình điều hướng cũ")
 
-            self.mapping_process = subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                'source ~/zackon_build_up/install/setup.bash && ros2 launch view_robot_pkg MAP_GENERATING.launch.py; exec bash'
-            ])
+            self.mapping_process = self.process_mgr.launch_terminal(
+                'source ~/zackon_build_up/install/setup.bash && '
+                'ros2 launch view_robot_pkg MAP_GENERATING.launch.py; exec bash',
+                'MAP_GENERATING'
+            )
             self.log("✓ Đã khởi động MAP_GENERATING.launch.py")
             self.log("SLAM đang hoạt động")
             self.log("Điều khiển robot để khám phá môi trường")
@@ -315,17 +193,13 @@ class NewMapUI(QMainWindow):
     
     def cancel_mapping(self):
         self.log("Đang hủy quá trình lập bản đồ SLAM...")
-        try:
-            subprocess.run(['pkill', '-f', 'MAP_GENERATING.launch.py'], check=False)
-            subprocess.run(['pkill', '-f', 'rviz2'], check=False)
-            self.log("Đã dừng MAP_GENERATING và RViz2")
-        except Exception as e:
-            self.log(f"Lỗi khi dừng tiến trình: {e}")
-        finally:
-            self.mapping_process = None
-            self.btn_start.setEnabled(True)
-            self.btn_start.setText("Bắt đầu lập bản đồ")
-            self.log("Nút Bắt đầu đã được khôi phục")
+        self.process_mgr.kill_by_pattern('MAP_GENERATING.launch.py')
+        self.process_mgr.kill_by_pattern('rviz2')
+        self.log("Đã dừng MAP_GENERATING và RViz2")
+        self.mapping_process = None
+        self.btn_start.setEnabled(True)
+        self.btn_start.setText("Bắt đầu lập bản đồ")
+        self.log("Nút Bắt đầu đã được khôi phục")
     
     def save_map(self):
         map_name = self.map_name_input.text().strip()
@@ -336,49 +210,24 @@ class NewMapUI(QMainWindow):
         map_path = f"{SOURCE_PATH}/src/view_robot/maps/{map_name}"
         self.log(f"Đang lưu bản đồ '{map_name}' vào thư mục maps...")
         try:
-            subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                f'source ~/zackon_build_up/install/setup.bash && cd {SOURCE_PATH}/src/view_robot/maps && ros2 run nav2_map_server map_saver_cli -f {map_name}; exec bash'
-            ])
+            self.process_mgr.launch_terminal(
+                f'source ~/zackon_build_up/install/setup.bash && '
+                f'cd {SOURCE_PATH}/src/view_robot/maps && '
+                f'ros2 run nav2_map_server map_saver_cli -f {map_name}; exec bash',
+                'Map Saver'
+            )
             self.log(f"Đã lưu bản đồ tại: {map_path}")
         except Exception as e:
             self.log(f"Không thể lưu bản đồ: {e}")
     
     def go_back(self):
         self.log("Quay về giao diện chính")
-        if self.mapping_process:
-            self.log("Đang dừng quá trình SLAM...")
-            try:
-                self.mapping_process.terminate()
-                self.mapping_process.wait(timeout=3)
-                self.log("Đã dừng tiến trình SLAM")
-            except:
-                self.mapping_process.kill()
-                self.log("Đã buộc dừng tiến trình SLAM")
+        self.process_mgr.cleanup_all()
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
     
-    def log(self, message):
-        from datetime import datetime
-        ts = datetime.now().strftime("%H:%M:%S")
-        if "[ERROR]" in message:
-            color = "#ff3b3b"
-        elif "[WARN]" in message:
-            color = "#ffb300"
-        elif "✓" in message:
-            color = "#00c853"
-        else:
-            color = "#1a2a5e"
-        self.log_text.append(
-            f'<span style="color:#8fa3cc">[{ts}]</span> <span style="color:{color}">{message}</span>'
-        )
-    
     def closeEvent(self, event):
-        if self.mapping_process:
-            try:
-                self.mapping_process.terminate()
-            except:
-                pass
+        self.process_mgr.cleanup_all()
         self.chat_widget.cleanup()
         event.accept()
 

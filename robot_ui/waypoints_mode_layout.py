@@ -21,6 +21,10 @@ from config import SOURCE_PATH
 from chat_panel_widget import ChatPanel, _AIChatWorker
 from load_map_dialog import LoadMapDialog
 from PyQt6.QtCore import QThread
+from styles import MAIN_STYLESHEET, DIALOG_STYLESHEET
+from ui_utils import append_log, setup_clock_timer
+from map_utils import get_current_map_path, load_map_yaml, get_current_map_name, update_map_files
+from process_manager import ProcessManager
 
 
 class WaypointsNode(Node):
@@ -497,6 +501,7 @@ class NewPathDialog(QDialog):
 class WaypointsModeLayout(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.process_mgr = ProcessManager()
         try:
             rclpy.init()
         except:
@@ -524,116 +529,7 @@ class WaypointsModeLayout(QMainWindow):
         self.setWindowTitle('Waypoints Mode')
         self.showMaximized()
 
-        STYLESHEET = """
-            QMainWindow, QWidget {
-                background-color: #f0f4ff;
-                color: #1a2a5e;
-                border: none;
-            }
-            QWidget#left-panel {
-                background-color: #214196;
-                border-right: none;
-            }
-            QWidget#header-bar {
-                background-color: transparent;
-                
-            }
-            QWidget#log-panel {
-                background-color: #ffffff;
-                border-top: 1px solid #c8d4f0;
-            }
-            QPushButton#action-btn {
-                background-color: transparent;
-                color: #a8bce8;
-                border: none;
-                border-left: 4px solid transparent;
-                border-radius: 0px;
-                padding: 16px 20px 16px 24px;
-                text-align: left;
-                font-size: 18px;
-            }
-            QPushButton#action-btn:hover {
-                background-color: #1a3278;
-                color: #ffffff;
-                border-left: 4px solid #fcb525;
-            }
-            QPushButton#action-btn:checked {
-                background-color: #1a3278;
-                color: #fcb525;
-                border-left: 4px solid #fcb525;
-            }
-            QPushButton#wp-btn {
-                background-color: #ffffff;
-                color: #5a7abf;
-                border: 1px solid #c8d4f0;
-                border-radius: 8px;
-                font-size: 16px;
-                min-height: 48px;
-            }
-            QPushButton#wp-btn:hover {
-                background-color: #e8f0ff;
-                color: #214196;
-                border: 1px solid #214196;
-            }
-            QPushButton#wp-btn[filled="true"] {
-                color: #22c55e;
-                border: 2px solid #22c55e;
-                background-color: #f0fff4;
-            }
-            QPushButton#wp-btn[selected="true"] {
-                color: #ffffff;
-                border: 2px solid #fcb525;
-                background-color: #214196;
-            }
-            QTextEdit#log-text {
-                background-color: #f8faff;
-                color: #1a2a5e;
-                border: none;
-                font-size: 13px;
-            }
-            QLabel#log-title {
-                color: #5a7abf;
-                font-size: 11px;
-                letter-spacing: 2px;
-            }
-            QLabel#section-title {
-                color: #5a7abf;
-                font-size: 11px;
-                letter-spacing: 2px;
-                padding: 12px 24px 4px 24px;
-            }
-            QLabel#pos-value {
-                color: #1a2a5e;
-                font-size: 13px;
-                padding: 0px 24px;
-            }
-            QLabel#clock {
-                color: #5a7abf;
-                font-size: 15px;
-            }
-            QLabel#header-title {
-                color: #1a2a5e;
-                font-size: 15px;
-            }
-            QPushButton#panel-tab {
-                background-color: transparent;
-                color: #5a7abf;
-                border: none;
-                border-bottom: 2px solid transparent;
-                border-radius: 0px;
-                padding: 6px 16px;
-                font-size: 11px;
-                letter-spacing: 2px;
-            }
-            QPushButton#panel-tab:checked {
-                color: #214196;
-                
-            }
-            QPushButton#panel-tab:hover {
-                color: #214196;
-            }
-        """
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(MAIN_STYLESHEET)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -733,9 +629,9 @@ class WaypointsModeLayout(QMainWindow):
         map_layout.setContentsMargins(12, 12, 12, 0)
         map_layout.setSpacing(0)
 
-        map_yaml_path = self.get_current_map_path()
+        map_yaml_path = get_current_map_path()
         map_dir = os.path.dirname(map_yaml_path)
-        yaml_data = self.load_map_yaml(map_yaml_path)
+        yaml_data = load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])
 
         self.map_widget = MapWidget(map_image_path, yaml_data)
@@ -823,10 +719,7 @@ class WaypointsModeLayout(QMainWindow):
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
 
-        self.clock_timer = QTimer()
-        self.clock_timer.timeout.connect(self._update_clock)
-        self.clock_timer.start(1000)
-        self._update_clock()
+        self.clock_timer = setup_clock_timer(self.clock_label)
 
         self.update_map_waypoints()
         self.log("Đã chuyển sang chế độ điểm đến")
@@ -837,39 +730,8 @@ class WaypointsModeLayout(QMainWindow):
     def _auto_start_voice(self):
         self.chat_widget._voice_enabled = True
 
-    def _update_clock(self):
-        from datetime import datetime
-        self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
-
-    def get_current_map_path(self):
-        nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
-        try:
-            with open(nav2_params, 'r') as f:
-                for line in f:
-                    if 'yaml_filename:' in line and '#' not in line:
-                        path = line.split(':', 1)[1].strip().strip('"')
-                        maps_dir = f'{SOURCE_PATH}/src/view_robot/maps/'
-                        map_file = os.path.basename(path)
-                        return maps_dir + map_file
-        except Exception:
-            pass
-        return f'{SOURCE_PATH}/src/view_robot/maps/X5_08042026.yaml'
-
-    def load_map_yaml(self, yaml_path):
-        data = {}
-        with open(yaml_path, 'r') as f:
-            for line in f:
-                if ':' in line:
-                    key, value = line.split(':', 1)
-                    key = key.strip()
-                    value = value.strip()
-                    if key == 'origin':
-                        data[key] = eval(value)
-                    elif key == 'resolution':
-                        data[key] = float(value)
-                    else:
-                        data[key] = value
-        return data
+    def log(self, message):
+        append_log(self.log_text, message)
         
     def spin_and_update(self):
         rclpy.spin_once(self.ros_node, timeout_sec=0)
@@ -998,18 +860,13 @@ class WaypointsModeLayout(QMainWindow):
         
     def update_map_waypoints(self):
         """Show only waypoints belonging to the current map on the map widget."""
-        current_map = self._get_current_map_name()
+        current_map = get_current_map_name()
         filtered = {k: v for k, v in self.waypoints.items()
                     if v.get('map_name') == current_map}
         self.map_widget.set_waypoints(filtered)
 
-    def _get_current_map_name(self):
-        """Return the stem of the current map file (e.g. 'X5_130426')."""
-        path = self.get_current_map_path()
-        return os.path.splitext(os.path.basename(path))[0]
-
     def open_waypoint_picker(self):
-        dialog = WaypointPickerDialog(self.waypoints, self._get_current_map_name(), self)
+        dialog = WaypointPickerDialog(self.waypoints, get_current_map_name(), self)
         if dialog.exec():
             key = dialog.get_selected_key()
             if key:
@@ -1021,7 +878,7 @@ class WaypointsModeLayout(QMainWindow):
 
     def open_path_manager(self):
         multi_wp_file = f'{SOURCE_PATH}/robot_ui/multi_waypoints.json'
-        current_map = self._get_current_map_name()
+        current_map = get_current_map_name()
         while True:
             dlg = PathManagerDialog(multi_wp_file, current_map, self)
             dlg.run_path_requested.connect(self._run_multi_path)
@@ -1157,7 +1014,7 @@ class WaypointsModeLayout(QMainWindow):
                 'qy': pose.pose.pose.orientation.y,
                 'qz': pose.pose.pose.orientation.z,
                 'qw': pose.pose.pose.orientation.w,
-                'map_name': self._get_current_map_name(),
+                'map_name': get_current_map_name(),
             }
             self.save_waypoints()
             self.update_map_waypoints()
@@ -1169,71 +1026,17 @@ class WaypointsModeLayout(QMainWindow):
             map_name = dialog.get_selected_map()
             if map_name:
                 self.log(f"Đang tải bản đồ: {map_name}")
-                self.update_map_files(map_name)
-
-    def update_map_files(self, map_name):
-        import re
-        map_path = f'{SOURCE_PATH}/src/view_robot/maps/{map_name}.yaml'
-        nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
-        try:
-            with open(nav2_params, 'r') as f:
-                content = f.read()
-            updated = re.sub(r'(yaml_filename:\s*")[^"]*(")', rf'\1{map_path}\2', content)
-            with open(nav2_params, 'w') as f:
-                f.write(updated)
-            self.log("✓ Đã cập nhật nav2_params.yaml")
-        except Exception as e:
-            self.log(f"✗ Lỗi cập nhật nav2_params.yaml: {e}")
-            return
-        synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py'
-        try:
-            with open(synthesis_launch, 'r') as f:
-                content = f.read()
-            updated = re.sub(
-                r"(map_file_path\s*=\s*PathJoinSubstitution\(\[pkg_dir,\s*'maps',\s*')[^']*('\]\))",
-                rf"\1{map_name}.yaml\2", content
-            )
-            with open(synthesis_launch, 'w') as f:
-                f.write(updated)
-            self.log("✓ Đã cập nhật NAV2_BRINGUP.launch.py")
-        except Exception as e:
-            self.log(f"✗ Lỗi cập nhật NAV2_BRINGUP.launch.py: {e}")
-            return
-        localization_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_localization.launch.py'
-        try:
-            with open(localization_launch, 'r') as f:
-                content = f.read()
-            updated = re.sub(
-                r"(default_value=os\.path\.join\(bringup_dir,\s*'maps',\s*')[^']*('\))",
-                rf"\1{map_name}.yaml\2", content
-            )
-            with open(localization_launch, 'w') as f:
-                f.write(updated)
-            self.log("✓ Đã cập nhật zackon_localization.launch.py")
-        except Exception as e:
-            self.log(f"✗ Lỗi cập nhật zackon_localization.launch.py: {e}")
-            return
-        self.log("Đang build workspace...")
-        try:
-            subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                'cd ~/zackon_build_up && colcon build --packages-select view_robot_pkg '
-                '&& source install/setup.bash '
-                '&& echo "Build complete. Closing in 2 seconds..." && sleep 2'
-            ])
-            self.log(f"✓ Bản đồ '{map_name}' đã tải và đang build workspace")
-            # Reload map display with new map image
-            map_yaml_path = self.get_current_map_path()
-            map_dir = os.path.dirname(map_yaml_path)
-            yaml_data = self.load_map_yaml(map_yaml_path)
-            map_image_path = os.path.join(map_dir, yaml_data['image'])
-            self.map_widget.map_image = QPixmap(map_image_path)
-            self.map_widget.resolution = yaml_data['resolution']
-            self.map_widget.origin = yaml_data['origin']
-            self.update_map_waypoints()
-            self.map_widget.update()
-        except Exception as e:
-            self.log(f"✗ Lỗi build workspace: {e}")
+                update_map_files(map_name, self.log)
+                # Reload map display with new map image
+                map_yaml_path = get_current_map_path()
+                map_dir = os.path.dirname(map_yaml_path)
+                yaml_data = load_map_yaml(map_yaml_path)
+                map_image_path = os.path.join(map_dir, yaml_data['image'])
+                self.map_widget.map_image = QPixmap(map_image_path)
+                self.map_widget.resolution = yaml_data['resolution']
+                self.map_widget.origin = yaml_data['origin']
+                self.update_map_waypoints()
+                self.map_widget.update()
 
     def go_back(self):
         if self.ros_node.current_goal_handle is not None:
@@ -1251,6 +1054,7 @@ class WaypointsModeLayout(QMainWindow):
         except:
             pass
         self.chat_widget.cleanup()
+        self.process_mgr.cleanup_all()
         event.accept()
 
 

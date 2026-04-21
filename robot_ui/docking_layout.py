@@ -12,11 +12,13 @@ from std_msgs.msg import Int32, Bool, Float32
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
+from process_manager import ProcessManager
 
 
 class DockingUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.process_mgr = ProcessManager()
         self.docking_process = None
         self.battery_level = 0
         
@@ -62,13 +64,10 @@ class DockingUI(QMainWindow):
             
             print("✓ Robot đã docked thành công! Đang tắt terminal...")
             
-            # Kill the docking terminal using pkill
-            try:
-                subprocess.run(['pkill', '-f', 'zackon_docking.launch.py'])
-                self.docking_process = None
-                print("✓ Đã dừng tiến trình docking")
-            except Exception as e:
-                print(f"✗ Lỗi khi dừng tiến trình: {e}")
+            # Kill the docking terminal
+            self.process_mgr.kill_by_pattern('zackon_docking.launch.py')
+            self.docking_process = None
+            print("✓ Đã dừng tiến trình docking")
         else:  # Not docked
             self.docked_light.setStyleSheet("color: #c8d4f0;")
             self.docking_light.setStyleSheet("color: #fcb525;")
@@ -318,17 +317,16 @@ class DockingUI(QMainWindow):
         self.undock_light.setStyleSheet("color: #c8d4f0;")
         
         # Launch docking process
-        try:
-            self.docking_process = subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                f'source {SOURCE_PATH}/install/setup.bash && '
-                f'ros2 launch {SOURCE_PATH}/src/lidar_dock_detector/launch/zackon_docking.launch.py; exec bash'
-            ])
-            
+        self.docking_process = self.process_mgr.launch_terminal(
+            f'source {SOURCE_PATH}/install/setup.bash && '
+            f'ros2 launch {SOURCE_PATH}/src/lidar_dock_detector/launch/zackon_docking.launch.py; exec bash',
+            'Docking'
+        )
+        
+        if self.docking_process:
             print("Đang theo dõi trạng thái docking qua /rear_docking_status...")
-            
-        except Exception as e:
-            print(f"Lỗi khởi động docking: {e}")
+        else:
+            print("Lỗi khởi động docking")
             self.docking_light.setStyleSheet("color: #ef4444;")
     
     def execute_undock(self):
@@ -361,6 +359,7 @@ class DockingUI(QMainWindow):
     def closeEvent(self, event):
         self._ros_spin_timer.stop()
         self._ros_node.destroy_node()
+        self.process_mgr.cleanup_all()
         event.accept()
 
 

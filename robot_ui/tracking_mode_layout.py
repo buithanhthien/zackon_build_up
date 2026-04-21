@@ -15,84 +15,10 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
 from chat_panel_widget import ChatPanel
-
-STYLESHEET = """
-    QMainWindow, QWidget {
-        background-color: #f0f4ff;
-        color: #1a2a5e;
-        border: none;
-    }
-    QWidget#left-panel {
-        background-color: #214196;
-        border-right: none;
-    }
-    QWidget#header-bar {
-        background-color: transparent;
-        
-    }
-    QWidget#log-panel {
-        background-color: #ffffff;
-        border-top: 1px solid #c8d4f0;
-    }
-    QPushButton#action-btn {
-        background-color: transparent;
-        color: #a8bce8;
-        border: none;
-        border-left: 4px solid transparent;
-        border-radius: 0px;
-        padding: 16px 20px 16px 24px;
-        text-align: left;
-        font-size: 18px;
-    }
-    QPushButton#action-btn:hover {
-        background-color: #1a3278;
-        color: #ffffff;
-        border-left: 4px solid #fcb525;
-    }
-    QTextEdit#log-text {
-        background-color: #f8faff;
-        color: #1a2a5e;
-        border: none;
-        font-size: 13px;
-    }
-    QLabel#log-title {
-        color: #5a7abf;
-        font-size: 11px;
-        letter-spacing: 2px;
-    }
-    QLabel#clock {
-        color: #5a7abf;
-        font-size: 15px;
-    }
-    QLabel#section-title {
-        color: #5a7abf;
-        font-size: 11px;
-        letter-spacing: 2px;
-        padding: 12px 24px 4px 24px;
-    }
-    QLabel#pos-value {
-        color: #1a2a5e;
-        font-size: 13px;
-        padding: 0px 24px;
-    }
-    QPushButton#panel-tab {
-        background-color: transparent;
-        color: #5a7abf;
-        border: none;
-        border-bottom: 2px solid transparent;
-        border-radius: 0px;
-        padding: 6px 16px;
-        font-size: 11px;
-        letter-spacing: 2px;
-    }
-    QPushButton#panel-tab:checked {
-        color: #214196;
-        
-    }
-    QPushButton#panel-tab:hover {
-        color: #214196;
-    }
-"""
+from styles import MAIN_STYLESHEET
+from ui_utils import append_log, setup_clock_timer
+from map_utils import get_current_map_path, load_map_yaml
+from process_manager import ProcessManager
 
 
 class MapWidget(QWidget):
@@ -141,6 +67,7 @@ class MapWidget(QWidget):
 class TrackingModeUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.process_mgr = ProcessManager()
         self.launch_process = None
         self.ros_node = None
         self.init_ui()
@@ -150,7 +77,7 @@ class TrackingModeUI(QMainWindow):
     def init_ui(self):
         self.setWindowTitle("Tracking Mode")
         self.showMaximized()
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(MAIN_STYLESHEET)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -231,9 +158,9 @@ class TrackingModeUI(QMainWindow):
         map_layout = QVBoxLayout(map_container)
         map_layout.setContentsMargins(12, 12, 12, 12)
 
-        map_yaml_path = self.get_current_map_path()
+        map_yaml_path = get_current_map_path()
         map_dir = os.path.dirname(map_yaml_path)
-        yaml_data = self.load_map_yaml(map_yaml_path)
+        yaml_data = load_map_yaml(map_yaml_path)
         map_image_path = os.path.join(map_dir, yaml_data['image'])
 
         self.map_widget = MapWidget(map_image_path, yaml_data)
@@ -296,14 +223,10 @@ class TrackingModeUI(QMainWindow):
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
 
-        self.clock_timer = QTimer()
-        self.clock_timer.timeout.connect(self._update_clock)
-        self.clock_timer.start(1000)
-        self._update_clock()
+        self.clock_timer = setup_clock_timer(self.clock_label)
 
-    def _update_clock(self):
-        from datetime import datetime
-        self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
+    def log(self, message):
+        append_log(self.log_text, message)
         
     def init_ros(self):
         rclpy.init()
@@ -318,34 +241,6 @@ class TrackingModeUI(QMainWindow):
         self.ros_timer.start(50)
         
         self.log("Đã chuyển sang chế độ theo dõi")
-    
-    def get_current_map_path(self):
-        nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
-        try:
-            with open(nav2_params, 'r') as f:
-                for line in f:
-                    if 'yaml_filename:' in line and '#' not in line:
-                        path = line.split(':', 1)[1].strip().strip('"')
-                        return f'{SOURCE_PATH}/src/view_robot/maps/{os.path.basename(path)}'
-        except Exception:
-            pass
-        return f'{SOURCE_PATH}/src/view_robot/maps/X5_08042026.yaml'
-
-    def load_map_yaml(self, yaml_path):
-        data = {}
-        with open(yaml_path, 'r') as f:
-            for line in f:
-                if ':' in line:
-                    key, value = line.split(':', 1)
-                    key = key.strip()
-                    value = value.strip()
-                    if key == 'origin':
-                        data[key] = eval(value)
-                    elif key == 'resolution':
-                        data[key] = float(value)
-                    else:
-                        data[key] = value
-        return data
         
     def pose_callback(self, msg):
         pos = msg.pose.pose.position
@@ -358,42 +253,24 @@ class TrackingModeUI(QMainWindow):
         self.log(msg.data)
         
     def launch_tracking(self):
-        try:
-            self.launch_process = subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/human_following/launch/system.launch.py; exec bash'
-            ])
+        self.launch_process = self.process_mgr.launch_terminal(
+            f'source {SOURCE_PATH}/install/setup.bash && '
+            f'ros2 launch {SOURCE_PATH}/src/human_following/launch/system.launch.py; exec bash',
+            'Human Tracking'
+        )
+        if self.launch_process:
             self.log("Đã khởi động hệ thống theo dõi")
-        except Exception as e:
-            self.log(f"Không thể khởi động hệ thống theo dõi: {e}")
+        else:
+            self.log("Không thể khởi động hệ thống theo dõi")
     
     def go_back(self):
-        if self.launch_process:
-            subprocess.run(['pkill', '-f', 'system.launch.py'])
-            self.launch_process.terminate()
-            self.log("Đã dừng hệ thống theo dõi")
+        self.process_mgr.kill_by_pattern('system.launch.py')
+        self.log("Đã dừng hệ thống theo dõi")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
-        
-    def log(self, message):
-        from datetime import datetime
-        ts = datetime.now().strftime("%H:%M:%S")
-        if "[ERROR]" in message:
-            color = "#ff3b3b"
-        elif "[WARN]" in message:
-            color = "#ffb300"
-        elif "✓" in message:
-            color = "#00c853"
-        else:
-            color = "#1a2a5e"
-        self.log_text.append(
-            f'<span style="color:#8fa3cc">[{ts}]</span> <span style="color:{color}">{message}</span>'
-        )
     
     def closeEvent(self, event):
-        if self.launch_process:
-            subprocess.run(['pkill', '-f', 'system.launch.py'])
-            self.launch_process.terminate()
+        self.process_mgr.cleanup_all()
         if self.ros_node:
             self.ros_node.destroy_node()
             rclpy.shutdown()

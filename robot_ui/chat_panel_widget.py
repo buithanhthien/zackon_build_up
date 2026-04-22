@@ -6,7 +6,7 @@ import math
 import unicodedata
 from openai import OpenAI
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                             QLabel, QLineEdit, QScrollArea, QSizePolicy)
+                             QLabel, QLineEdit, QScrollArea, QSizePolicy, QMessageBox)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
 from PyQt6.QtGui import QFont
 import sys
@@ -562,6 +562,61 @@ class ChatPanel(QWidget):
         clean = _TOUR_TAG_RE.sub('', clean).strip()
         return clean, tags, nav_keys, tour_keys
 
+    def _is_ambiguous_request(self, user_input: str, waypoints: list) -> bool:
+        """Check if navigation request is ambiguous and needs confirmation"""
+        user_lower = user_input.lower()
+        
+        # Ambiguous patterns
+        ambiguous_patterns = [
+            r'\b(có thể|có|được không|được ko|ok không|ok ko)\b',  # "có thể đi X5.4?"
+            r'\b(hay|hoặc)\b',  # "đi X5.4 hay X5.6?"
+            r'\?',  # Any question mark
+        ]
+        
+        for pattern in ambiguous_patterns:
+            if re.search(pattern, user_lower):
+                return True
+        
+        # Multiple waypoints without clear tour intent
+        if len(waypoints) > 1 and not any(kw in user_lower for kw in ['tham quan', 'tour', 'lần lượt', 'sau đó', 'rồi']):
+            return True
+        
+        return False
+    
+    def _confirm_navigation(self, waypoints: list) -> bool:
+        """Show confirmation dialog for navigation"""
+        wps = _load_waypoints()
+        
+        if len(waypoints) == 1:
+            wp_name = waypoints[0]
+            if wp_name == '__return_here__':
+                msg = "Xác nhận quay trở về vị trí ban đầu?"
+            else:
+                wp_data = wps.get(wp_name, {})
+                aliases = wp_data.get('aliases', []) if isinstance(wp_data, dict) else []
+                display_name = aliases[0] if aliases else wp_name
+                msg = f"Xác nhận điều hướng đến {display_name}?"
+        else:
+            wp_names = []
+            for wp in waypoints:
+                if wp == '__return_here__':
+                    wp_names.append("vị trí ban đầu")
+                else:
+                    wp_data = wps.get(wp, {})
+                    aliases = wp_data.get('aliases', []) if isinstance(wp_data, dict) else []
+                    wp_names.append(aliases[0] if aliases else wp)
+            msg = f"Xác nhận tham quan: {' → '.join(wp_names)}?"
+        
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận điều hướng",
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+        
+        return reply == QMessageBox.StandardButton.Yes
+
     def _fallback_nav_key(self, text: str) -> list:
         """If AI forgot the <NAVIGATE:key> tag, try to find a waypoint key in the text.
         Only matches if the waypoint appears in a navigation context (not in a list).
@@ -596,6 +651,56 @@ class ChatPanel(QWidget):
         save_chat_history(self._chat_history)  # Persist after each message
         
         print(f"[CHAT] Assistant: {clean}")
+        
+        # Check for ambiguous navigation
+        if nav_keys or tour_keys:
+            all_keys = tour_keys if tour_keys else nav_keys
+            
+            # Validate waypoints exist (case-insensitive)
+            wps = _load_waypoints()
+            wps_lower = {k.lower(): k for k in wps.keys()}  # Map lowercase to original key
+            
+            # Normalize keys to match actual waypoint keys
+            normalized_keys = []
+            invalid = []
+            for k in all_keys:
+                if k == '__return_here__':
+                    normalized_keys.append(k)
+                elif k.lower() in wps_lower:
+                    normalized_keys.append(wps_lower[k.lower()])  # Use original case
+                else:
+                    invalid.append(k)
+            
+            if invalid:
+                error_msg = f"Xin lỗi, không tìm thấy: {', '.join(invalid)}"
+                self._add_bubble(error_msg, "assistant")
+                print(f"[CHAT] Invalid waypoints: {invalid}")
+                self.typing_label.hide()
+                self._typing_timer.stop()
+                self.send_btn.setEnabled(True)
+                self.chat_input.setEnabled(True)
+                return
+            
+            # Use normalized keys from here on
+            all_keys = normalized_keys
+            
+            # Check if request is ambiguous (needs confirmation)
+            user_msg = self._chat_history[-2]['content'] if len(self._chat_history) >= 2 else ""
+            is_ambiguous = self._is_ambiguous_request(user_msg, all_keys)
+            
+            if is_ambiguous:
+                # Ask for confirmation
+                confirmed = self._confirm_navigation(all_keys)
+                if not confirmed:
+                    cancel_msg = "Đã hủy điều hướng."
+                    self._add_bubble(cancel_msg, "assistant")
+                    print(f"[CHAT] Navigation cancelled by user")
+                    self.typing_label.hide()
+                    self._typing_timer.stop()
+                    self.send_btn.setEnabled(True)
+                    self.chat_input.setEnabled(True)
+                    return
+        
         if nav_keys:
             print(f"[CHAT] Navigation triggered: {nav_keys}")
         if tour_keys:

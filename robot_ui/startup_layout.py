@@ -13,6 +13,7 @@ from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
 from PyQt6.QtGui import QFont, QFontDatabase, QKeyEvent
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
@@ -240,8 +241,13 @@ class RobotUI(QMainWindow):
         except Exception:
             pass
         self._ros_node = Node('robot_ui_node')
+        _amcl_qos = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
+        )
         self._ros_node.create_subscription(
-            PoseWithCovarianceStamped, '/amcl_pose', self._amcl_callback, 10
+            PoseWithCovarianceStamped, '/amcl_pose', self._amcl_callback, _amcl_qos
         )
         self._ros_node.create_subscription(
             Odometry, '/odomfromSTM32', self._stm32_odom_callback, 10

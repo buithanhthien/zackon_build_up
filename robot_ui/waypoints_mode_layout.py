@@ -12,6 +12,7 @@ from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform, QFon
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
 from nav2_msgs.action import NavigateToPose
 from action_msgs.msg import GoalStatus
@@ -30,7 +31,12 @@ from process_manager import ProcessManager
 class WaypointsNode(Node):
     def __init__(self):
         super().__init__('waypoints_node')
-        self.subscription = self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
+        _amcl_qos = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
+        )
+        self.subscription = self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, _amcl_qos)
         self.nav_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.current_pose = None
         self.current_goal_handle = None

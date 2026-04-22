@@ -44,7 +44,7 @@ _REVERSE_NAV_PATTERN = re.compile(
     re.IGNORECASE
 )
 _NO_EXEC_PATTERN = re.compile(
-    r'\b(không|chỉ|just|only|answer|trả lời|cho biết|là gì|có không|bao nhiêu|mấy|ở đâu|khi nào|tại sao|vì sao|có phải|có đúng|được không|đúng không|hay không|trước đó|trước khi|sau khi|đã|rồi|vừa rồi|lúc nãy|hồi nãy|lịch sử)\b',
+    r'\b(không|chỉ|just|only|answer|trả lời|cho biết|là gì|có không|bao nhiêu|mấy|ở đâu|khi nào|tại sao|vì sao|có phải|có đúng|được không|đúng không|hay không|trước đó|trước khi|vừa rồi|lúc nãy|hồi nãy|lịch sử)\b',
     re.IGNORECASE
 )
 _TOUR_WAYPOINTS = ['x5.4', 'x5.10', 'X5.11', 'x5.12']
@@ -460,13 +460,24 @@ class ChatPanel(QWidget):
             return
 
         if _TOUR_PATTERN.search(text) and not _NO_EXEC_PATTERN.search(text):
-            reply = "Đang dẫn bạn tham quan lần lượt các phòng trọng điểm của khoa điện!"
+            tour_wps = list(_TOUR_WAYPOINTS)
+            return_here = bool(_RETURN_HERE_PATTERN.search(text))
+            if return_here:
+                pose = self._pose_provider() if self._pose_provider else None
+                if pose:
+                    self._return_here_pose = (pose.position.x, pose.position.y)
+                    o = pose.orientation
+                    tour_wps.append(f'{_RETURN_HERE_WAYPOINT_KEY}:{pose.position.x:.4f};{pose.position.y:.4f};{o.z:.4f};{o.w:.4f}')
+                else:
+                    tour_wps.append(_RETURN_HERE_WAYPOINT_KEY)
+            suffix = " rồi quay lại vị trí hiện tại của bạn" if return_here else ""
+            reply = f"Bắt đầu tham quan các phòng trọng điểm của khoa điện rồi quay trở về vị trí hiện tại!" if return_here else "Đang dẫn bạn tham quan lần lượt các phòng trọng điểm của khoa điện!"
             self._chat_history.append({"role": "user", "content": text})
             self._chat_history.append({"role": "assistant", "content": reply})
             save_chat_history(self._chat_history)  # Persist
             if self._voice_enabled:
                 self._voice_engine.speak(reply)
-            self._show_response(reply, [], _TOUR_WAYPOINTS)
+            self._show_response(reply, [], tour_wps)
             return
 
         if (_MULTI_NAV_PATTERN.search(text) or _REVERSE_NAV_PATTERN.search(text) or _RETURN_HERE_PATTERN.search(text)) and not _NO_EXEC_PATTERN.search(text):

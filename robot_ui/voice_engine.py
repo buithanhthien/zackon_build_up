@@ -22,10 +22,10 @@ from vieneu import Vieneu
 
 MIC_DEVICE_PRIORITY = [
     "pipewire",       # PipeWire routes all physical mics (USB, 3.5mm jack)
-    "sysdefault",
+    "pulse",
     "default",
 ]
-MIC_JACK_KEYWORDS = ["sn6140", "analog"]  # 3.5mm jack identifiers (exclude HDMI)
+MIC_JACK_KEYWORDS = ["usb2.0", "usb audio", "usb_audio", "usb", "c-media", "cmedia"]  # USB mic identifiers
 MIC_JACK_EXCLUDE  = ["hdmi", "iec958", "spdif"]  # never treat these as mic input
 MIC_FORCE_INDEX = None
 MIC_SAMPLE_RATE = 16000
@@ -64,8 +64,8 @@ class VoiceEngine(QObject):
         self._listen_lock  = threading.Lock()
 
         self.recognizer = sr.Recognizer()
-        self.recognizer.dynamic_energy_threshold = False
-        self.recognizer.energy_threshold = 500
+        self.recognizer.dynamic_energy_threshold = True
+        self.recognizer.energy_threshold = 300
         self.recognizer.pause_threshold  = 1.5
 
         self._tts_queue = queue.Queue()
@@ -116,13 +116,13 @@ class VoiceEngine(QObject):
                     with mic as source:
                         try:
                             with _suppress_stderr():
+                                self._set_state(VoiceState.LISTENING)
                                 self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
                         except Exception as e:
                             print(f"[VoiceEngine] mic index={idx} failed: {e}")
                             continue
                         print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
                         print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
-                        self._set_state(VoiceState.LISTENING)
                         try:
                             audio = self.recognizer.listen(source, timeout=10.0, phrase_time_limit=15.0)
                             print("[VoiceEngine] audio captured, sending to Google STT...")

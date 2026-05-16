@@ -49,8 +49,12 @@ class BridgeNode(Node):
                 with self._ws_lock:
                     self._ws = ws
                 self.get_logger().info('WebSocket connected')
+                # Stay alive until _pose_cb clears _ws on send failure
                 while True:
-                    time.sleep(1)
+                    with self._ws_lock:
+                        if self._ws is None:
+                            break
+                    time.sleep(0.5)
             except Exception as e:
                 self.get_logger().warn(f'WS error: {e}, retrying in 3s')
                 with self._ws_lock:
@@ -97,7 +101,11 @@ class BridgeNode(Node):
                 try:
                     self._ws.send(payload)
                 except Exception:
-                    self._ws = None
+                    try:
+                        self._ws.close()
+                    except Exception:
+                        pass
+                    self._ws = None  # _ws_loop detects None and reconnects immediately
 
 
 def main():

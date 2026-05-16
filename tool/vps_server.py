@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 app = FastAPI()
 MAP_FILE = Path('/tmp/robot_map.png')
 MAP_META: dict = {}
-_phone_clients: list[WebSocket] = []
+_phone_clients: set[WebSocket] = set()
 _latest_pose: str | None = None
 
 
@@ -46,13 +46,13 @@ async def robot_ws(ws: WebSocket):
             global _latest_pose
             _latest_pose = data
             dead = []
-            for client in _phone_clients:
+            for client in list(_phone_clients):
                 try:
                     await client.send_text(data)
                 except Exception:
                     dead.append(client)
             for d in dead:
-                _phone_clients.remove(d)
+                _phone_clients.discard(d)
     except WebSocketDisconnect:
         pass
 
@@ -61,7 +61,7 @@ async def robot_ws(ws: WebSocket):
 async def phone_ws(ws: WebSocket):
     """Phone connects here to receive pose."""
     await ws.accept()
-    _phone_clients.append(ws)
+    _phone_clients.add(ws)
     if _latest_pose:
         await ws.send_text(_latest_pose)
     try:
@@ -70,5 +70,4 @@ async def phone_ws(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
-        _phone_clients.discard(ws) if hasattr(_phone_clients, 'discard') else (
-            _phone_clients.remove(ws) if ws in _phone_clients else None)
+        _phone_clients.discard(ws)

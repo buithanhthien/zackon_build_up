@@ -27,13 +27,16 @@ class MapMeta {
   final double resolution, originX, originY;
   final int width, height;
   const MapMeta(this.resolution, this.originX, this.originY, this.width, this.height);
-  factory MapMeta.fromJson(Map<String, dynamic> j) => MapMeta(
-        (j['resolution'] as num).toDouble(),
-        (j['origin_x'] as num).toDouble(),
-        (j['origin_y'] as num).toDouble(),
-        j['width'] as int,
-        j['height'] as int,
-      );
+  factory MapMeta.fromJson(Map<String, dynamic> j) {
+    if (!j.containsKey('resolution')) throw const FormatException('meta not ready');
+    return MapMeta(
+      (j['resolution'] as num).toDouble(),
+      (j['origin_x'] as num).toDouble(),
+      (j['origin_y'] as num).toDouble(),
+      j['width'] as int,
+      j['height'] as int,
+    );
+  }
 }
 
 class RobotPose {
@@ -77,9 +80,10 @@ class _MapScreenState extends State<MapScreen> {
       final codec = await ui.instantiateImageCodec(imgRes.bodyBytes);
       final frame = await codec.getNextFrame();
 
+      final meta = MapMeta.fromJson(jsonDecode(metaRes.body) as Map<String, dynamic>);
       setState(() {
         _mapImage = frame.image;
-        _meta = MapMeta.fromJson(jsonDecode(metaRes.body));
+        _meta = meta;
         _status = 'Map loaded';
       });
     } catch (e) {
@@ -160,22 +164,32 @@ class MapPainter extends CustomPainter {
 
   const MapPainter({required this.mapImage, this.meta, this.pose});
 
+  // Returns the letterboxed destination rect (keeps aspect ratio, centered).
+  Rect _mapDst(Size size) {
+    final imgW = mapImage.width.toDouble();
+    final imgH = mapImage.height.toDouble();
+    final scale = (size.width / imgW).clamp(0.0, size.height / imgH);
+    final w = imgW * scale;
+    final h = imgH * scale;
+    return Rect.fromLTWH(
+        (size.width - w) / 2, (size.height - h) / 2, w, h);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw map scaled to fill canvas
     final src = Rect.fromLTWH(
         0, 0, mapImage.width.toDouble(), mapImage.height.toDouble());
-    final dst = Rect.fromLTWH(0, 0, size.width, size.height);
+    final dst = _mapDst(size);
     canvas.drawImageRect(mapImage, src, dst, Paint());
 
     if (meta == null || pose == null) return;
 
-    final scaleX = size.width  / meta!.width;
-    final scaleY = size.height / meta!.height;
+    final scaleX = dst.width  / meta!.width;
+    final scaleY = dst.height / meta!.height;
 
     // World → canvas (map is already flipped in bridge node)
-    final cx = (pose!.x - meta!.originX) / meta!.resolution * scaleX;
-    final cy = size.height - (pose!.y - meta!.originY) / meta!.resolution * scaleY;
+    final cx = dst.left + (pose!.x - meta!.originX) / meta!.resolution * scaleX;
+    final cy = dst.bottom - (pose!.y - meta!.originY) / meta!.resolution * scaleY;
 
     _drawArrow(canvas, cx, cy, pose!.yaw);
   }
@@ -189,12 +203,12 @@ class MapPainter extends CustomPainter {
     canvas.drawLine(Offset(cx, cy), Offset(tx, ty),
         Paint()..color = Colors.red..strokeWidth = 3);
 
-    // Arrowhead
+    // Arrowhead (canvas Y is inverted, so sin terms are negated)
     const hl = 10.0, ha = 0.45;
     final path = Path()
       ..moveTo(tx, ty)
-      ..lineTo(tx - hl * cos(yaw - ha), ty + hl * sin(yaw - ha))
-      ..lineTo(tx - hl * cos(yaw + ha), ty + hl * sin(yaw + ha))
+      ..lineTo(tx - hl * cos(yaw - ha), ty - hl * sin(yaw - ha))
+      ..lineTo(tx - hl * cos(yaw + ha), ty - hl * sin(yaw + ha))
       ..close();
     canvas.drawPath(path, Paint()..color = Colors.red);
 

@@ -21,20 +21,30 @@ amcl:
     laser_min_range: 0.05
     laser_model_type: "likelihood_field"
     max_beams: 60
-    max_particles: 2000
-    min_particles: 500
+
+    # max_particles: 2000
+    # min_particles: 500
+    max_particles: 6000
+    min_particles: 1200
+
+    resample_interval: 2
+
     odom_frame_id: "odom"
     pf_err: 0.05
     pf_z: 0.99
+
     recovery_alpha_fast: 0.0
     recovery_alpha_slow: 0.0
-    resample_interval: 1
+
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     save_pose_rate: 1.0
     # save_pose_rate: 0.5
     sigma_hit: 0.2
     tf_broadcast: true
-    transform_tolerance: 2.0
+
+    # transform_tolerance: 2.0
+    transform_tolerance: 1.0
+
     introspection_mode: "disabled"
     # update_min_a: 0.2
     # update_min_d: 0.25

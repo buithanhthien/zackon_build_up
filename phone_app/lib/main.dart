@@ -8,7 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const String kVPS = 'YOUR_VPS_IP:8000'; // ← change this
+const String kVPS = '192.168.1.150:8000'; // ← change this
 
 void main() => runApp(const ZackonApp());
 

@@ -20,6 +20,6 @@ ekf_filter_node:
                    false, false, true,
                    false, false, false]
 
-    odom0_differential: false
+    odom0_differential: true # old: false — encoder odom on diff-drive should be differential to avoid EKF over-trusting absolute y position
     odom0_relative: false
     odom0_queue_size: 10     # (sửa) 10–20 là đủ, tránh queue quá lớn gây trễ

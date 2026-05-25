@@ -1,0 +1,75 @@
+# ZACKON ROBOT — PROJECT CONTEXT
+# Last updated: 2026-04-24
+
+## HARDWARE
+- Robot: Zackon Mobile Robot (differential drive)
+- MCU: ESP32 / STM32 — communicates via UDP port 8888 (micro-ROS)
+- Odometry: wheel encoder only (STM32), topic: /odomfromSTM32
+- IMU: not yet integrated (planned for future)
+- LiDAR: dual (front + rear RPLIDAR), merged into /merged topic
+- PC: AMD Ryzen 5 6600H, 6 cores / 12 threads
+
+## ROS 2 STACK
+- Package: view_robot_pkg (path: src/view_robot/)
+- Build system: ament_python (colcon)
+- Key launch files:
+  - MAP_GENERATING.launch.py   → SLAM mapping mode
+  - NAV2_BRINGUP.launch.py     → Full autonomous navigation
+  - zackon_localization.launch.py
+  - joystick.launch.py         → Manual drive (joy_linux only, no teleop node)
+
+## PIPELINE (NAV2_BRINGUP)
+ESP32/STM32 → micro_ros_agent (UDP:8888)
+  → /odomfromSTM32
+  → ekf_filter_node (robot_localization) → /odom + TF odom→base_link
+LiDAR front+rear → filters → merge_lidar → /merged
+AMCL → TF map→odom
+Nav2 (MPPI + SmacPlanner2D) → /cmd_vel
+
+## CONFIG FILES (src/view_robot/config/)
+- mapper_params_online_async.yaml  — SLAM Toolbox settings
+- ekf.yaml                         — EKF sensor fusion
+- nav2_params.yaml                 — Full Nav2 stack (AMCL, MPPI, costmaps, etc.)
+
+## CHANGES MADE (2026-04-24)
+
+### Deleted files (dead code, not used in any launch):
+- view_robot_pkg/fake_diff_drive.py
+- view_robot_pkg/odom_frame_publisher.py
+- view_robot_pkg/odom_tf_broadcaster.py
+- view_robot_pkg/teleop_node.py
+
+### setup.py
+- console_scripts: cleared (all 4 entries removed)
+
+### joystick.launch.py
+- Removed joy_teleop_node block (referenced deleted teleop_node.py)
+- Now only launches joy_linux_node
+
+### mapper_params_online_async.yaml — fixes for blurry/black mist wall edges
+- resolution:               0.05 → 0.02   (sharpest walls, CPU can handle it)
+- map_update_interval:      5.0  → 1.0    (was too slow, stale map caused smearing)
+- minimum_time_interval:    0.5  → 0.2    (process more scans per second)
+- minimum_travel_distance:  0.5  → 0.1    (PRIMARY blur cause — was updating too infrequently)
+- minimum_travel_heading:   0.5  → 0.1    (same issue for rotation)
+
+### ekf.yaml
+- odom0_differential: false → true  (correct mode for diff-drive encoder odometry)
+
+## RECOMMENDED MAPPING SPEEDS
+- max linear:  0.15 m/s
+- max angular: 0.3 rad/s
+
+## COSTMAP RESOLUTIONS (target)
+- Mapping mode:   SLAM 0.02, local_costmap 0.03, global_costmap 0.05
+- Navigation mode: global_costmap 0.05 (unchanged)
+
+## NOTES
+- No colcon build needed for YAML config changes — just restart the launch file
+- odom_tf_broadcaster must NOT be run manually — EKF handles odom→base_link TF
+- micro_ros_agent uses UDP (not serial) — ESP32 must be on same network
+- EKF remaps /odometry/filtered → /odom for Nav2 compatibility
+- Controller: MPPI wrapped in RotationShimController
+- Planner: SmacPlanner2D
+
+- Every new update made, update the the context into this file

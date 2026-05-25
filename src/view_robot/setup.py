@@ -40,13 +40,6 @@ setup(
     description='Robot visualization and teleop package',
     license='Apache-2.0',
     tests_require=['pytest'],
-    entry_points={
-        'console_scripts': [
-            'fake_diff_drive = view_robot_pkg.fake_diff_drive:main',
-            'odom_frame_publisher = view_robot_pkg.odom_frame_publisher:main',
-            'odom_tf_broadcaster = view_robot_pkg.odom_tf_broadcaster:main',
-            'my_teleop_node = view_robot_pkg.teleop_node:main',
-        ],
-    },
+    entry_points={},
 )
 

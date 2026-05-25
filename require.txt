@@ -1,88 +1,45 @@
-Hiuen tai khi robot da bao trsng thai docked nhu nay "
-bug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1748 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=48.0 right_peak=45.0
-[debug_dock_pose_node_v4-3] [INFO] [1776477214.356193957] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=140 x=0.335 y=-0.185 Ipeak=45.0 Ivalley=0.0 beta=0.000
-[rear_docking_controller_node-4] [INFO] [1776477214.742172472] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
-[debug_dock_pose_node_v4-3] [INFO] [1776477215.251430514] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.161 y=0.005 yaw=0.022 rad
-[debug_dock_pose_node_v4-3] [INFO] [1776477215.364114593] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
-[debug_dock_pose_node_v4-3] [INFO] [1776477215.364156993] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1749 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=48.0 right_peak=45.0
-[debug_dock_pose_node_v4-3] [INFO] [1776477215.364170909] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=139 x=0.335 y=-0.184 Ipeak=45.0 Ivalley=0.0 beta=0.000
-[rear_docking_controller_node-4] [INFO] [1776477215.775489891] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
-[debug_dock_pose_node_v4-3] [INFO] [1776477216.259245583] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.162 y=0.005 yaw=0.025 rad
-[debug_dock_pose_node_v4-3] [INFO] [1776477216.451820438] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
-[debug_dock_pose_node_v4-3] [INFO] [1776477216.451874179] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1750 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=49.0 right_peak=45.0
-[debug_dock_pose_node_v4-3] [INFO] [1776477216.451906249] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=139 x=0.336 y=-0.185 Ipeak=45.0 Ivalley=0.0 beta=0.000
-[rear_docking_controller_node-4] [INFO] [1776477216.775521334] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
-[debug_dock_pose_node_v4-3] [INFO] [1776477217.364448898] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.161 y=0.006 yaw=0.023 rad
-[debug_dock_pose_node_v4-3] [INFO] [1776477217.460439204] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
-[debug_dock_pose_node_v4-3] [INFO] [1776477217.460516369] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1749 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=48.0 right_peak=45.0
-[debug_dock_pose_node_v4-3] [INFO] [1776477217.460550442] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=139 x=0.335 y=-0.184 Ipeak=45.0 Ivalley=0.0 beta=0.000
-[rear_docking_controller_node-4] [INFO] [1776477217.808832191] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
-[debug_dock_pose_node_v4-3] [INFO] [1776477218.451323905] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.161 y=0.006 yaw=0.023 rad
-[debug_dock_pose_node_v4-3] [INFO] [1776477218.563051601] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
-[debug_dock_pose_node_v4-3] [INFO] [1776477218.563103739] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1749 local_rej=2 valley_rej=0 range_rej=0 beta_rej=0 left_peak=49.0 right_peak=45.0
-[debug_dock_pose_node_v4-3] [INFO] [1776477218.563129377] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=139 x=0.335 y=-0.184 Ipeak=45.0 Ivalley=0.0 beta=0.000
-[rear_docking_controller_node-4] [INFO] [1776477218.808849738] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
-[debug_dock_pose_node_v4-3] [INFO] [1776477219.459718491] [debug_dock_node]: [debug_dock_pose_node_v4] UPDATED DOCK POSE in frame [rear_lidar_link]: x=-0.161 y=0.004 yaw=0.024 rad
-[debug_dock_pose_node_v4-3] [INFO] [1776477219.651113354] [debug_dock_node]: [debug_dock_pose_node_v4] reflectors.size() = 2
-[debug_dock_pose_node_v4-3] [INFO] [1776477219.651156855] [debug_dock_node]: [DEBUG FILTER] accept=2 peak_rej=1748 local_rej=1 valley_rej=0 range_rej=0 beta_rej=0 left_peak=49.0 right_peak=45.0
-[debug_dock_pose_node_v4-3] [INFO] [1776477219.651173046] [debug_dock_node]: [debug_dock_pose_node_v4] ref[0]: idx=140 x=0.336 y=-0.186 Ipeak=45.0 Ivalley=0.0 beta=0.000
-[rear_docking_controller_node-4] [INFO] [1776477219.842158661] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
-
-"
-
-Toi muon thasy doi mot chut logic o nut nhan ve trsm sac trong giao dien in file '/home/khoaiuh/zackon_build_up/robot_ui/startup_layout.py'. La khi nhan vao nut do thi no se hien len mot man hinh hien thi trang thai 
- va cac nut nhan.
-
-Giao dien hien thi ben phai hien thi trang thai va nut nhan nhu sau 
-Nut nhan:
-+ Dock: robot se chay file '/home/khoaiuh/zackon_build_up/src/lidar_dock_detector/launch/zackon_docking.launch.py'
-- Khi nhan nut dock se co cac den trang thai nhu sau 
-Docking: Se sang kjhi ma chua co bao docked hold nhu tren. Hay la khi nguoi dung 
-Docked: se sang khi robot nhan duoc 5 lan bao "[rear_docking_controller_node-4] [INFO] [1776477219.842158661] [rear_docking_controller]: [rear_docking_ctrl] DOCKED HOLD: robot stopped
-" ban co the kiem xem thang bao publish cai do roi sub de lay du lieu de biet nhu o tren. Roi sau do tat terminal hien tai dang chay de khong can gui van toc nua.
-Baan co the dung cach tat giong nut ban do moi trong giao dien. Khi nut nay bat thi tat sang nut docking
-+ Undock: Khi nhan vao nut nay thi se 
-
-Giao dien hien thi ben trai hay lam giong nut ban do moi trong giao dien. Nhung chi can nut Back la duoc. 
-
-1/
-Undock buttton: I use it to notify for users to know robot can use return 
-Altough robot don't need tp 
-2/ After the docked button turn om. Kill the terminal is running dock. The reason why docked light is need to notify users robot have docked so I need to kill the terminal to it don't send /cmd_vel because after robot receive docked hold 5 times 
-This is evidence to know robot dock. 
+Likely cause of black mist edges in Nav2 + SLAM Toolbox
+Walls are being written repeatedly with small pose offsets, so edges blur instead of staying sharp.
+Main causes (priority order)
 
 
-although in terminal is running UI 
-"
+Odometry jitter/drift (most common)
 
- oke it works. But i want to change logic. I want to addd 2 light 
 
- the first, undock light 
- second, charging light.
-and 1 button 
-under start dock make charge button. 
- And I want to add instruction at now under Charge button. You can mofiy it to more exactly if i write wrong sentence kaka
-Specific Function:
+Robot turning/moving too fast during LiDAR scan (motion distortion)
 
--Button
-Start Dock: Start to make docing process
-Chagre: send msg to charge to charging for robot.
--Light
-Docking: When it turn on roboot is in processing docking
-Docked: When it turn on robot has docked 
-Charging: When it turn on, robot is charging. Robot is waiting for charge. If it turn off, the meaning is robot don't receive msg from charge
-Undock: When it turn on. Robot ready to use 
 
-And under back button i want to make a bar energy near Docking control to symbolize for battery msg from charge 
-From 0 - 100%
+SLAM Toolbox tuning not tight enough
 
-I think need to add Undock button undeer Start dock. Wheun users click to undock , light of ready is turned on 
 
-And i want to add instruction for button 
+Map resolution too low
 
-Start Dock 
-Undock 
-into instructions
 
-And i want words in instruction is large more 
+LiDAR noisy / reflective surfaces
 
+
+Quick checks
+ros2 topic echo /odomros2 topic echo /scanros2 run tf2_ros tf2_echo odom base_link
+Look for jumps, delay, unstable yaw.
+Fast fixes
+Slow robot during mapping
+max_vel_x: 0.15max_vel_theta: 0.3
+Sharper map resolution
+resolution: 0.02
+SLAM Toolbox thresholds
+minimum_travel_distance: 0.05minimum_travel_heading: 0.05use_scan_matching: true
+Best real fix
+Use robot_localization EKF to fuse:
+
+
+wheel encoder
+
+
+IMU yaw
+
+
+Quick test
+Drive straight slowly without rotating.
+
+
+If walls become sharp → odom / turning distortion confirmed.

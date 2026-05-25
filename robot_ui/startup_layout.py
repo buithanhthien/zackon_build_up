@@ -13,12 +13,19 @@ from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
 from PyQt6.QtGui import QFont, QFontDatabase, QKeyEvent
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Empty
 from load_map_dialog import LoadMapDialog
 from chat_panel_widget import ChatPanel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
+from styles import MAIN_STYLESHEET
+from ui_utils import append_log, setup_clock_timer
+from map_utils import update_map_files
+from process_manager import ProcessManager
 
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
@@ -217,23 +224,42 @@ class LocalizationWorker(QObject):
 class RobotUI(QMainWindow):
     def __init__(self, skip_micro_ros=False):
         super().__init__()
+        self.process_mgr = ProcessManager()
         self.prev_stm32_status       = None
         self.prev_lidar_status       = None
         self.prev_lidar_rear_status  = None
         self.localization_worker     = None
         self.localization_thread     = None
         self._latest_pose            = None
+        self._stm32_last_msg_time        = None
+        self._front_lidar_last_msg_time  = None
+        self._rear_lidar_last_msg_time   = None
+        self._switching_layout       = False  # Track if switching to another layout
 
         try:
             rclpy.init()
         except Exception:
             pass
         self._ros_node = Node('robot_ui_node')
+        _amcl_qos = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
+        )
         self._ros_node.create_subscription(
-            PoseWithCovarianceStamped, '/amcl_pose', self._amcl_callback, 10
+            PoseWithCovarianceStamped, '/amcl_pose', self._amcl_callback, _amcl_qos
+        )
+        self._ros_node.create_subscription(
+            Odometry, '/odomfromSTM32', self._stm32_odom_callback, 10
+        )
+        self._ros_node.create_subscription(
+            LaserScan, '/front_lidar/scan', lambda msg: self._lidar_callback('front'), 10
+        )
+        self._ros_node.create_subscription(
+            LaserScan, '/rear_lidar/scan', lambda msg: self._lidar_callback('rear'), 10
         )
         self._ros_spin_timer = QTimer()
-        self._ros_spin_timer.timeout.connect(lambda: rclpy.spin_once(self._ros_node, timeout_sec=0))
+        self._ros_spin_timer.timeout.connect(self._ros_spin_once)
         self._ros_spin_timer.start(100)
 
         self.init_ui()
@@ -243,208 +269,33 @@ class RobotUI(QMainWindow):
         if not skip_micro_ros:
             self.start_micro_ros()
 
+    def _ros_spin_once(self):
+        try:
+            if rclpy.ok():
+                rclpy.spin_once(self._ros_node, timeout_sec=0)
+        except Exception:
+            self._ros_spin_timer.stop()
+
     def _amcl_callback(self, msg):
         self._latest_pose = msg.pose.pose
+
+    def _stm32_odom_callback(self, msg):
+        self._stm32_last_msg_time = time.monotonic()
+
+    def _lidar_callback(self, which):
+        if which == 'front':
+            self._front_lidar_last_msg_time = time.monotonic()
+        else:
+            self._rear_lidar_last_msg_time = time.monotonic()
 
     # ══════════════════════════════════════════════════════════════════════════
     #  UI construction
     # ══════════════════════════════════════════════════════════════════════════
 
     def init_ui(self):
-        self.setWindowTitle("Robot Control Interface")
+        self.setWindowTitle("IUH Robot – Giao diện điều khiển")
 
-        STYLESHEET = """
-            QMainWindow, QWidget {
-                background-color: #0d0f12;
-                color: #e8ecf0;
-                border: none;
-            }
-            QWidget#left-panel {
-                background-color: #141720;
-                border-right: 2px solid #2a3040;
-            }
-            QWidget#header-bar {
-                background-color: #141720;
-                border-bottom: 1px solid #2a3040;
-            }
-            QWidget#status-card {
-                background-color: #1c2030;
-                border: 1px solid #2a3040;
-                border-radius: 4px;
-            }
-            QWidget#log-panel {
-                background-color: #080a0d;
-                border-top: 1px solid #2a3040;
-            }
-            QWidget#chat-panel {
-                background-color: #080a0d;
-                border-top: 1px solid #2a3040;
-            }
-            QPushButton#mode-btn {
-                background-color: transparent;
-                color: #6b7a99;
-                border: none;
-                border-left: 4px solid transparent;
-                border-radius: 0px;
-                padding: 20px 20px 20px 24px;
-                text-align: left;
-                font-size: 18px;
-            }
-            QPushButton#mode-btn:hover {
-                background-color: #1a1f2e;
-                color: #e8ecf0;
-                border-left: 4px solid #3a4460;
-            }
-            QPushButton#mode-btn:checked {
-                background-color: #1c2030;
-                color: #00e5ff;
-                border-left: 4px solid #00e5ff;
-            }
-            QPushButton#mode-btn:disabled {
-                color: #3a4460;
-                border-left: 4px solid transparent;
-            }
-            QTextEdit#log-text {
-                background-color: #080a0d;
-                color: #e8ecf0;
-                border: none;
-                font-size: 13px;
-            }
-            QLabel#log-title {
-                color: #6b7a99;
-                font-size: 11px;
-                letter-spacing: 2px;
-            }
-            QLabel#clock {
-                color: #6b7a99;
-                font-size: 15px;
-            }
-            QLabel#mode-title {
-                color: #e8ecf0;
-                font-size: 15px;
-            }
-            QLabel#device-name {
-                color: #6b7a99;
-                font-size: 11px;
-            }
-            QLabel#status-ok {
-                color: #00c853;
-                font-size: 14px;
-            }
-            QLabel#status-error {
-                color: #ff3b3b;
-                font-size: 14px;
-            }
-            QLabel#status-checking {
-                color: #6b7a99;
-                font-size: 14px;
-            }
-
-            /* ── Panel tab buttons ── */
-            QPushButton#panel-tab {
-                background-color: transparent;
-                color: #6b7a99;
-                border: none;
-                border-bottom: 2px solid transparent;
-                border-radius: 0px;
-                padding: 6px 16px;
-                font-size: 11px;
-                letter-spacing: 2px;
-            }
-            QPushButton#panel-tab:checked {
-                color: #00e5ff;
-                border-bottom: 2px solid #00e5ff;
-            }
-            QPushButton#panel-tab:hover {
-                color: #e8ecf0;
-            }
-
-            /* ── Chat input ── */
-            QLineEdit#chat-input {
-                background-color: #141720;
-                color: #e8ecf0;
-                border: 1px solid #2a3040;
-                border-radius: 6px;
-                padding: 10px 14px;
-                font-size: 13px;
-                selection-background-color: #00e5ff44;
-            }
-            QLineEdit#chat-input:focus {
-                border: 1px solid #00e5ff66;
-            }
-
-            /* ── Send button ── */
-            QPushButton#send-btn {
-                background-color: #00e5ff18;
-                color: #00e5ff;
-                border: 1px solid #00e5ff44;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-size: 13px;
-            }
-            QPushButton#send-btn:hover {
-                background-color: #00e5ff30;
-                border: 1px solid #00e5ff88;
-            }
-            QPushButton#send-btn:pressed {
-                background-color: #00e5ff44;
-            }
-            QPushButton#send-btn:disabled {
-                color: #3a4460;
-                background-color: transparent;
-                border: 1px solid #2a3040;
-            }
-
-            /* ── Voice toggle button ── */
-            QPushButton#voice-btn {
-                background-color: transparent;
-                color: #6b7a99;
-                border: 1px solid #2a3040;
-                border-radius: 6px;
-                font-size: 14px;
-                padding: 10px;
-            }
-            QPushButton#voice-btn:checked {
-                background-color: #ff3b3b18;
-                color: #ff3b3b;
-                border: 1px solid #ff3b3b44;
-            }
-
-            /* ── Clear chat button ── */
-            QPushButton#clear-btn {
-                background-color: transparent;
-                color: #3a4460;
-                border: none;
-                font-size: 11px;
-                padding: 4px 8px;
-            }
-            QPushButton#clear-btn:hover {
-                color: #6b7a99;
-            }
-
-            /* ── Scroll area ── */
-            QScrollArea {
-                background-color: #080a0d;
-                border: none;
-            }
-            QScrollBar:vertical {
-                background-color: #0d0f12;
-                width: 6px;
-                border-radius: 3px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #2a3040;
-                border-radius: 3px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #3a4460;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(MAIN_STYLESHEET)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -459,27 +310,26 @@ class RobotUI(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        wordmark = QLabel("ZACKON")
+        wordmark = QLabel("IUH ROBOT")
         wordmark.setFont(QFont("JetBrains Mono", 16, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #00e5ff; padding: 24px 24px 16px 24px;")
+        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
-        self.btn_tracking   = QPushButton("Theo dõi")
         self.btn_waypoints  = QPushButton("Điểm đến")
-        self.btn_reestimate = QPushButton("Định vị lại")
-        self.btn_new_map    = QPushButton("Bản đồ mới")
-        self.btn_load_map   = QPushButton("Tải bản đồ")
         self.btn_docking    = QPushButton("Về trạm sạc")
+        self.btn_load_map   = QPushButton("Tải bản đồ")
+        self.btn_new_map    = QPushButton("Bản đồ mới")
+        self.btn_tracking   = QPushButton("Theo dõi")
+        self.btn_reestimate = QPushButton("Định vị lại")
         self.btn_nav2       = QPushButton("Nav2")
 
-        mono = QFont("JetBrains Mono", 18)
-        for btn in [self.btn_tracking, self.btn_waypoints, self.btn_reestimate,
-                    self.btn_new_map, self.btn_load_map, self.btn_docking, self.btn_nav2]:
+        mono = QFont("JetBrains Mono", 22)
+        for btn in [self.btn_waypoints, self.btn_docking, self.btn_load_map,
+                    self.btn_new_map, self.btn_tracking, self.btn_reestimate, self.btn_nav2]:
             btn.setObjectName("mode-btn")
             btn.setFont(mono)
             btn.setMinimumHeight(72)
-            btn.setCheckable(True)
-            btn.setAutoExclusive(False)
+            btn.setCheckable(False)
             left_layout.addWidget(btn)
 
         left_layout.addStretch()
@@ -490,8 +340,8 @@ class RobotUI(QMainWindow):
         self.btn_dev.setMinimumHeight(56)
         self.btn_dev.setCheckable(False)
         self.btn_dev.setStyleSheet(
-            "QPushButton#mode-btn { color: #ffb300; border-left: 4px solid #ffb30044; }"
-            "QPushButton#mode-btn:hover { background-color: #1a1f2e; border-left: 4px solid #ffb300; }"
+            "QPushButton#mode-btn { color: #fcb525; border-left: 4px solid #fcb52544; }"
+            "QPushButton#mode-btn:hover { background-color: #1a3278; border-left: 4px solid #fcb525; }"
         )
         left_layout.addWidget(self.btn_dev)
 
@@ -532,21 +382,23 @@ class RobotUI(QMainWindow):
 
         # Status cards row
         cards_widget = QWidget()
-        cards_widget.setStyleSheet("background-color: #0d0f12; padding: 12px;")
+        cards_widget.setStyleSheet("background-color: #f0f4ff; padding: 12px;")
         cards_layout = QHBoxLayout(cards_widget)
         cards_layout.setContentsMargins(12, 12, 12, 12)
         cards_layout.setSpacing(12)
 
-        self.stm32_card = self._make_status_card("STM32")
-        self.lidar_card = self._make_status_card("LiDAR")
+        self.stm32_card       = self._make_status_card("STM32")
+        self.front_lidar_card = self._make_status_card("LiDAR Front")
+        self.rear_lidar_card  = self._make_status_card("LiDAR Rear")
         cards_layout.addWidget(self.stm32_card["widget"])
-        cards_layout.addWidget(self.lidar_card["widget"])
+        cards_layout.addWidget(self.front_lidar_card["widget"])
+        cards_layout.addWidget(self.rear_lidar_card["widget"])
         right_layout.addWidget(cards_widget)
 
         # ── Panel switcher (LOG / AI CHAT) ────────────────────────────────────
         tab_bar = QWidget()
         tab_bar.setFixedHeight(36)
-        tab_bar.setStyleSheet("background-color: #0d0f12; border-top: 1px solid #2a3040;")
+        tab_bar.setStyleSheet("background-color: #f0f4ff; border-top: 1px solid #c8d4f0;")
         # Remove tab bar - show both panels side by side
         right_layout.addWidget(QLabel())  # spacer
 
@@ -559,16 +411,44 @@ class RobotUI(QMainWindow):
 
         log_header = QLabel("SYSTEM LOG")
         log_header.setFont(QFont("DM Sans", 11, QFont.Weight.Bold))
-        log_header.setStyleSheet("color: #00c853; padding: 4px 0;")
+        log_header.setStyleSheet("color: #214196; padding: 4px 0;")
         log_layout.addWidget(log_header)
 
         self.log_text = QTextEdit()
         self.log_text.setObjectName("log-text")
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Fira Code", 13))
-        log_layout.addWidget(self.log_text)
+        log_layout.addWidget(self.log_text, 1)
 
         self.chat_panel = ChatPanel()
+
+        # Mic button fills bottom half of log panel
+        mic_btn = self.chat_panel.voice_btn
+        mic_btn.setFixedSize(225, 225)
+        mic_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        mic_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #214196;
+                color: #ffffff;
+                border: 3px solid #a8bce8;
+                border-radius: 112px;
+                font-size: 90px;
+            }
+            QPushButton:hover {
+                background-color: #1a3278;
+                border: 3px solid #fcb525;
+            }
+            QPushButton:checked {
+                background-color: #ef4444;
+                border: 3px solid #fca5a5;
+            }
+        """)
+        mic_label = QLabel("Nhấn vào tôi để nói")
+        mic_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        mic_label.setStyleSheet("color: #5a7abf; font-size: 25px; margin-top: -5px;")
+        mic_label.setFont(QFont("DM Sans", 11))
+        log_layout.addWidget(mic_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+        log_layout.addWidget(mic_label, 0, Qt.AlignmentFlag.AlignHCenter)
 
         # Horizontal splitter for log and chat
         panels_splitter = QWidget()
@@ -588,16 +468,13 @@ class RobotUI(QMainWindow):
         self.status_timer.timeout.connect(self.update_status)
         self.status_timer.start(5000)
 
-        self.clock_timer = QTimer()
-        self.clock_timer.timeout.connect(self._update_clock)
-        self.clock_timer.start(1000)
-        self._update_clock()
+        self.clock_timer = setup_clock_timer(self.clock_label)
 
         self._reestimate_pulse_timer = QTimer()
         self._reestimate_pulse_timer.timeout.connect(self._pulse_reestimate)
         self._pulse_state = False
 
-        self.update_status()    # ══════════════════════════════════════════════════════════════════════════
+        QTimer.singleShot(0, self.update_status)    # ══════════════════════════════════════════════════════════════════════════
     #  Existing UI helpers (unchanged)
     # ══════════════════════════════════════════════════════════════════════════
 
@@ -610,7 +487,7 @@ class RobotUI(QMainWindow):
         layout.setContentsMargins(16, 12, 20, 12)
 
         dot = QLabel("●")
-        dot.setStyleSheet("color: #6b7a99; font-size: 12px;")
+        dot.setStyleSheet("color: #8fa3cc; font-size: 12px;")
         dot.setFixedWidth(20)
 
         info = QVBoxLayout()
@@ -632,8 +509,8 @@ class RobotUI(QMainWindow):
         return {"widget": card, "dot": dot, "state": state_lbl}
 
     def _set_card_status(self, card, available):
-        color  = "#00c853" if available else "#ff3b3b"
-        text   = "Available" if available else "Unavailable"
+        color  = "#22c55e" if available else "#ef4444"
+        text   = "Hoạt động" if available else "Mất kết nối"
         obj    = "status-ok" if available else "status-error"
         card["dot"].setStyleSheet(f"color: {color}; font-size: 12px;")
         card["state"].setText(text)
@@ -641,7 +518,7 @@ class RobotUI(QMainWindow):
         card["state"].setStyleSheet(f"color: {color}; font-size: 14px;")
         border_side = f"border-left: 4px solid {color};"
         card["widget"].setStyleSheet(
-            f"QWidget#status-card {{ background-color: #1c2030; border: 1px solid #2a3040; "
+            f"QWidget#status-card {{ background-color: #ffffff; border: 1px solid #c8d4f0; "
             f"border-radius: 4px; {border_side} }}"
         )
 
@@ -651,67 +528,73 @@ class RobotUI(QMainWindow):
 
     def _pulse_reestimate(self):
         self._pulse_state = not self._pulse_state
-        color = "#00e5ff" if self._pulse_state else "#3a4460"
+        color = "#fcb525" if self._pulse_state else "#8fa3cc"
         self.btn_reestimate.setStyleSheet(
-            f"QPushButton#mode-btn {{ border-left: 4px solid {color}; color: #00e5ff; background-color: #1c2030; }}"
+            f"QPushButton#mode-btn {{ border-left: 4px solid {color}; color: #fcb525; background-color: #1a3278; }}"
         )
 
     def start_micro_ros(self):
-        try:
-            subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                'source ~/zackon_build_up/install/setup.bash && '
-                'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash'
-            ])
-            self.log("Started micro-ROS agent in new terminal")
-        except Exception as e:
-            self.log(f"Failed to start micro-ROS agent: {e}")
+        self.process_mgr.launch_terminal(
+            'source ~/zackon_build_up/install/setup.bash && '
+            'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash',
+            'micro-ROS agent'
+        )
+        self.log("Đã khởi động micro-ROS agent trong terminal mới")
 
     def update_status(self):
-        try:
-            result = subprocess.run(['ros2', 'topic', 'list'],
-                                    capture_output=True, text=True, timeout=2)
-            stm32_available = '/cmd_vel' in result.stdout or result.returncode == 0
-        except Exception:
-            stm32_available = False
+        now = time.monotonic()
 
+        stm32_available = (
+            self._stm32_last_msg_time is not None and
+            now - self._stm32_last_msg_time < 3.0
+        )
         self._set_card_status(self.stm32_card, stm32_available)
         if self.prev_stm32_status is not None and self.prev_stm32_status != stm32_available:
-            self.log("STM32 connection lost" if not stm32_available else "STM32 connection restored")
+            self.log("Mất kết nối STM32" if not stm32_available else "Đã khôi phục kết nối STM32")
         self.prev_stm32_status = stm32_available
 
-        lidar_available = os.path.exists('/dev/lidar')
-        self._set_card_status(self.lidar_card, lidar_available)
-        if self.prev_lidar_status is not None and self.prev_lidar_status != lidar_available:
-            self.log("LiDAR connection lost" if not lidar_available else "LiDAR connection restored")
-        self.prev_lidar_status = lidar_available
+        front_available = (
+            self._front_lidar_last_msg_time is not None and
+            now - self._front_lidar_last_msg_time < 3.0
+        )
+        self._set_card_status(self.front_lidar_card, front_available)
+        if self.prev_lidar_status is not None and self.prev_lidar_status != front_available:
+            self.log("Mất kết nối LiDAR trước" if not front_available else "Đã khôi phục kết nối LiDAR trước")
+        self.prev_lidar_status = front_available
+
+        rear_available = (
+            self._rear_lidar_last_msg_time is not None and
+            now - self._rear_lidar_last_msg_time < 3.0
+        )
+        self._set_card_status(self.rear_lidar_card, rear_available)
+        if self.prev_lidar_rear_status is not None and self.prev_lidar_rear_status != rear_available:
+            self.log("Mất kết nối LiDAR sau" if not rear_available else "Đã khôi phục kết nối LiDAR sau")
+        self.prev_lidar_rear_status = rear_available
 
     def mode_changed(self, mode):
-        self.log(f"Mode changed to {mode}")
+        self.log(f"Đã chuyển sang chế độ {mode}")
         if mode == "Tracking":
-            subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
+            subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
             self.close()
         elif mode == "Waypoints":
-            subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py'])
+            subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py'])
             self.close()
         elif mode == "Nav2":
-            try:
-                subprocess.Popen([
-                    'gnome-terminal', '--', 'bash', '-c',
-                    f'source {SOURCE_PATH}/install/setup.bash && ros2 launch {SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py; exec bash'
-                ])
-                self.log("Launched Nav2 navigation system")
-            except Exception as e:
-                self.log(f"Failed to launch Nav2: {e}")
+            self.process_mgr.launch_terminal(
+                f'source {SOURCE_PATH}/install/setup.bash && '
+                f'ros2 launch {SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py; exec bash',
+                'Nav2'
+            )
+            self.log("Đã khởi động hệ thống điều hướng Nav2")
 
     def start_reestimate(self):
         if self.prev_stm32_status == False:
-            self.log("Cannot start localization: STM32 not connected")
+            self.log("Không thể định vị: STM32 chưa kết nối")
             return
         if self.localization_thread and self.localization_thread.is_alive():
-            self.log("Localization already running")
+            self.log("Quá trình định vị đang chạy")
             return
-        self.log("Starting global relocalization")
+        self.log("Bắt đầu định vị toàn cục")
         self._reestimate_pulse_timer.start(600)
 
         self.localization_worker = LocalizationWorker()
@@ -729,102 +612,31 @@ class RobotUI(QMainWindow):
         self.localization_worker = None
 
     def start_new_map(self):
-        self.log("Switching to New Map mode")
-        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
+        self.log("Chuyển sang chế độ tạo bản đồ mới")
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
         self.close()
 
     def start_docking(self):
-        self.log("Starting docking sequence")
-        subprocess.Popen([
-            'gnome-terminal', '--', 'bash', '-c',
-            f'source {SOURCE_PATH}/install/setup.bash && '
-            f'python3 {SOURCE_PATH}/robot_ui/docking_sequence.py; exec bash'
-        ])
+        self.show_docking_screen()
+
+    def start_docking(self):
+        self.log("Chuyển sang chế độ docking")
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/docking_layout.py'])
+        self.close()
 
     def load_map(self):
         dialog = LoadMapDialog(self)
         if dialog.exec():
             map_name = dialog.get_selected_map()
             if map_name:
-                self.log(f"Loading map: {map_name}")
-                self.update_map_files(map_name)
-
-    def update_map_files(self, map_name):
-        map_path = f'{SOURCE_PATH}/src/view_robot/maps/{map_name}.yaml'
-
-        nav2_params = f'{SOURCE_PATH}/src/view_robot/config/nav2_params.yaml'
-        try:
-            with open(nav2_params, 'r') as f:
-                content = f.read()
-            updated = re.sub(
-                r'(yaml_filename:\s*")[^"]*(")', rf'\1{map_path}\2', content
-            )
-            with open(nav2_params, 'w') as f:
-                f.write(updated)
-            self.log("✓ Updated nav2_params.yaml")
-        except Exception as e:
-            self.log(f"✗ Error updating nav2_params.yaml: {e}")
-            return
-        synthesis_launch = f'{SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py'
-        try:
-            with open(synthesis_launch, 'r') as f:
-                content = f.read()
-            updated = re.sub(
-                r"(map_file_path\s*=\s*PathJoinSubstitution\(\[pkg_dir,\s*'maps',\s*')[^']*('\]\))",
-                rf"\1{map_name}.yaml\2", content
-            )
-            with open(synthesis_launch, 'w') as f:
-                f.write(updated)
-            self.log(f"✓ Updated NAV2_BRINGUP.launch.py")
-        except Exception as e:
-            self.log(f"✗ Error updating NAV2_BRINGUP.launch.py: {e}")
-            return
-
-        localization_launch = f'{SOURCE_PATH}/src/view_robot/launch/zackon_localization.launch.py'
-        try:
-            with open(localization_launch, 'r') as f:
-                content = f.read()
-            updated = re.sub(
-                r"(default_value=os\.path\.join\(bringup_dir,\s*'maps',\s*')[^']*('\))",
-                rf"\1{map_name}.yaml\2", content
-            )
-            with open(localization_launch, 'w') as f:
-                f.write(updated)
-            self.log("✓ Updated zackon_localization.launch.py")
-        except Exception as e:
-            self.log(f"✗ Error updating zackon_localization.launch.py: {e}")
-            return
-
-        self.log("Building workspace...")
-        try:
-            subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                'cd ~/zackon_build_up && colcon build --packages-select view_robot_pkg '
-                '&& source install/setup.bash '
-                '&& echo "Build complete. Closing in 2 seconds..." && sleep 2'
-            ])
-            self.log(f"✓ Map '{map_name}' loaded and workspace building")
-        except Exception as e:
-            self.log(f"✗ Error building workspace: {e}")
+                self.log(f"Đang tải bản đồ: {map_name}")
+                update_map_files(map_name, self.log)
 
     def log(self, message):
-        from datetime import datetime
-        ts = datetime.now().strftime("%H:%M:%S")
-        if "[ERROR]" in message:
-            color = "#ff3b3b"
-        elif "[WARN]" in message:
-            color = "#ffb300"
-        elif "✓" in message or "restored" in message or "complete" in message.lower():
-            color = "#00c853"
-        else:
-            color = "#e8ecf0"
-        self.log_text.append(
-            f'<span style="color:#6b7a99">[{ts}]</span> '
-            f'<span style="color:{color}">{message}</span>'
-        )
+        append_log(self.log_text, message)
 
     def _on_ai_action(self, tag: str):
-        self.log(f"[AI-ACTION] {tag}")
+        self.log(f"[AI-HÀNH ĐỘNG] {tag}")
         if tag.startswith("LOAD_MAP:"):
             map_name = tag.split(":", 1)[1].strip()
             self.update_map_files(map_name)
@@ -836,23 +648,21 @@ class RobotUI(QMainWindow):
             self.update_status()
 
     def open_developer_mode(self):
-        self.log("Opening Developer Mode (Claude Code)")
-        try:
-            subprocess.Popen([
-                'gnome-terminal', '--', 'bash', '-c',
-                f'cd {SOURCE_PATH} && source install/setup.bash && claude; exec bash'
-            ])
-        except Exception as e:
-            self.log(f"[ERROR] Failed to open Developer Mode: {e}. Is 'claude' installed?")
+        self.log("Đang mở chế độ Developer (Claude Code)")
+        self.process_mgr.launch_terminal(
+            f'cd {SOURCE_PATH} && source install/setup.bash && claude; exec bash',
+            'Developer Mode'
+        )
 
-    def _voice_go_to_waypoint(self, slot: str):
-        self.log(f"[Voice] Navigating to waypoint {slot}")
-        subprocess.Popen(['python3', f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
-                          '--go-to', slot])
+    def _voice_go_to_waypoint(self, slots: str):
+        self.log(f"[Giọng nói] Đang điều hướng đến địa điểm {slots}")
+        self._switching_layout = True  # Flag to prevent history clear
+        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
+                          '--go-to', slots])
         self.close()
 
     def _on_voice_ui_command(self, command: str):
-        self.log(f"[Voice] UI command: {command}")
+        self.log(f"[Giọng nói] Lệnh giao diện: {command}")
         if command == "LOAD_MAP":
             self.load_map()
         elif command == "NEW_MAP":
@@ -865,7 +675,10 @@ class RobotUI(QMainWindow):
             self.localization_worker.stop()
         self._ros_spin_timer.stop()
         self._ros_node.destroy_node()
-        self.chat_panel.cleanup()
+        # Only clear history if truly closing, not switching layouts
+        if not self._switching_layout:
+            self.chat_panel.cleanup()
+        self.process_mgr.cleanup_all()
         event.accept()
 
 

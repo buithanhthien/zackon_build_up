@@ -89,6 +89,8 @@ def generate_launch_description():
             executable='amcl',
             name='amcl',
             output='screen',
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[configured_params],
             remappings=remappings),
 

@@ -74,7 +74,7 @@ class DockingSequenceNode(Node):
         subprocess.Popen(
             ['bash', '-c',
              f'source {SOURCE_PATH}/install/setup.bash && '
-             f'ros2 launch lidar_dock_detector docking.launch.py'],
+             f'ros2 launch lidar_dock_detector zackon_docking.launch.py'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
         

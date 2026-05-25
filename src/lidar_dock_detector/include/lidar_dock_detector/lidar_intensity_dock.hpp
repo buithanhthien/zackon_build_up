@@ -59,19 +59,49 @@ private:
     double y;
   };
 
+  struct ReflectorCluster {
+    double x;
+    double y;
+    double beta;
+    int    peak_idx;
+  };
+
+  struct DetectStats {
+    int reject_peak = 0;
+    int reject_local_max = 0;
+    int reject_valley = 0;
+    int reject_range = 0;
+    int reject_beta = 0;
+    int accepted = 0;
+    float strongest_peak_left = 0.0f;
+    float strongest_peak_right = 0.0f;
+  };
+
   void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
 
   std::vector<Reflector> detectReflectors(
-    const sensor_msgs::msg::LaserScan & scan) const;
+    const sensor_msgs::msg::LaserScan & scan,
+    DetectStats & stats) const;
+
+  std::vector<ReflectorCluster> clusterReflectors(
+    const std::vector<Reflector> & reflectors) const;
 
   double computeInceptionAngle(double Li, double Lj, double theta_rad) const;
 
   bool computeDockPose(
-    const Reflector & left_tape,
-    const Reflector & right_tape,
+    const ReflectorCluster & left_tape,
+    const ReflectorCluster & right_tape,
     double tape_dist,
     double lrf_offset,
     geometry_msgs::msg::PoseStamped & pose_out) const;
+
+  bool isMeasurementReliable(
+    const DetectStats & stats,
+    const Reflector & left,
+    const Reflector & right) const;
+
+  bool isPoseJumpReasonable(
+    const geometry_msgs::msg::PoseStamped & new_pose) const;
 
   // ── PHASE C: Near-range helper ──
   // Computes robust range estimate from a narrow angular sector of the scan.
@@ -90,9 +120,14 @@ private:
   double tape_distance_;               // Expected centre-to-centre distance (m) between the two reflective tapes
   double rubber_width_;                // Width (m) of the rubber/backing strip that holds each tape (used for pose geometry)
   double reflector_width_;             // Width (m) of a single reflective tape strip (used for inception-angle correction)
-  float  i_peak_;                      // Minimum intensity threshold to classify a beam as a reflector peak
-  float  i_valley_;                    // Maximum intensity threshold to classify a beam as a valley (non-reflective) neighbour
-  int    valley_search_range_;         // Number of beams to scan left/right from a peak candidate when looking for valleys
+  
+  // NEW: Cluster-based detection parameters
+  float  intensity_cluster_threshold_; // Minimum intensity to be part of a bright cluster
+  int    min_cluster_points_;          // Minimum number of consecutive bright points to form a valid cluster
+  double max_cluster_range_span_;      // Maximum range variation (m) within a cluster
+  double min_cluster_angle_width_;     // Minimum angular width (rad) of a valid cluster
+  double max_cluster_angle_width_;     // Maximum angular width (rad) of a valid cluster
+  
   double max_detect_range_;            // Maximum range (m) beyond which a detected reflector is discarded
   int    max_fail_count_;              // Consecutive scan failures allowed before dock_detected_ is cleared
   double staging_x_offset_;            // Longitudinal offset (m) from dock pose to the staging pose (negative = behind dock)
@@ -100,6 +135,13 @@ private:
   double docking_threshold_;           // Distance (m) from dock pose at which isDocked() returns true
   bool   use_external_detection_pose_; // If true, skip LiDAR detection and accept pose from an external node
   bool   rotate_to_dock_;              // If true, staging faces away from dock for forward approach; robot rotates and backs in (requires dock_direction: backward)
+  std::string dock_direction_;         // Docking direction: "forward" or "backward"
+  int    cluster_beam_gap_;            // Max beam index gap to merge adjacent reflector peaks into one cluster
+
+  // ── Quality constraint parameters ──
+  float  max_peak_diff_;               // Maximum allowed difference between left/right peak intensities
+  double max_pose_jump_dist_;          // Maximum allowed position jump (m) between consecutive poses
+  double max_pose_jump_yaw_rad_;       // Maximum allowed yaw jump (rad) between consecutive poses
 
   // ── PHASE C: Near-range stopping parameters ──
   // These parameters enable robust docking completion when the 2-reflector pair becomes unstable at very close range.
@@ -115,6 +157,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr detected_pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr dock_pose_odom_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr staging_pose_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr dock_distance_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr dock_near_range_pub_;  // NEW: debug topic for near-range estimate
   std::shared_ptr<tf2_ros::Buffer> tf_;
@@ -126,6 +169,10 @@ private:
   bool       has_refined_pose_latch_{false};
   int        miss_count_{0};
   std::mutex pose_mutex_;
+  
+  // ── Quality-checked pose retention ──
+  bool       has_last_valid_pose_{false};
+  geometry_msgs::msg::PoseStamped last_valid_pose_;
   
   // ── PHASE C: Near-range stopping state ──
   sensor_msgs::msg::LaserScan::SharedPtr last_scan_;  // Most recent scan for near-range range computation

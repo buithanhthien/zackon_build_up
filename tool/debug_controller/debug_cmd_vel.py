@@ -8,8 +8,8 @@ class CmdVelLogger(Node):
     def __init__(self):
         super().__init__('cmd_vel_logger')
         self.subscription = self.create_subscription(Twist, '/cmd_vel', self.callback, 10)
-        self.log_file = open('/home/khoaiuh/zackon_build_up/tool/debug_controller/cmd_vel_log_2.txt', 'a')
-        self.get_logger().info('Logging cmd_vel to cmd_vel_log_2.txt')
+        self.log_file = open('/home/khoaiuh/zackon_build_up/tool/debug_controller/cmd_vel_log_4.txt', 'a')
+        self.get_logger().info('Logging cmd_vel to cmd_vel_log_4.txt')
         
     def callback(self, msg):
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]

@@ -40,7 +40,7 @@ docking_server:
       lrf_tilt_alpha_deg: 0.0                               # LRF tilt angle (deg) — compensates range if sensor is mounted at an angle; 0.0 = flat
       
       # lrf_forward_offset: 0.35                            # OLD: forward offset for FRONT lidar
-      lrf_forward_offset: 0.35                             # NEW: NEGATIVE offset for REAR lidar (behind base_link)
+      lrf_forward_offset: -0.35                             # NEW: NEGATIVE offset for REAR lidar (behind base_link)
       
       tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes on the dock
       rubber_width: 0.32                                    # Width (m) of the rubber/backing strip; used to compute the geometric max detection range
@@ -48,36 +48,51 @@ docking_server:
       
       # ── PHASE B: Tuned for REAR lidar reflective statistics (observed peak-valley pair: 46-21) ──
       # i_peak: 43.0                                        # OLD: front lidar threshold
-      i_peak: 46.0                                          # NEW: rear lidar peak threshold (tuned from observation)
-      # i_valley: 29.0                                      # OLD: front lidar valley threshold
-      i_valley: 21.0                                        # NEW: rear lidar valley threshold (tuned from observation)
+      # i_peak: 46.0                                        # OLD: peak-valley detection method
+      # i_valley: 21.0                                      # OLD: peak-valley detection method
+      # valley_search_range: 19                             # OLD: peak-valley detection method
       
-      valley_search_range: 19                               # Number of beams to scan left/right from a peak candidate when searching for valley neighbours
+      # ── NEW: Cluster-based detection parameters ──
+      intensity_cluster_threshold: 45.0                     # Minimum intensity to be part of a bright cluster
+      min_cluster_points: 5                                 # Minimum number of consecutive bright points to form a valid cluster
+      max_cluster_range_span: 0.03                          # Maximum range variation (m) within a cluster (3 cm)
+      min_cluster_angle_width: 0.01                         # Minimum angular width (rad) of a valid cluster
+      max_cluster_angle_width: 0.12                         # Maximum angular width (rad) of a valid cluster
+      
       max_detect_range: 3.0                                 # Maximum range (m) beyond which a detected reflector is discarded as too far
       max_fail_count: 5                                     # Consecutive scan failures before dock_detected_ is cleared (debounce guard)
-      staging_x_offset: 0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
-      
+      cluster_beam_gap: 3                                   # Max beam index gap to merge adjacent reflector peaks into one cluster (improves tape centroid stability)
+      # staging_x_offset: 0.80                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
+      staging_x_offset: 0.60                               # Longitudinal offset (m) from dock pose to staging pose; negative = robot stops behind dock
+
       # ── PHASE A: Changed staging orientation so REAR faces dock ──
       # staging_yaw_offset: 0.0                             # OLD: robot faces dock (front lidar sees tapes, controller reverses)
       staging_yaw_offset: 0.0                           # NEW: π rad = 180° flip → robot REAR faces dock, rear lidar sees tapes, controller drives forward
       
       docking_threshold: 0.32                               # 2-D Euclidean distance (m) from dock pose at which isDocked() returns true (used in reflective-pose mode)
       
-      # dock_direction: "backward"                          # OLD: controller reverses (for front-facing staging)
-      dock_direction: "forward"                             # NEW: controller drives forward (robot already rear-facing at staging)
+      # ── Quality constraint parameters (NEW) ──
+      max_peak_diff: 4.0                                    # Maximum allowed difference between left/right peak intensities
+      # max_pose_jump_dist: 0.10                            # OLD: Too strict - caused rejections at 0.29-0.40m jumps
+      max_pose_jump_dist: 0.50                              # NEW: Increased to allow initial detection variance (observed: 0.29-0.40m)
+      # max_pose_jump_yaw_deg: 15.0                         # OLD: Too strict for initial detection
+      max_pose_jump_yaw_deg: 30.0                           # NEW: Increased for initial detection stability
+      
+      dock_direction: "backward"                          # OLD: controller reverses (for front-facing staging)
+      # dock_direction: "forward"                           # COMMENTED OUT: docking_server parameter, not used by plugin
       
       # rotate_to_dock: true                                # OLD: SimpleChargingDock-only parameter
       rotate_to_dock: false                                 # NEW: no extra rotation needed; staging already orients rear toward dock
       
-      # ── PHASE C: Near-range stopping parameters ──
+      # ── PHASE C: Near-range stopping parameters (COMMENTED OUT - using direct min_range check in isDocked()) ──
       # When robot gets very close, 2-reflector pair becomes unstable/disappears.
       # Near-range mode uses direct range from a narrow rear-facing sector for robust docking completion.
-      use_near_range_stop: true                             # Enable near-range direct-range stopping mode
-      near_range_entry_distance: 0.60                       # Distance (m) below which near-range mode can activate
-      near_range_sector_half_angle_deg: 15.0                # Half-width (deg) of angular sector around rear direction for range sampling
-      near_range_stop_threshold: 0.10                       # Range (m) below which robot is considered docked in near-range mode
-      near_range_required_stable_count: 3                   # Consecutive cycles range must stay below threshold to declare docked
-      near_range_statistic: "median"                        # Statistic for robust range estimate: "min", "median", "trimmed_mean"
+      # use_near_range_stop: true                             # Enable near-range direct-range stopping mode
+      # near_range_entry_distance: 0.60                       # Distance (m) below which near-range mode can activate
+      # near_range_sector_half_angle_deg: 15.0                # Half-width (deg) of angular sector around rear direction for range sampling
+      # near_range_stop_threshold: 0.08                       # Range (m) below which robot is considered docked in near-range mode (tuned to physical contact distance)
+      # near_range_required_stable_count: 3                   # Consecutive cycles range must stay below threshold to declare docked
+      # near_range_statistic: "median"                        # Statistic for robust range estimate: "min", "median", "trimmed_mean"
 
       # ── SimpleChargingDock (for reference — only usable if detector is a separate node) ──
       # plugin: "opennav_docking::SimpleChargingDock"
@@ -94,17 +109,18 @@ docking_server:
       # dock_direction: "backward"
       # rotate_to_dock: true
 
-    # ── LiDAR detector parameters (used by docking_sequence.py and debug tools) ──
-    lidar_detector:                                         # Standalone detector params — mirrored by docking_sequence.py and debug tools (not loaded by the plugin itself)
-      scan_topic: "/scan_rear_lidar_filter"                 # LaserScan topic to subscribe to for reflector detection (UPDATED: rear lidar)
-      lrf_forward_offset: 0.35                             # Forward offset (m) from base_link to LRF optical centre (UPDATED: negative for rear lidar)
-      tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes
-      rubber_width: 0.32                                    # Width (m) of the rubber backing strip; used for geometric max-range calculation
-      reflector_width: 0.048                                # Width (m) of a single reflective tape; used in inception-angle computation
-      i_peak: 46.0                                          # Minimum intensity threshold to classify a beam as a reflector peak (UPDATED: rear lidar)
-      i_valley: 21.0                                        # Maximum intensity allowed for valley (non-reflective) neighbour beams (UPDATED: rear lidar)
-      valley_search_range: 19                               # Number of beams to scan each side of a peak when looking for valley neighbours
-      max_detect_range: 3.0                                 # Maximum detection range (m); reflectors beyond this are ignored
+    # # ── LiDAR detector parameters (used by docking_sequence.py and debug tools) ──
+    # lidar_detector:                                         # Standalone detector params — mirrored by docking_sequence.py and debug tools (not loaded by the plugin itself)
+    #   scan_topic: "/scan_rear_lidar_filter"                 # LaserScan topic to subscribe to for reflector detection (UPDATED: rear lidar)
+    #   lrf_forward_offset: -0.35                             # Forward offset (m) from base_link to LRF optical centre (UPDATED: negative for rear lidar)
+    #   tape_distance: 0.375                                  # Expected centre-to-centre distance (m) between the two reflective tapes
+    #   rubber_width: 0.32                                    # Width (m) of the rubber backing strip; used for geometric max-range calculation
+    #   reflector_width: 0.048                                # Width (m) of a single reflective tape; used in inception-angle computation
+    #   i_peak: 46.0                                          # Minimum intensity threshold to classify a beam as a reflector peak (UPDATED: rear lidar)
+    #   i_valley: 21.0                                        # Maximum intensity allowed for valley (non-reflective) neighbour beams (UPDATED: rear lidar)
+    #   valley_search_range: 12                               # Number of beams to scan each side of a peak when looking for valley neighbours
+    #   max_detect_range: 1.5                                 # Maximum detection range (m); reflectors beyond this are ignored
+    #   cluster_beam_gap: 3                                   # Max beam index gap to merge adjacent reflector peaks into one cluster
 
 
     # Dock instances
@@ -122,10 +138,10 @@ docking_server:
     controller:
       k_phi: 3.0                                            # Gain on heading-to-goal angle (phi) — higher = turns faster toward dock
       k_delta: 2.0                                          # Gain on heading error (delta) — higher = corrects orientation more aggressively
-      v_linear_min: -0.15                                   # Min linear velocity (m/s)
-      v_linear_max: 0.15                                    # Max linear velocity (m/s)
+      v_linear_min: -0.08                                   # Min linear velocity (m/s)
+      v_linear_max: 0.08                                    # Max linear velocity (m/s)
       v_angular_max: 0.75                                   # Max angular velocity (rad/s)
-      slowdown_radius: 0.25                                 # Radius (m) to dock pose to begin slowing down
+      slowdown_radius: 0.40                                 # Radius (m) to dock pose to begin slowing down
       rotate_to_heading_angular_vel: 1.0                    # Angular velocity (rad/s) used when rotating to dock heading
       rotate_to_heading_max_angular_accel: 3.2              # Max angular acceleration (rad/s^2) when rotating to dock heading
       costmap_topic: "local_costmap/costmap_raw"            # Costmap topic used for collision detection

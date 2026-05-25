@@ -13,6 +13,7 @@
 
 # ===== Virtual environments =====
 venv/
+.venv/
 .env/
 
 # ===== Machine-specific config =====
@@ -47,6 +48,9 @@ src/tf2_frame/frames_2026-04-01_09.01.43.pdf
 src/tf2_frame/frames_2026-04-01_09.01.43.gv
 
 .env
+
+# ===== Chat history (user-specific, runtime data) =====
+robot_ui/.chat_history.json
 
 # ===== Debug logs =====
 tool/debug_controller/*.txt

@@ -309,6 +309,7 @@ class ChatPanel(QWidget):
         self._pose_provider = None
         self._pending_response = None
         self._return_here_pose = None
+        self._did_speak = False
 
         self._build_ui()
         
@@ -770,10 +771,17 @@ class ChatPanel(QWidget):
             self._pending_response = None
             self._show_response(clean, tags, nav_keys, tour_keys)
 
+        # Track speaking state
+        if "SPEAKING" in state:
+            self._did_speak = True
+
         if not state:
-            self._voice_enabled = False
-            self.voice_btn.setChecked(False)
-            self.voice_status_label.hide()
+            # Empty state after speaking → auto-disable voice
+            if self._did_speak:
+                self._voice_enabled = False
+                self.voice_btn.setChecked(False)
+                self.voice_status_label.hide()
+                self._did_speak = False
             return
 
         self.voice_status_label.show()

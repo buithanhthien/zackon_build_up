@@ -16,9 +16,13 @@ if os.path.exists(_env_path):
                 _k, _v = _line.split('=', 1)
                 os.environ.setdefault(_k.strip(), _v.strip())
 
+import asyncio
+
+import edge_tts
 import speech_recognition as sr
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
-from vieneu import Vieneu
+
+EDGE_TTS_VOICE = "vi-VN-HoaiMyNeural"
 
 MIC_DEVICE_PRIORITY = [
     "pipewire",       # PipeWire routes all physical mics (USB, 3.5mm jack)
@@ -69,14 +73,7 @@ class VoiceEngine(QObject):
         self.recognizer.pause_threshold  = 1.5
 
         self._tts_queue = queue.Queue()
-        self._tts_engine = None
         threading.Thread(target=self._tts_worker, daemon=True).start()
-
-    def _init_tts(self):
-        if self._tts_engine is None:
-            print("[TTS] Initializing VieNeu-TTS...")
-            self._tts_engine = Vieneu()
-            print("[TTS] VieNeu-TTS ready")
 
     def listen_once(self):
         if not self._listen_lock.acquire(blocking=False):
@@ -178,37 +175,37 @@ class VoiceEngine(QObject):
         while True:
             text = self._tts_queue.get()
             self._stop_flag.clear()
-            
-            if self._tts_engine is None:
-                self._init_tts()
-            
             try:
-                audio = self._tts_engine.infer(text=text)
-                if audio is not None and len(audio) > 0 and not self._stop_flag.is_set():
+                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
+                    tmp_path = f.name
+                asyncio.run(self._synthesize(text, tmp_path))
+                if not self._stop_flag.is_set():
                     self._set_state(VoiceState.SPEAKING)
-                    self._play_wav(audio)
+                    self._play_audio(tmp_path)
             except Exception as e:
                 print(f"[TTS] synthesis failed: {e}")
-            
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
             self._tts_queue.task_done()
             if self._tts_queue.empty():
                 self._set_state("")
 
-    def _play_wav(self, audio):
+    async def _synthesize(self, text: str, path: str):
+        communicate = edge_tts.Communicate(text, EDGE_TTS_VOICE)
+        await communicate.save(path)
+
+    def _play_audio(self, path: str):
         with self._play_lock:
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
-                self._tts_engine.save(audio, f.name)
-                tmp_path = f.name
-            try:
-                proc = subprocess.Popen(
-                    ['aplay', '-q', tmp_path],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                while proc.poll() is None:
-                    if self._stop_flag.is_set():
-                        proc.kill()
-                        break
-                    time.sleep(0.05)
-            finally:
-                os.unlink(tmp_path)
+            proc = subprocess.Popen(
+                ['mpg123', '-q', path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            while proc.poll() is None:
+                if self._stop_flag.is_set():
+                    proc.kill()
+                    break
+                time.sleep(0.05)

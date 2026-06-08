@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from voice_engine import VoiceEngine, VoiceState
 from chat_history import get_chat_history, save_chat_history, clear_chat_history
+from robot_face_widget import RobotFaceWidget
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -323,6 +324,17 @@ class ChatPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        # ── Robot face ────────────────────────────────────────────
+        face_row = QWidget()
+        face_row.setStyleSheet("background-color:#f0f6ff;border-bottom:1px solid #c8d4f0;")
+        face_row_layout = QHBoxLayout(face_row)
+        face_row_layout.setContentsMargins(0, 8, 0, 8)
+        self.robot_face = RobotFaceWidget()
+        face_row_layout.addStretch()
+        face_row_layout.addWidget(self.robot_face)
+        face_row_layout.addStretch()
+        layout.addWidget(face_row)
+
         self.chat_scroll = QScrollArea()
         self.chat_scroll.setWidgetResizable(True)
         self.chat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -552,6 +564,7 @@ class ChatPanel(QWidget):
         self._typing_timer.start(400)
         self.send_btn.setEnabled(False)
         self.chat_input.setEnabled(False)
+        self.robot_face.set_emotion("thinking")
 
         self._ai_worker = _AIChatWorker(history)
         self._ai_thread = QThread()
@@ -737,6 +750,9 @@ class ChatPanel(QWidget):
         self.send_btn.setEnabled(True)
         self.chat_input.setEnabled(True)
         self.chat_input.setFocus()
+        if not self._voice_enabled:
+            self.robot_face.set_emotion("happy")
+            QTimer.singleShot(3000, lambda: self.robot_face.set_emotion("neutral"))
 
     def _emit_waypoint_after_speech(self, keys):
         if self._voice_engine._tts_queue.empty():
@@ -782,16 +798,20 @@ class ChatPanel(QWidget):
                 self.voice_btn.setChecked(False)
                 self.voice_status_label.hide()
                 self._did_speak = False
+            self.robot_face.set_emotion("neutral")
             return
 
         self.voice_status_label.show()
         self.voice_status_label.setText(state)
         if "LISTENING" in state:
             self.voice_status_label.setStyleSheet("color:#214196;padding:0 20px;background-color:#f8faff;")
+            self.robot_face.set_emotion("listening")
         elif "SPEAKING" in state:
             self.voice_status_label.setStyleSheet("color:#22c55e;padding:0 20px;background-color:#f8faff;")
+            self.robot_face.set_emotion("speaking")
         else:
             self.voice_status_label.setStyleSheet("color:#5a7abf;padding:0 20px;background-color:#f8faff;")
+            self.robot_face.set_emotion("thinking")
 
     def _on_voice_transcript(self, text):
         text = text.strip().capitalize()

@@ -1,0 +1,1 @@
+interrupt_btn.setFixedSize(200, 130)

@@ -8,9 +8,9 @@ import math
 import re
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QTextEdit, QLabel,
-                             QSizePolicy, QLineEdit, QScrollArea, QFrame)
+                             QSizePolicy)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
-from PyQt6.QtGui import QFont, QFontDatabase, QKeyEvent
+from PyQt6.QtGui import QFont
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
@@ -23,7 +23,7 @@ from chat_panel_widget import ChatPanel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
 from styles import MAIN_STYLESHEET
-from ui_utils import append_log, setup_clock_timer
+from ui_utils import setup_clock_timer
 from map_utils import update_map_files
 from process_manager import ProcessManager
 
@@ -263,8 +263,6 @@ class RobotUI(QMainWindow):
         self._ros_spin_timer.start(100)
 
         self.init_ui()
-        self.chat_panel.set_pose_provider(lambda: self._latest_pose)
-        self.chat_panel.waypoint_command.connect(self._voice_go_to_waypoint)
         self.chat_panel._voice_enabled = True
         if not skip_micro_ros:
             self.start_micro_ros()
@@ -395,44 +393,30 @@ class RobotUI(QMainWindow):
         cards_layout.addWidget(self.rear_lidar_card["widget"])
         right_layout.addWidget(cards_widget)
 
-        # ── Panel switcher (LOG / AI CHAT) ────────────────────────────────────
-        tab_bar = QWidget()
-        tab_bar.setFixedHeight(36)
-        tab_bar.setStyleSheet("background-color: #f0f4ff; border-top: 1px solid #c8d4f0;")
-        # Remove tab bar - show both panels side by side
-        right_layout.addWidget(QLabel())  # spacer
-
-        # ── LOG panel ─────────────────────────────────────────────────────────
-        self.log_panel = QWidget()
-        self.log_panel.setObjectName("log-panel")
-        log_layout = QVBoxLayout(self.log_panel)
-        log_layout.setContentsMargins(16, 12, 16, 12)
-        log_layout.setSpacing(6)
-
-        log_header = QLabel("SYSTEM LOG")
-        log_header.setFont(QFont("DM Sans", 11, QFont.Weight.Bold))
-        log_header.setStyleSheet("color: #214196; padding: 4px 0;")
-        log_layout.addWidget(log_header)
-
-        self.log_text = QTextEdit()
-        self.log_text.setObjectName("log-text")
-        self.log_text.setReadOnly(True)
-        self.log_text.setFont(QFont("Fira Code", 13))
-        log_layout.addWidget(self.log_text, 1)
-
+        # ── Voice panel fills the right content area ──────────────────────
         self.chat_panel = ChatPanel()
+        self.chat_panel.hide()  # hidden — only owns the voice engine
 
-        # Mic button fills bottom half of log panel
+        # ── Voice panel (right of log) ─────────────────────────────────────
+        voice_panel = QWidget()
+        voice_panel.setObjectName("voice-panel")
+        voice_panel.setFixedWidth(560)
+        voice_layout = QVBoxLayout(voice_panel)
+        voice_layout.setContentsMargins(16, 12, 16, 12)
+        voice_layout.setSpacing(12)
+        voice_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+
         mic_btn = self.chat_panel.voice_btn
-        mic_btn.setFixedSize(225, 225)
+        mic_btn.setFixedSize(500, 500)
         mic_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         mic_btn.setStyleSheet("""
             QPushButton {
                 background-color: #214196;
                 color: #ffffff;
                 border: 3px solid #a8bce8;
-                border-radius: 112px;
-                font-size: 90px;
+                border-radius: 250px;
+                font-size: 60px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #1a3278;
@@ -443,22 +427,29 @@ class RobotUI(QMainWindow):
                 border: 3px solid #fca5a5;
             }
         """)
-        mic_label = QLabel("Nhấn vào tôi để nói")
-        mic_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        mic_label.setStyleSheet("color: #5a7abf; font-size: 25px; margin-top: -5px;")
-        mic_label.setFont(QFont("DM Sans", 11))
-        log_layout.addWidget(mic_btn, 0, Qt.AlignmentFlag.AlignHCenter)
-        log_layout.addWidget(mic_label, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        # Horizontal splitter for log and chat
-        panels_splitter = QWidget()
-        panels_layout = QHBoxLayout(panels_splitter)
-        panels_layout.setContentsMargins(0, 0, 0, 0)
-        panels_layout.setSpacing(8)
-        panels_layout.addWidget(self.log_panel, 1)
-        panels_layout.addWidget(self.chat_panel, 1)
+        voice_status = self.chat_panel.voice_status_label
+        voice_status.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        voice_status.show()
 
-        right_layout.addWidget(panels_splitter, 1)
+        interrupt_btn = self.chat_panel.interrupt_btn
+        interrupt_btn.setFixedSize(200, 130)
+
+        voice_layout.addStretch()
+        voice_layout.addWidget(mic_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+        voice_layout.addWidget(voice_status, 0, Qt.AlignmentFlag.AlignHCenter)
+        voice_layout.addSpacing(16)
+        voice_layout.addWidget(interrupt_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+        voice_layout.addStretch()
+
+        # ── Main content row: voice panel fills full width ────────────────
+        content_row = QWidget()
+        content_layout = QHBoxLayout(content_row)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(voice_panel)
+
+        right_layout.addWidget(content_row, 1)
 
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
@@ -617,9 +608,6 @@ class RobotUI(QMainWindow):
         self.close()
 
     def start_docking(self):
-        self.show_docking_screen()
-
-    def start_docking(self):
         self.log("Chuyển sang chế độ docking")
         subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/docking_layout.py'])
         self.close()
@@ -633,42 +621,14 @@ class RobotUI(QMainWindow):
                 update_map_files(map_name, self.log)
 
     def log(self, message):
-        append_log(self.log_text, message)
-
-    def _on_ai_action(self, tag: str):
-        self.log(f"[AI-HÀNH ĐỘNG] {tag}")
-        if tag.startswith("LOAD_MAP:"):
-            map_name = tag.split(":", 1)[1].strip()
-            self.update_map_files(map_name)
-        elif tag == "LOCALIZE":
-            self.start_reestimate()
-        elif tag == "DOCK":
-            self.start_docking()
-        elif tag == "STATUS_CHECK":
-            self.update_status()
+        print(f"[LOG] {message}")
 
     def open_developer_mode(self):
-        self.log("Đang mở chế độ Developer (Claude Code)")
+        self.log("Đang mở chế độ Developer")
         self.process_mgr.launch_terminal(
             f'cd {SOURCE_PATH} && source install/setup.bash && claude; exec bash',
             'Developer Mode'
         )
-
-    def _voice_go_to_waypoint(self, slots: str):
-        self.log(f"[Giọng nói] Đang điều hướng đến địa điểm {slots}")
-        self._switching_layout = True  # Flag to prevent history clear
-        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py',
-                          '--go-to', slots])
-        self.close()
-
-    def _on_voice_ui_command(self, command: str):
-        self.log(f"[Giọng nói] Lệnh giao diện: {command}")
-        if command == "LOAD_MAP":
-            self.load_map()
-        elif command == "NEW_MAP":
-            self.start_new_map()
-        elif command == "NAV2":
-            self.mode_changed("Nav2")
 
     def closeEvent(self, event):
         if self.localization_worker:

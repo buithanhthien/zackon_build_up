@@ -70,7 +70,7 @@ class VoiceEngine(QObject):
         self.recognizer = sr.Recognizer()
         self.recognizer.dynamic_energy_threshold = True
         self.recognizer.energy_threshold = 300
-        self.recognizer.pause_threshold  = 1.5
+        self.recognizer.pause_threshold  = 2.5
 
         self._tts_queue = queue.Queue()
         threading.Thread(target=self._tts_worker, daemon=True).start()
@@ -121,7 +121,7 @@ class VoiceEngine(QObject):
                         print(f"[VoiceEngine] using mic index={idx} ({available[idx] if idx is not None else 'default'})")
                         print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
                         try:
-                            audio = self.recognizer.listen(source, timeout=10.0, phrase_time_limit=15.0)
+                            audio = self.recognizer.listen(source, timeout=5.0, phrase_time_limit=15.0)
                             print("[VoiceEngine] audio captured, sending to Google STT...")
                         except sr.WaitTimeoutError:
                             print("[VoiceEngine] timeout — no speech detected")
@@ -175,20 +175,27 @@ class VoiceEngine(QObject):
         while True:
             text = self._tts_queue.get()
             self._stop_flag.clear()
+            tmp_path = None
             try:
                 with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
                     tmp_path = f.name
-                asyncio.run(self._synthesize(text, tmp_path))
+                # Create a fresh event loop each time to avoid stale WebSocket state
+                loop = asyncio.new_event_loop()
+                try:
+                    loop.run_until_complete(self._synthesize(text, tmp_path))
+                finally:
+                    loop.close()
                 if not self._stop_flag.is_set():
                     self._set_state(VoiceState.SPEAKING)
                     self._play_audio(tmp_path)
             except Exception as e:
                 print(f"[TTS] synthesis failed: {e}")
             finally:
-                try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
+                if tmp_path:
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
             self._tts_queue.task_done()
             if self._tts_queue.empty():
                 self._set_state("")

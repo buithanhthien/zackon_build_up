@@ -226,6 +226,22 @@ MAIN_STYLESHEET = """
     QPushButton#clear-btn:hover {
         color: #5a7abf;
     }
+    QPushButton#interrupt-btn {
+        background-color: #ef4444;
+        color: #ffffff;
+        border: none;
+        border-radius: 16px;
+        font-size: 18px;
+        min-height: 130px;
+        padding: 0px 20px;
+    }
+    QPushButton#interrupt-btn:hover {
+        background-color: #dc2626;
+    }
+    QPushButton#interrupt-btn:disabled {
+        background-color: #e0e8f8;
+        color: #a8bce8;
+    }
     QScrollArea {
         background-color: #ffffff;
         border: none;

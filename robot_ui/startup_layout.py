@@ -319,7 +319,7 @@ class RobotUI(QMainWindow):
         self.btn_new_map    = QPushButton("Bản đồ mới")
         self.btn_tracking   = QPushButton("Theo dõi")
         self.btn_reestimate = QPushButton("Định vị lại")
-        self.btn_nav2       = QPushButton("Nav2")
+        self.btn_nav2       = QPushButton("Chạy Nav2")
 
         mono = QFont("JetBrains Mono", 22)
         for btn in [self.btn_waypoints, self.btn_docking, self.btn_load_map,

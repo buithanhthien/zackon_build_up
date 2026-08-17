@@ -27,7 +27,7 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL   = "gpt-5.4-mini"
 
 SYSTEM_PROMPT = (
-    "Bạn là ZACKON, AI trợ lý tích hợp trong robot ROS 2 của hệ thống Zackon.\n"
+    "Bạn là ZACKON, AI trợ lý tích hợp trong robot ROS 2 của hệ thống.\n"
     "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn và thân thiện.\n"
     "Không sử dụng dấu ngoặc kép (\") trong câu trả lời.\n"
     "Hãy trả lời ngắn gọn trong 2 đến 3 câu.\n"
@@ -99,13 +99,13 @@ class ChatPanel(QWidget):
         layout.addWidget(self.voice_status_label)
 
         # Mic button — the only interactive element
-        self.voice_btn = QPushButton("CLICK\n TO SPEAK")
+        self.voice_btn = QPushButton("Nhấn\n Để Nói")
         self.voice_btn.setObjectName("voice-btn")
         self.voice_btn.setCheckable(True)
         self.voice_btn.clicked.connect(self._on_listen_btn_clicked)
 
-        # Stop-speaking button
-        self.interrupt_btn = QPushButton("■ Dừng")
+        # Stop-speaking buttonói
+        self.interrupt_btn = QPushButton("■ Dừng nói")
         self.interrupt_btn.setObjectName("interrupt-btn")
         self.interrupt_btn.setFont(QFont("JetBrains Mono", 11))
         self.interrupt_btn.setFixedHeight(40)

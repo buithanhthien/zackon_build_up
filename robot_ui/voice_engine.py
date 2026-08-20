@@ -44,7 +44,7 @@ GIPFORMER_MODEL_DIR = os.path.expanduser("~/.cache/gipformer")  # Model download
 SUPERTONIC_VOICE = "M1"  # Options: M1-M5, F1-F5 (F1 is female voice, similar to HoaiMy)
 SUPERTONIC_LANG = "vi"   # Vietnamese
 SUPERTONIC_STEPS = 8     # Quality: 5 (low) to 12 (high), default 8
-SUPERTONIC_SPEED = 1.5   # Speed: 0.7 (slow) to 2.0 (fast) - Increased for faster speech
+SUPERTONIC_SPEED = 1.8   # Speed: 0.7 (slow) to 2.0 (fast) - Increased for faster speech
 
 MIC_DEVICE_PRIORITY = [
     "pipewire",       # PipeWire routes all physical mics (USB, 3.5mm jack)
@@ -233,7 +233,9 @@ class VoiceEngine(QObject):
                         print(f"[VoiceEngine] energy_threshold={self.recognizer.energy_threshold:.1f}, listening...")
                         try:
                             audio = self.recognizer.listen(source, timeout=5.0, phrase_time_limit=15.0)
-                            print("[VoiceEngine] audio captured, sending to Google STT...")
+                            duration = len(audio.frame_data) / (audio.sample_rate * audio.sample_width)
+                            print(f"[VoiceEngine] Audio duration: {duration:.2f}s")
+                            print("[VoiceEngine] audio captured, processing...")
                         except sr.WaitTimeoutError:
                             print("[VoiceEngine] timeout — no speech detected")
                         break  # mic worked; stop trying candidates
@@ -282,11 +284,7 @@ class VoiceEngine(QObject):
                 convert_width=2
             )
 
-            audio_array = (
-                np.frombuffer(raw_data, dtype=np.int16)
-                .astype(np.float32)
-                / 32768.0
-            )
+            audio_array = (np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0)
 
             # Create offline recognition stream
             stream = self._gipformer_recognizer.create_stream()

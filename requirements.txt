@@ -1,4 +1,8 @@
 PyQt6
 openai
 SpeechRecognition
-vieneu
+supertonic
+sherpa-onnx
+soundfile
+huggingface-hub
+numpy

@@ -44,7 +44,7 @@ GIPFORMER_MODEL_DIR = os.path.expanduser("~/.cache/gipformer")  # Model download
 SUPERTONIC_VOICE = "M1"  # Options: M1-M5, F1-F5 (F1 is female voice, similar to HoaiMy)
 SUPERTONIC_LANG = "vi"   # Vietnamese
 SUPERTONIC_STEPS = 8     # Quality: 5 (low) to 12 (high), default 8
-SUPERTONIC_SPEED = 1.8   # Speed: 0.7 (slow) to 2.0 (fast) - Increased for faster speech
+SUPERTONIC_SPEED = 1.7   # Speed: 0.7 (slow) to 2.0 (fast) - Increased for faster speech
 
 MIC_DEVICE_PRIORITY = [
     "pipewire",       # PipeWire routes all physical mics (USB, 3.5mm jack)
@@ -90,7 +90,7 @@ class VoiceEngine(QObject):
         self.recognizer = sr.Recognizer()
         self.recognizer.dynamic_energy_threshold = True
         self.recognizer.energy_threshold = 300
-        self.recognizer.pause_threshold  = 2.5
+        self.recognizer.pause_threshold  = 1.5
 
         # Initialize Gipformer STT (Offline Vietnamese)
         self._gipformer_recognizer = None

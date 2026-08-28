@@ -648,6 +648,10 @@ class WaypointsModeLayout(QMainWindow):
         self.chat_widget.set_pose_provider(
             lambda: self.ros_node.current_pose.pose.pose if self.ros_node.current_pose else None
         )
+        self.chat_widget.set_waypoints_provider(
+            lambda: [k for k, v in self.waypoints.items()
+                     if v.get('map_name') == get_current_map_name()]
+        )
 
         mic_btn = self.chat_widget.voice_btn
         mic_btn.setFixedSize(225, 225)
@@ -863,6 +867,17 @@ class WaypointsModeLayout(QMainWindow):
         self.running_sequence = False
         self.selected_sequence = []
         self.log('Đã xóa chuỗi')
+
+        def _get_current_map_waypoint_descriptors(self):
+            """Returns [{'key': ..., 'aliases': [...]}] for waypoints on the
+            current map, so ChatPanel's intent classifier can match whatever
+            alias the user says (from waypoints.json) back to the correct key."""
+            current_map = get_current_map_name()
+            return [
+                {'key': k, 'aliases': v.get('aliases', [])}
+                for k, v in self.waypoints.items()
+                if v.get('map_name') == current_map
+            ]
         
     def update_map_waypoints(self):
         """Show only waypoints belonging to the current map on the map widget."""

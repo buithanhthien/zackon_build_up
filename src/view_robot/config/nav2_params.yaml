@@ -652,7 +652,7 @@ global_costmap:
         lethal_override_cost: 252
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
-        enabled: False #SPEED_ZONE_ENABLED  #moi sua #True
+        enabled: True
         filter_info_topic: "speed_costmap_filter_info"
         speed_limit_topic: "speed_limit"
       obstacle_layer:
@@ -708,7 +708,7 @@ lifecycle_manager_localization:
 keepout_filter_mask_server:
   ros__parameters:
     topic_name: "keepout_filter_mask"
-    yaml_filename: "/home/khoaiuh/zackon_build_up/src/view_robot/maps/X5_08042026.yaml"
+    yaml_filename: "/home/khoaiuh/zackon_build_up/src/view_robot/maps/X5_08042026_keepout.yaml"
 
 keepout_costmap_filter_info_server:
   ros__parameters:

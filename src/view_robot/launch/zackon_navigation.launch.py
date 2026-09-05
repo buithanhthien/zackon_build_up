@@ -34,11 +34,18 @@ def generate_launch_description():
     default_bt_xml_filename = LaunchConfiguration('default_bt_xml_filename')
     map_subscribe_transient_local = LaunchConfiguration('map_subscribe_transient_local')
 
-    lifecycle_nodes = ['controller_server',
-                       'planner_server',
-                       'behavior_server',
-                       'bt_navigator',
-                       'waypoint_follower']
+    lifecycle_nodes = [
+        'controller_server',
+        'planner_server',
+        'behavior_server',
+        'bt_navigator',
+        'waypoint_follower'
+    ]
+
+    keepout_lifecycle_nodes = [
+        'keepout_filter_mask_server',
+        'keepout_costmap_filter_info_server'
+    ]
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -132,6 +139,53 @@ def generate_launch_description():
             output='screen',
             parameters=[configured_params],
             remappings=remappings),
+
+        # ============================================================
+        # KEEPOUT FILTER
+        # ============================================================
+
+        # Publishes the OccupancyGrid used as keepout mask
+        Node(
+            package='nav2_map_server',
+            executable='map_server',
+            name='keepout_filter_mask_server',
+            output='screen',
+            parameters=[
+                configured_params,
+                {'use_sim_time': use_sim_time}
+            ],
+            remappings=remappings
+        ),
+
+        # Publishes CostmapFilterInfo telling costmaps
+        # where the keepout mask is located
+        Node(
+            package='nav2_map_server',
+            executable='costmap_filter_info_server',
+            name='keepout_costmap_filter_info_server',
+            output='screen',
+            parameters=[
+                configured_params,
+                {'use_sim_time': use_sim_time}
+            ],
+            remappings=remappings
+        ),
+
+        Node(
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_keepout',
+            output='screen',
+            parameters=[
+                {'use_sim_time': use_sim_time},
+                {'autostart': autostart},
+                {'node_names': keepout_lifecycle_nodes}
+            ]
+        ),
+
+        # ============================================================
+        # NAVIGATION LIFECYCLE
+        # ============================================================
 
         Node(
             package='nav2_lifecycle_manager',

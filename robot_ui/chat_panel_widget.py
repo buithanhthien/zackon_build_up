@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-import os
 import json
+import os
+import unicodedata
+import re
+import sys
+
 from openai import OpenAI
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
 from PyQt6.QtGui import QFont
-import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from voice_engine import VoiceEngine
@@ -17,6 +21,227 @@ IUH_DATABASE_PATH = os.path.join(
     "iuh_database.json"
 )
 
+def _remove_vietnamese_accents(text: str) -> str:
+    text = text.lower().replace("đ", "d")
+    text = unicodedata.normalize("NFD", text)
+
+    return "".join(
+        c for c in text
+        if unicodedata.category(c) != "Mn"
+    )
+
+def _vietnamese_number_to_int(words: str):
+    """
+    Chuyển một số cách STT tiếng Việt thường trả về thành số.
+    Dùng cho số phòng: 1 -> 99.
+    """
+
+    words = words.strip()
+
+    if words.isdigit():
+        return int(words)
+
+    unit = {
+        "khong": 0,
+        "mot": 1,
+        "mốt": 1,
+        "hai": 2,
+        "ba": 3,
+        "bon": 4,
+        "tu": 4,
+        "nam": 5,
+        "lam": 5,
+        "sau": 6,
+        "bay": 7,
+        "tam": 8,
+        "chin": 9,
+    }
+
+    tokens = words.split()
+
+    if len(tokens) == 1:
+        return unit.get(tokens[0])
+
+    # Ví dụ:
+    # muoi -> 10
+    # muoi mot -> 11
+    # muoi bon -> 14
+    # hai muoi -> 20
+    # hai muoi mot -> 21
+
+    if tokens[0] == "muoi":
+        if len(tokens) == 1:
+            return 10
+
+        last = unit.get(tokens[1])
+        if last is not None:
+            return 10 + last
+
+    if len(tokens) >= 2 and tokens[1] == "muoi":
+        tens = unit.get(tokens[0])
+
+        if tens is None:
+            return None
+
+        value = tens * 10
+
+        if len(tokens) >= 3:
+            last = unit.get(tokens[2])
+
+            if last is None:
+                return None
+
+            value += last
+
+        return value
+
+    return None
+
+def _normalize_room_names(text: str) -> str:
+    """
+    Chuẩn hóa tên phòng do STT nhận dạng.
+
+    Ví dụ:
+    X NĂM CHẤM BỐN
+        -> x5.4
+
+    NĂM CHẤM BỐN
+        -> x5.4
+
+    X NĂM CHẤM BA CHẤM BA
+        -> x5.3.3
+
+    NĂM CHẤM BA CHẤM BA
+        -> x5.3.3
+
+    NĂM CHẤM HAI CHẤM BỐN
+        -> x5.2.4
+    """
+
+    original = text
+
+    normalized = _remove_vietnamese_accents(text)
+
+    normalized = re.sub(
+        r"\s+",
+        " ",
+        normalized
+    ).strip()
+
+    number_pattern = (
+        r"(?:"
+        r"\d+|"
+        r"khong|mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin|"
+        r"muoi(?:\s+(?:mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin))?|"
+        r"(?:hai|ba|bon|nam|sau|bay|tam|chin)\s+muoi"
+        r"(?:\s+(?:mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin))?"
+        r")"
+    )
+
+    # ============================================================
+    # 1. Dạng X5.3-3
+    #
+    # STT có thể nghe:
+    #
+    # X NĂM CHẤM BA CHẤM BA
+    # NĂM CHẤM BA CHẤM BA
+    #
+    # -> x5.3-3
+    # ============================================================
+
+    three_level_pattern = re.compile(
+        rf"\b(?:x\s*)?"
+        rf"({number_pattern})"
+        rf"\s*(?:cham|\.)\s*"
+        rf"({number_pattern})"
+        rf"\s*(?:cham|\.|-)\s*"
+        rf"({number_pattern})\b",
+        re.IGNORECASE
+    )
+
+    def replace_three_level(match):
+
+        first = _vietnamese_number_to_int(
+            match.group(1)
+        )
+
+        second = _vietnamese_number_to_int(
+            match.group(2)
+        )
+
+        third = _vietnamese_number_to_int(
+            match.group(3)
+        )
+
+        if (
+            first is None
+            or second is None
+            or third is None
+        ):
+            return match.group(0)
+
+        # Các waypoint của hệ thống đang thuộc nhà X5.
+        # Chỉ tự thêm X khi số đầu là 5.
+        if first != 5:
+            return match.group(0)
+
+        return f"x{first}.{second}.{third}"
+
+    normalized = three_level_pattern.sub(
+        replace_three_level,
+        normalized
+    )
+
+    # ============================================================
+    # 2. Dạng X5.4
+    #
+    # X NĂM CHẤM BỐN
+    # NĂM CHẤM BỐN
+    #
+    # -> x5.4
+    # ============================================================
+
+    two_level_pattern = re.compile(
+        rf"\b(?:x\s*)?"
+        rf"({number_pattern})"
+        rf"\s*(?:cham|\.)\s*"
+        rf"({number_pattern})\b",
+        re.IGNORECASE
+    )
+
+    def replace_two_level(match):
+
+        first = _vietnamese_number_to_int(
+            match.group(1)
+        )
+
+        second = _vietnamese_number_to_int(
+            match.group(2)
+        )
+
+        if (
+            first is None
+            or second is None
+        ):
+            return match.group(0)
+
+        # Chỉ tự suy luận chữ X khi đang nói về X5
+        if first != 5:
+            return match.group(0)
+
+        return f"x{first}.{second}"
+
+    normalized = two_level_pattern.sub(
+        replace_two_level,
+        normalized
+    )
+
+    print(
+        f"[VOICE NORMALIZE] "
+        f"{original} -> {normalized}"
+    )
+
+    return normalized
 
 def _load_iuh_database():
     try:
@@ -495,7 +720,7 @@ class ChatPanel(QWidget):
 
         print(f"[CHAT] User: {text}")
 
-        normalized = text.lower().strip()
+        normalized = _normalize_room_names(text)
 
         # ============================================================
         # 1. LỆNH DỪNG
@@ -573,7 +798,7 @@ class ChatPanel(QWidget):
 
         if self._waypoints_provider is not None:
 
-            self._classify_intent(text)
+            self._classify_intent(normalized)
 
         else:
 

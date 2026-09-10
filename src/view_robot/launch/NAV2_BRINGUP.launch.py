@@ -188,7 +188,6 @@ def generate_launch_description():
         
         # --- Hardware ---
         robot_state_and_rviz,
-        micro_ros_agent,
         # sllidar_driver,
         # lidar_filter,
 

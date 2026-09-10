@@ -6,7 +6,7 @@
         "website": "https://www.iuh.edu.vn",
         "email_chinh": "dhcn@iuh.edu.vn",
         "dien_thoai": "(028) 3894 0390",
-        "lich_su": "Tiền thân là Trường Huấn nghiệp Gò Vấp do các tu sĩ dòng Don Bosco thành lập 11/11/1956. Năm 2004 được nâng cấp thành Trường Đại học Công nghiệp TP.HCM theo Quyết định số 214/2004/QĐ-TTg.",
+        "lich_su": "Tiền thân là Trường Huấn nghiệp Gò Vấp do các tu sĩ dòng Don Bosco thành lập 11/11/1956. Năm 2004 được nâng cấp thành Trường Đại học Công nghiệp Thành phố Hồ Chí MInh theo Quyết định số 214/2004/QĐ-TTg.",
         "tam_nhin": "Trở thành Trường đại học hàng đầu của Việt Nam, tiên phong trong lĩnh vực giáo dục và nghiên cứu ứng dụng, chuyển giao công nghệ và đổi mới sáng tạo.",
         "su_mang": "Cung cấp nguồn nhân lực chất lượng cao, có năng lực, phẩm chất và hội nhập quốc tế nhằm đóng góp cho sự phát triển kinh tế xã hội của đất nước.",
         "gia_tri_cot_loi": "Đổi mới - Đoàn kết - Nhân văn",
@@ -24,11 +24,11 @@
             "email": "dhcn@iuh.edu.vn"
         },
         "co_so_pham_van_chieu": {
-            "dia_chi": "Đường số 53, Phạm Văn Chiêu, Phường An Hội Tây, TP.HCM",
+            "dia_chi": "Số 20 Đường số 53 (hoặc 53 Phạm Văn Chiêu), phường An Hội Tây, Thành phố Hồ Chí Minh.",
             "dien_thoai": "(028) 3894 0390"
         },
         "co_so_nguyen_van_dung": {
-            "dia_chi": "Số 10 Nguyễn Văn Dung, Phường An Nhơn, TP.HCM",
+            "dia_chi": "Số 10 Nguyễn Văn Dung, Phường An Nhơn, Thành phố Hồ Chí Minh",
             "dien_thoai": "(028) 3894 0390"
         },
         "co_so_nhon_trach": {
@@ -60,21 +60,21 @@
         "website": "https://feet.iuh.edu.vn/home.html",
         "trang_giang_vien": "https://feet.iuh.edu.vn/giangvien.html",
         "ban_lanh_dao": {
-            "truong_khoa": "TS. Trần Thanh Ngọc",
+            "truong_khoa": "Tiến Sĩ Trần Thanh Ngọc",
             "pho_truong_khoa": [
-                "PGS.TS Dương Thanh Long",
-                "TS. Bạch Thanh Quý"
+                "Phó Giáo Sư Tiến Sĩ Dương Thanh Long",
+                "Tiến Sĩ Bạch Thanh Quý"
             ]
         },
         "chuong_trinh_dao_tao": [
             "Đào tạo Tiến sĩ",
             "Đào tạo Thạc sĩ",
             "Đào tạo Đại học",
-            "Đào tạo Văn bằng 2 (VHVL)",
+            "Đào tạo Văn bằng 2 (Vừa Học Vừa Làm)",
             "Đào tạo ngắn hạn"
         ],
         "nghien_cuu_va_khoa_hoc": {
-            "mo_ta": "Khoa có hoạt động NCKH, công bố bài báo khoa học, đề tài NCKH, chuyển giao công nghệ, xuất bản sách giáo trình.",
+            "mo_ta": "Khoa có hoạt động Nghiên Cứu Khoa Học, công bố bài báo khoa học, đề tài Nghiên Cứu Khoa Học, chuyển giao công nghệ, xuất bản sách giáo trình.",
             "lien_ket": {
                 "hoat_dong_khcn": "https://feet.iuh.edu.vn/news.html@256@Hoat-dong-KH-CN",
                 "cong_bo_bai_bao": "https://feet.iuh.edu.vn/congbokhoahoc.html@257@Cong-bo-bai-bao-khoa-hoc",
@@ -84,7 +84,7 @@
         "lien_he_truc_tiep": {
             "email": "feet@iuh.edu.vn",
             "dien_thoai": "(028) 3894 0390 (Ext: 174-175-200)",
-            "dia_chi_cu_the": "Số 12 Nguyễn Văn Bảo, Phường 4, Q. Gò Vấp, TP.HCM - Khoa Công nghệ Điện, Tầng 5, Nhà X",
+            "dia_chi_cu_the": "Số 12 Nguyễn Văn Bảo, Phường Hạnh Thông, Thành phố Hồ Chí Minh - Khoa Công nghệ Điện, Tầng 5, Nhà X",
             "so_luot_truy_cap_website": "26,228,309 (tính đến 2026)"
         },
         "sinh_vien": {
@@ -125,92 +125,92 @@
         "bo_mon": [
             {
                 "ten": "Bộ môn Cơ sở ngành",
-                "truong_bo_mon": "PGS.TS Châu Minh Thuyên",
+                "truong_bo_mon": "Phó Giáo Sư Tiến Sĩ Châu Minh Thuyên",
                 "giang_vien": [
-                    "GS. Dương Ngọc Huyền",
-                    "ThS. Hoàng Thị Hồng",
-                    "ThS. Lê Ngọc Tuân",
-                    "ThS. Lê Đức Thuận",
-                    "ThS. Ngô Đình Nghĩa",
-                    "TS. Nguyễn Hoài Thương",
-                    "ThS. Nguyễn Huy Khiêm",
-                    "ThS. Nguyễn Mạnh Hoàn",
-                    "ThS. Nguyễn Ngọc Ấn",
-                    "ThS. Nguyễn Quân",
-                    "ThS. Nguyễn Thanh Thảo",
-                    "ThS. Phạm Quốc Khanh",
-                    "ThS. Phạm Thị Lệ Diễm",
-                    "ThS. Phan Thị Bích Thảo",
-                    "TS. Phan Xuân Lễ",
-                    "TS. Trần Tấn Tài",
-                    "ThS. Đinh Thị Thanh Thảo"
+                    "Giáo Sư Dương Ngọc Huyền",
+                    "Thạc Sĩ Hoàng Thị Hồng",
+                    "Thạc Sĩ Lê Ngọc Tuân",
+                    "Thạc Sĩ Lê Đức Thuận",
+                    "Thạc Sĩ Ngô Đình Nghĩa",
+                    "Tiến Sĩ Nguyễn Hoài Thương",
+                    "Thạc Sĩ Nguyễn Huy Khiêm",
+                    "Thạc Sĩ Nguyễn Mạnh Hoàn",
+                    "Thạc Sĩ Nguyễn Ngọc Ấn",
+                    "Thạc Sĩ Nguyễn Quân",
+                    "Thạc Sĩ Nguyễn Thanh Thảo",
+                    "Thạc Sĩ Phạm Quốc Khanh",
+                    "Thạc Sĩ Phạm Thị Lệ Diễm",
+                    "Thạc Sĩ Phan Thị Bích Thảo",
+                    "Tiến Sĩ Phan Xuân Lễ",
+                    "Tiến Sĩ Trần Tấn Tài",
+                    "Thạc Sĩ Đinh Thị Thanh Thảo"
                 ]
             },
             {
                 "ten": "Bộ môn Cung cấp & Hệ thống điện",
                 "giang_vien": [
-                    "TS. Nguyễn Thanh Thuận (Trưởng bộ môn)",
-                    "ThS. Lâm Tấn Công",
-                    "ThS. Lê Hoàng Chương",
-                    "ThS. Nguyễn Hoài Phong",
-                    "ThS. Nguyễn Hữu Toản",
-                    "ThS. Nguyễn Ngọc Anh",
-                    "ThS. Nguyễn Ngọc Thiêm",
-                    "ThS. Phạm Quốc Nghiệp",
-                    "CN. Phan Lâm Vũ",
-                    "ThS. Phan Thị Hạnh Trinh",
-                    "ThS. Trần Thị Giang Thanh",
-                    "ThS. Trịnh Hữu Trường",
-                    "ThS. Võ Tấn Lộc",
-                    "ThS. Võ Trung Kiên",
-                    "ThS. Vũ Hoàng Hải"
+                    "Tiến Sĩ Nguyễn Thanh Thuận (Trưởng bộ môn)",
+                    "Thạc Sĩ Lâm Tấn Công",
+                    "Thạc Sĩ Lê Hoàng Chương",
+                    "Thạc Sĩ Nguyễn Hoài Phong",
+                    "Thạc Sĩ Nguyễn Hữu Toản",
+                    "Thạc Sĩ Nguyễn Ngọc Anh",
+                    "Thạc Sĩ Nguyễn Ngọc Thiêm",
+                    "Thạc Sĩ Phạm Quốc Nghiệp",
+                    "Cử Nhân Phan Lâm Vũ",
+                    "Thạc Sĩ Phan Thị Hạnh Trinh",
+                    "Thạc Sĩ Trần Thị Giang Thanh",
+                    "Thạc Sĩ Trịnh Hữu Trường",
+                    "Thạc Sĩ Võ Tấn Lộc",
+                    "Thạc Sĩ Võ Trung Kiên",
+                    "Thạc Sĩ Vũ Hoàng Hải"
                 ]
             },
             {
                 "ten": "Bộ môn Thiết bị điện",
                 "truong_bo_mon": "TS. Phạm Công Duy",
-                "pho_truong_khoa_kiem_nhiem": "TS. Bạch Thanh Quý (Phó trưởng Khoa)",
+                "pho_truong_khoa_kiem_nhiem": "Tiến Sĩ Bạch Thanh Quý (Phó trưởng Khoa)",
                 "giang_vien": [
-                    "ThS. Dương Hữu Phước",
-                    "ThS. Huỳnh Gia Thịnh",
-                    "TS. Lê Văn Đại",
-                    "ThS. Lưu Tuấn Kiêt",
-                    "ThS. Nguyễn Thế Anh",
-                    "ThS. Phạm Ái Quốc",
-                    "ThS. Phạm Hoàng Đạt",
-                    "ThS. Phạm Hồng Công",
-                    "TS. Phạm Thúy Ngọc",
-                    "ThS. Trương Công Bình",
-                    "ThS. Văn Thị Kiều Nhi",
-                    "ThS. Đào Văn Dương"
+                    "Thạc Sĩ Dương Hữu Phước",
+                    "Thạc Sĩ Huỳnh Gia Thịnh",
+                    "Tiến Sĩ Lê Văn Đại",
+                    "Thạc Sĩ Lưu Tuấn Kiêt",
+                    "Thạc Sĩ Nguyễn Thế Anh",
+                    "Thạc Sĩ Phạm Ái Quốc",
+                    "Thạc Sĩ Phạm Hoàng Đạt",
+                    "Thạc Sĩ Phạm Hồng Công",
+                    "Tiến Sĩ Phạm Thúy Ngọc",
+                    "Thạc Sĩ Trương Công Bình",
+                    "Thạc Sĩ Văn Thị Kiều Nhi",
+                    "Thạc Sĩ Đào Văn Dương"
                 ]
             },
             {
                 "ten": "Bộ môn Tự động hóa",
-                "truong_bo_mon": "TS. Ngô Thanh Quyền",
+                "truong_bo_mon": "Phó Giáo Sư Tiến Sĩ Ngô Thanh Quyền",
                 "giang_vien": [
-                    "TS. Bốc Minh Hùng",
-                    "ThS. Bùi Thị Cẩm Quỳnh",
-                    "TS. Dương Miên Ka",
-                    "ThS. Hà Chí Kiên",
-                    "TS. Hoàng Thị Tú Uyên",
-                    "TS. Hoàng Đình Khôi",
-                    "TS. Lâm Bình Minh",
-                    "ThS. Lê Long Hồ",
-                    "ThS. Lê Ngọc Hội",
-                    "ThS. Nguyễn Anh Tuấn",
-                    "TS. Nguyễn Chí Cường",
-                    "ThS. Nguyễn Hoanh",
-                    "ThS. Nguyễn Ngọc Anh Tuấn",
-                    "ThS. Nguyễn Thành Phúc",
-                    "ThS. Nguyễn Thị Diệu An",
-                    "ThS. Nguyễn Trung Dũng",
-                    "TS. Nguyễn Văn Thọ",
-                    "ThS. Nguyễn Đức Toàn",
-                    "ThS. Phan Minh Thân",
-                    "ThS. Võ Thị Ánh Tuyết",
-                    "ThS. Võ Trung Thư",
-                    "ThS. Vũ Đức Vạn"
+                    "Tiến Sĩ Bốc Minh Hùng",
+                    "Thạc Sĩ Bùi Thị Cẩm Quỳnh",
+                    "Tiến Sĩ Dương Miên Ka",
+                    "Thạc Sĩ Hà Chí Kiên",
+                    "Tiến Sĩ Hoàng Thị Tú Uyên",
+                    "Tiến Sĩ Hoàng Đình Khôi",
+                    "Tiến Sĩ Lâm Bình Minh",
+                    "Thạc Sĩ Lê Long Hồ",
+                    "Thạc Sĩ Lê Ngọc Hội",
+                    "Thạc Sĩ Nguyễn Anh Tuấn",
+                    "Tiến Sĩ Nguyễn Chí Cường",
+                    "Thạc Sĩ Nguyễn Hoanh",
+                    "Thạc Sĩ Nguyễn Ngọc Anh Tuấn",
+                    "Thạc Sĩ Nguyễn Thành Phúc",
+                    "Thạc Sĩ Nguyễn Thị Diệu An",
+                    "Thạc Sĩ Nguyễn Trung Dũng",
+                    "Tiến Sĩ Nguyễn Văn Thọ",
+                    "Thạc Sĩ Nguyễn Đức Toàn",
+                    "Thạc Sĩ Phan Minh Thân",
+                    "Thạc Sĩ Võ Thị Ánh Tuyết",
+                    "Thạc Sĩ Võ Trung Thư",
+                    "Thạc Sĩ Vũ Đức Vạn"
                 ]
             }
         ],
@@ -223,17 +223,16 @@
             "tuyen_dung": "https://feet.iuh.edu.vn/news.html@297@Thong-tin-tuyen-dung"
         }
     },
-    "robot_zackon": {
-        "mo_ta": "Robot ZACKON là robot tự hành được phát triển bởi sinh viên Đại học Công nghiệp TP.HCM (IUH), sử dụng nền tảng ROS 2.",
+    "robot_be_son": {
+        "ten": "Bé Son",
+        "mo_ta": "Robot Bé Son là robot tự hành được phát triển bởi sinh viên Đại học Công nghiệp Thành phố Hồ Chí Minh (IUH)",
         "cong_nghe": [
             "ROS 2",
             "Nav2 (điều hướng tự động)",
             "SLAM (lập bản đồ đồng thời định vị)",
             "AMCL (định vị xác suất)",
-            "YOLOv8 (nhận diện người)",
             "STM32 (vi điều khiển)",
-            "LiDAR (cảm biến khoảng cách)",
-            "Camera RGB"
+            "LiDAR (cảm biến khoảng cách)"
         ],
         "lien_quan_den_khoa": "Dự án do sinh viên và giảng viên Khoa Công nghệ Điện (FEET) phát triển."
     }

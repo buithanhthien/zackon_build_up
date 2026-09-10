@@ -41,7 +41,7 @@ USE_GIPFORMER = True  # Use Gipformer offline STT
 GIPFORMER_MODEL_DIR = os.path.expanduser("~/.cache/gipformer")  # Model download location
 
 # TTS Configuration
-SUPERTONIC_VOICE = "M1"  # Options: M1-M5, F1-F5 (F1 is female voice, similar to HoaiMy)
+SUPERTONIC_VOICE = "F1"  # Options: M1-M5, F1-F5 (F1 is female voice, similar to HoaiMy)
 SUPERTONIC_LANG = "vi"   # Vietnamese
 SUPERTONIC_STEPS = 8     # Quality: 5 (low) to 12 (high), default 8
 SUPERTONIC_SPEED = 1.7   # Speed: 0.7 (slow) to 2.0 (fast) - Increased for faster speech

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
+import json
+import math
+import os
+import re
 import sys
 import subprocess
-import os
 import threading
 import time
-import math
-import re
+
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QTextEdit, QLabel,
                              QSizePolicy)
@@ -26,6 +28,9 @@ from styles import MAIN_STYLESHEET
 from ui_utils import setup_clock_timer
 from map_utils import update_map_files
 from process_manager import ProcessManager
+from rclpy.action import ActionClient
+from nav2_msgs.action import NavigateToPose
+from action_msgs.msg import GoalStatus
 
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
@@ -241,6 +246,26 @@ class RobotUI(QMainWindow):
         except Exception:
             pass
         self._ros_node = Node('robot_ui_node')
+
+        # ============================================================
+        # Voice navigation -> Nav2
+        # ============================================================
+
+        self._nav_client = ActionClient(
+            self._ros_node,
+            NavigateToPose,
+            '/navigate_to_pose'
+        )
+
+        self._nav_goal_handle = None
+        self._voice_nav_queue = []
+
+        self._waypoints_file = (
+            "/home/khoaiuh/zackon_build_up/"
+            "robot_ui/waypoints.json"
+        )
+
+        self._waypoints = self._load_waypoints()
         _amcl_qos = QoSProfile(
             depth=1,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -263,6 +288,31 @@ class RobotUI(QMainWindow):
         self._ros_spin_timer.start(100)
 
         self.init_ui()
+
+        # ------------------------------------------------------------
+        # Voice navigation wiring
+        # ------------------------------------------------------------
+
+        self.chat_panel.set_waypoints_provider(
+            self._get_voice_waypoints
+        )
+
+        self.chat_panel.set_pose_provider(
+            lambda: self._latest_pose
+        )
+
+        self.chat_panel.waypoint_command.connect(
+            self.voice_navigate_to_waypoint
+        )
+
+        self.chat_panel.navigation_stop.connect(
+            self.cancel_voice_navigation
+        )
+
+        self.chat_panel.interrupt_btn.clicked.connect(
+            self.cancel_voice_navigation
+        )
+
         self.chat_panel._voice_enabled = True
         if not skip_micro_ros:
             self.start_micro_ros()
@@ -525,12 +575,41 @@ class RobotUI(QMainWindow):
         )
 
     def start_micro_ros(self):
+
+        # Kiểm tra xem UDP port 8888 đã có process sử dụng chưa
+        try:
+            result = subprocess.run(
+                [
+                    "ss",
+                    "-lun",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=2.0
+            )
+
+            if ":8888" in result.stdout:
+                self.log(
+                    "micro-ROS agent đã chạy trên UDP port 8888"
+                )
+                return
+
+        except Exception as e:
+            self.log(
+                f"[WARN] Không kiểm tra được port 8888: {e}"
+            )
+
+        # Port chưa được dùng -> khởi động agent
         self.process_mgr.launch_terminal(
             'source ~/zackon_build_up/install/setup.bash && '
-            'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash',
+            'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; '
+            'exec bash',
             'micro-ROS agent'
         )
-        self.log("Đã khởi động micro-ROS agent trong terminal mới")
+
+        self.log(
+            "Đã khởi động micro-ROS agent trên UDP port 8888"
+        )
 
     def update_status(self):
         now = time.monotonic()
@@ -561,6 +640,31 @@ class RobotUI(QMainWindow):
         if self.prev_lidar_rear_status is not None and self.prev_lidar_rear_status != rear_available:
             self.log("Mất kết nối LiDAR sau" if not rear_available else "Đã khôi phục kết nối LiDAR sau")
         self.prev_lidar_rear_status = rear_available
+
+    # ================================================================
+    # VOICE NAVIGATION
+    # ================================================================
+
+    def _load_waypoints(self):
+        try:
+            with open(
+                self._waypoints_file,
+                "r",
+                encoding="utf-8"
+            ) as f:
+                data = json.load(f)
+
+            self.log(
+                f"Đã tải {len(data)} waypoint cho Bé Son"
+            )
+
+            return data
+
+        except Exception as e:
+            self.log(
+                f"Lỗi đọc waypoints.json: {e}"
+            )
+            return {}
 
     def mode_changed(self, mode):
         self.log(f"Đã chuyển sang chế độ {mode}")
@@ -631,16 +735,328 @@ class RobotUI(QMainWindow):
         )
 
     def closeEvent(self, event):
+
         if self.localization_worker:
             self.localization_worker.stop()
+
+        # Cancel Nav2 goal before destroying ROS node
+        if self._nav_goal_handle is not None:
+
+            try:
+                self._voice_nav_queue.clear()
+
+                cancel_future = (
+                    self._nav_goal_handle.cancel_goal_async()
+                )
+
+                rclpy.spin_until_future_complete(
+                    self._ros_node,
+                    cancel_future,
+                    timeout_sec=1.0
+                )
+
+                self.log(
+                    "[Bé Son] Đã yêu cầu hủy navigation khi đóng UI"
+                )
+
+            except Exception as e:
+                self.log(
+                    f"[Bé Son] Lỗi cancel khi đóng UI: {e}"
+                )
+
         self._ros_spin_timer.stop()
+
         self._ros_node.destroy_node()
-        # Only clear history if truly closing, not switching layouts
+
         if not self._switching_layout:
             self.chat_panel.cleanup()
+
         self.process_mgr.cleanup_all()
+
         event.accept()
 
+    def _get_voice_waypoints(self):
+
+        result = []
+
+        for key, data in self._waypoints.items():
+
+            result.append({
+                "key": key,
+                "aliases": data.get("aliases", [])
+            })
+
+        return result
+
+    def voice_navigate_to_waypoint(self, command):
+
+        self.log(
+            f"[Bé Son] Lệnh điều hướng: {command}"
+        )
+
+        names = [
+            item.strip()
+            for item in command.split(",")
+            if item.strip()
+        ]
+
+        if not names:
+            self.log(
+                "Không có waypoint hợp lệ"
+            )
+            return
+
+        # Cho phép nhiều điểm:
+        # X5.7,X5.11,phong co Tam
+        self._voice_nav_queue = names
+
+        self._send_next_voice_goal()
+
+    def _send_next_voice_goal(self):
+
+        if not self._voice_nav_queue:
+            self.log(
+                "[Bé Son] Đã hoàn thành hành trình"
+            )
+            return
+
+        target = self._voice_nav_queue.pop(0)
+
+        # ============================================================
+        # Trường hợp quay lại vị trí lúc ra lệnh
+        # ============================================================
+
+        if target.startswith("__return_here__:"):
+
+            try:
+                values = target.split(":", 1)[1]
+                x, y, qz, qw = map(
+                    float,
+                    values.split(";")
+                )
+
+                waypoint = {
+                    "x": x,
+                    "y": y,
+                    "z": 0.0,
+                    "qx": 0.0,
+                    "qy": 0.0,
+                    "qz": qz,
+                    "qw": qw,
+                }
+
+                display_name = "vị trí ban đầu"
+
+            except Exception as e:
+                self.log(
+                    f"Lỗi đọc __return_here__: {e}"
+                )
+                return
+
+        # ============================================================
+        # Waypoint bình thường
+        # ============================================================
+
+        else:
+
+            waypoint = self._waypoints.get(target)
+
+            if waypoint is None:
+                self.log(
+                    f"Không tìm thấy waypoint: {target}"
+                )
+                return
+
+            display_name = target
+
+        # ============================================================
+        # Kiểm tra Nav2
+        # ============================================================
+
+        if not self._nav_client.wait_for_server(
+            timeout_sec=1.0
+        ):
+            self.log(
+                "Nav2 chưa sẵn sàng: "
+                "/navigate_to_pose không tồn tại"
+            )
+            return
+
+        # ============================================================
+        # Tạo goal
+        # ============================================================
+
+        goal = NavigateToPose.Goal()
+
+        goal.pose.header.frame_id = "map"
+
+        goal.pose.header.stamp = (
+            self._ros_node
+            .get_clock()
+            .now()
+            .to_msg()
+        )
+
+        # Position
+        goal.pose.pose.position.x = float(
+            waypoint["x"]
+        )
+
+        goal.pose.pose.position.y = float(
+            waypoint["y"]
+        )
+
+        goal.pose.pose.position.z = float(
+            waypoint.get("z", 0.0)
+        )
+
+        # Orientation
+        goal.pose.pose.orientation.x = float(
+            waypoint.get("qx", 0.0)
+        )
+
+        goal.pose.pose.orientation.y = float(
+            waypoint.get("qy", 0.0)
+        )
+
+        goal.pose.pose.orientation.z = float(
+            waypoint["qz"]
+        )
+
+        goal.pose.pose.orientation.w = float(
+            waypoint["qw"]
+        )
+
+        self.log(
+            f"[Bé Son] Đang đi tới {display_name} | "
+            f"x={waypoint['x']:.2f}, "
+            f"y={waypoint['y']:.2f}"
+        )
+
+        future = self._nav_client.send_goal_async(
+            goal,
+            feedback_callback=self._nav_feedback_callback
+        )
+
+        future.add_done_callback(
+            self._nav_goal_response_callback
+        )
+
+    def _nav_goal_response_callback(self, future):
+
+        try:
+            goal_handle = future.result()
+
+        except Exception as e:
+            self.log(
+                f"Lỗi gửi Nav2 goal: {e}"
+            )
+            return
+
+        if not goal_handle.accepted:
+
+            self.log(
+                "Nav2 từ chối waypoint"
+            )
+
+            self._voice_nav_queue.clear()
+            return
+
+        self._nav_goal_handle = goal_handle
+
+        self.log(
+            "Nav2 đã nhận waypoint"
+        )
+
+        result_future = (
+            goal_handle.get_result_async()
+        )
+
+        result_future.add_done_callback(
+            self._nav_result_callback
+        )
+
+    def _nav_result_callback(self, future):
+
+        try:
+            wrapped_result = future.result()
+            status = wrapped_result.status
+
+        except Exception as e:
+            self.log(
+                f"Lỗi nhận kết quả Nav2: {e}"
+            )
+
+            self._voice_nav_queue.clear()
+            return
+
+        self._nav_goal_handle = None
+
+        if status == GoalStatus.STATUS_SUCCEEDED:
+
+            self.log(
+                "[Bé Son] Đã tới waypoint"
+            )
+
+            # Nếu người dùng yêu cầu nhiều waypoint
+            # thì đi điểm tiếp theo.
+            QTimer.singleShot(
+                300,
+                self._send_next_voice_goal
+            )
+
+        elif status == GoalStatus.STATUS_CANCELED:
+
+            self.log(
+                "[Bé Son] Navigation đã bị hủy"
+            )
+
+            self._voice_nav_queue.clear()
+
+        else:
+
+            self.log(
+                f"[Bé Son] Navigation thất bại, "
+                f"status={status}"
+            )
+
+            self._voice_nav_queue.clear()
+
+    def _nav_feedback_callback(
+        self,
+        feedback_msg
+    ):
+
+        try:
+            distance = (
+                feedback_msg.feedback
+                .distance_remaining
+            )
+
+            # Không log từng frame vì sẽ spam.
+            # Nếu cần sau này có thể throttle.
+            print(
+                f"[NAV] Còn {distance:.2f} m"
+            )
+
+        except Exception:
+            pass
+
+    def cancel_voice_navigation(self):
+
+        self._voice_nav_queue.clear()
+
+        if self._nav_goal_handle is None:
+            self.log(
+                "Không có navigation goal đang chạy"
+            )
+            return
+
+        self.log(
+            "[Bé Son] Đang hủy navigation"
+        )
+
+        self._nav_goal_handle.cancel_goal_async()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

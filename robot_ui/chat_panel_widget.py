@@ -12,6 +12,43 @@ from voice_engine import VoiceEngine
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
+IUH_DATABASE_PATH = os.path.join(
+    _DIR,
+    "iuh_database.json"
+)
+
+
+def _load_iuh_database():
+    try:
+        with open(
+            IUH_DATABASE_PATH,
+            "r",
+            encoding="utf-8"
+        ) as f:
+            data = json.load(f)
+
+        print(
+            f"[CHAT] Loaded IUH database: "
+            f"{IUH_DATABASE_PATH}"
+        )
+
+        return data
+
+    except Exception as e:
+        print(
+            f"[CHAT] Failed to load IUH database: {e}"
+        )
+        return {}
+
+
+IUH_DATABASE = _load_iuh_database()
+
+IUH_DATABASE_TEXT = json.dumps(
+    IUH_DATABASE,
+    ensure_ascii=False,
+    indent=2
+)
+
 
 def _load_env():
     env_path = os.path.join(os.path.dirname(_DIR), '.env')
@@ -28,41 +65,89 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL   = "gpt-5.4-mini"
 
 SYSTEM_PROMPT = (
-    "Bạn là ZACKON.\n"
-    "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn, hài hước và bựa.\n"
-    "Không sử dụng dấu ngoặc kép (\") trong câu trả lời.\n"
+    "Bạn là Bé Son.\n"
+
+    "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn, "
+    "hài hước và tự nhiên.\n"
+
+    "Bạn là robot trợ lý tại Đại học Công nghiệp "
+    "Thành phố Hồ Chí Minh (IUH).\n"
+
+    "Khi người dùng hỏi về IUH, Khoa Công nghệ Điện, "
+    "giảng viên, chuyên ngành, cơ sở, địa chỉ, liên hệ, "
+    "lịch sử hoặc các thông tin có trong CƠ SỞ DỮ LIỆU IUH "
+    "bên dưới, hãy ưu tiên sử dụng dữ liệu này.\n"
+
+    "Không được tự bịa thông tin không tồn tại trong database.\n"
+
+    "Nếu database không chứa câu trả lời, hãy nói ngắn gọn "
+    "rằng bạn chưa có thông tin đó thay vì đoán.\n"
+
+    "Không sử dụng dấu ngoặc kép trong câu trả lời.\n"
     "Hãy trả lời ngắn gọn trong 2 đến 3 câu.\n"
-    "Viết nội dung này theo giọng của một trợ lý hướng dẫn, nói chuyện với khách hàng. \n"
-    "Mục tiêu: giúp khách hàng hiểu hơn về khoa công nghệ điện trường đại học công nghiệp Thành phố Hồ Chí Minh.\n"
-    "Tình huống / bối cảnh: Là một trợ lý AI trong môi trường giáo dục, hay đi dọc các hành lang và có người vô tình bắt gặp nói chuyện.\n"
     "Dùng ngôn ngữ đời thường.\n"
-    "Viết như đang giải thích cho một người, không phải cho đám đông.\n"
-    "Không dùng câu chữ kịch tính. Không giọng marketing.\n"
-    "Chỉ nói những gì thật sự cần nói, theo trình tự tự nhiên.\n"
-    "Nội dung: Tra cứu và trả lời câu hỏi của khách hàng.\n"
+
+    "\n"
+    "===== CƠ SỞ DỮ LIỆU IUH =====\n"
+    + IUH_DATABASE_TEXT +
+    "\n===== KẾT THÚC CƠ SỞ DỮ LIỆU IUH =====\n"
 )
 
 # ── Intent classification (voice navigation) ──────────────────────────────
 INTENT_SYSTEM_PROMPT_TEMPLATE = (
-    "Bạn là bộ phân loại ý định cho một robot điều hướng trong tòa nhà.\n"
-    "Danh sách địa điểm hợp lệ hiện tại, định dạng \"TÊN_CHÍNH_XÁC: cách gọi khác 1, cách gọi khác 2, ...\":\n"
+    "Bạn là bộ phân loại ý định cho robot Bé Son trong một tòa nhà.\n"
+
+    "Danh sách địa điểm hợp lệ hiện tại, định dạng "
+    "\"TÊN_CHÍNH_XÁC: cách gọi khác 1, cách gọi khác 2, ...\":\n"
     "{waypoint_list}\n"
-    "Người dùng có thể gọi một địa điểm bằng bất kỳ cách gọi nào ở trên (kể cả TÊN_CHÍNH_XÁC hoặc bất kỳ "
-    "cách gọi khác nào được liệt kê sau dấu hai chấm). Dù người dùng nói theo cách nào, khi trả kết quả bạn "
-    "LUÔN LUÔN phải dùng đúng TÊN_CHÍNH_XÁC (phần đứng trước dấu hai chấm), TUYỆT ĐỐI không trả về cách gọi khác.\n"
-    "Nhiệm vụ: đọc câu nói của người dùng và xác định:\n"
-    "- Nếu người dùng muốn ĐIỀU HƯỚNG robot đến một hoặc nhiều địa điểm nằm trong danh sách hợp lệ "
-    "(theo đúng thứ tự họ nói ra), hoặc muốn quay lại/ở lại vị trí hiện tại của robot vào một thời điểm "
-    "nào đó trong hành trình (dùng đúng chuỗi placeholder __return_here__ cho ý đó), "
-    "hãy trả về intent \"navigate\" và mảng waypoints là danh sách TÊN_CHÍNH_XÁC tương ứng "
-    "(hoặc __return_here__), theo đúng thứ tự người dùng muốn đi.\n"
-    "- Nếu câu nói KHÔNG phải lệnh điều hướng (hỏi thông tin, trò chuyện, chào hỏi, không rõ ràng, "
-    "hoặc nhắc đến địa điểm không khớp với bất kỳ mục nào ở trên), hãy trả về intent \"chat\" và waypoints là mảng rỗng.\n"
-    "CHỈ được trả về đúng một object JSON hợp lệ, không thêm bất kỳ văn bản, giải thích, hay markdown nào khác. "
-    "Định dạng bắt buộc:\n"
+
+    "Người dùng có thể gọi một địa điểm bằng TÊN_CHÍNH_XÁC hoặc bất kỳ "
+    "cách gọi khác nào trong danh sách. Khi trả kết quả, luôn sử dụng "
+    "đúng TÊN_CHÍNH_XÁC.\n"
+
+    "QUY TẮC PHÂN LOẠI:\n"
+
+    "1. Chỉ trả intent \"navigate\" khi người dùng thực sự RA LỆNH "
+    "cho robot di chuyển đến một hoặc nhiều địa điểm.\n"
+
+    "2. Việc chỉ nhắc đến tên địa điểm KHÔNG phải lệnh điều hướng.\n"
+
+    "3. Các câu hỏi về địa điểm, kể chuyện, mô tả, chào hỏi hoặc nói "
+    "đang ở một địa điểm phải là intent \"chat\".\n"
+
+    "Ví dụ CHAT:\n"
+    "- Bé Son, phòng X5.7 ở đâu?\n"
+    "- Bé Son, hôm nay tôi học ở X5.7.\n"
+    "- Bé Son, phòng SCADA có mở cửa không?\n"
+    "- Bé Son, cô Tâm có ở phòng không?\n"
+    "- Bé Son, tôi vừa đi ngang X5.11.\n"
+
+    "4. Các câu thể hiện rõ yêu cầu di chuyển mới là navigate.\n"
+
+    "Ví dụ NAVIGATE:\n"
+    "- Bé Son, đi tới X5.7.\n"
+    "- Bé Son, đưa tôi đến phòng SCADA.\n"
+    "- Bé Son, dẫn tôi tới gặp cô Tâm.\n"
+    "- Bé Son, hãy tới phòng X5.11.\n"
+
+    "5. Nếu câu có ý phủ định việc di chuyển như "
+    "\"đừng đi\", \"không đi\", \"không cần tới\", "
+    "\"đừng đến\" thì KHÔNG được trả navigate.\n"
+
+    "6. Nếu người dùng yêu cầu đi qua nhiều địa điểm, trả các waypoint "
+    "theo đúng thứ tự được yêu cầu.\n"
+
+    "7. Nếu người dùng muốn quay lại vị trí hiện tại sau đó, sử dụng "
+    "đúng placeholder __return_here__ tại vị trí tương ứng trong danh sách.\n"
+
+    "Nếu là lệnh điều hướng, trả:\n"
     '{{"intent": "navigate", "waypoints": ["TEN_CHINH_XAC_1", "TEN_CHINH_XAC_2"]}}\n'
-    "hoặc\n"
-    '{{"intent": "chat", "waypoints": []}}'
+
+    "Nếu không phải lệnh điều hướng, trả:\n"
+    '{{"intent": "chat", "waypoints": []}}\n'
+
+    "CHỈ trả về một object JSON hợp lệ. "
+    "Không giải thích, không markdown, không thêm văn bản khác."
 )
 
 
@@ -173,6 +258,8 @@ class ChatPanel(QWidget):
     # request rather than a general chat message.
     waypoint_command = pyqtSignal(str)
 
+    navigation_stop = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._chat_history  = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -234,7 +321,7 @@ class ChatPanel(QWidget):
 
     def _animate_status(self):
         dots = "." * (self._typing_dots % 4)
-        self.voice_status_label.setText(f"ZACKON đang suy nghĩ{dots}")
+        self.voice_status_label.setText(f"Bé Son đang suy nghĩ{dots}")
         self._typing_dots += 1
 
     # ------------------------------------------------------- host wiring ---
@@ -281,7 +368,7 @@ class ChatPanel(QWidget):
     def _on_response(self, reply):
         self._typing_timer.stop()
         self._chat_history.append({"role": "assistant", "content": reply})
-        self.log_signal.emit(f"[ZACKON] {reply}")
+        self.log_signal.emit(f"[Bé Son] {reply}")
         print(f"[CHAT] Assistant: {reply}")
 
         # Always speak the reply — voice was active when the user spoke
@@ -400,13 +487,96 @@ class ChatPanel(QWidget):
             self.voice_status_label.setStyleSheet("color:#5a7abf; background-color:transparent;")
 
     def _on_voice_transcript(self, text):
-        text = text.strip().capitalize()
+
+        text = text.strip()
+
         if not text:
             return
+
         print(f"[CHAT] User: {text}")
+
+        normalized = text.lower().strip()
+
+        # ============================================================
+        # 1. LỆNH DỪNG
+        #
+        # Vì đây là lệnh an toàn nên KHÔNG bắt buộc phải nói "Bé Son".
+        # ============================================================
+
+        stop_commands = [
+            "dừng lại",
+            "dừng robot",
+            "dừng xe",
+            "hủy lệnh",
+            "hủy hành trình",
+            "dừng hành trình",
+            "stop",
+        ]
+
+        if any(
+            cmd in normalized
+            for cmd in stop_commands
+        ):
+
+            self.log_signal.emit(
+                "[VOICE] Phát hiện lệnh dừng"
+            )
+
+            # Dừng Bé Son nói
+            self._voice_engine.stop_speaking()
+
+            # Dừng navigation
+            self.navigation_stop.emit()
+
+            return
+
+        # ============================================================
+        # 2. WAKE WORD
+        # ============================================================
+
+        wake_words = [
+            "bé son",
+            "be son",
+            "bé sơn",
+            "be sơn",
+        ]
+
+        has_wake_word = any(
+            wake in normalized
+            for wake in wake_words
+        )
+
+        # ============================================================
+        # 3. KHÔNG GỌI "BÉ SON"
+        #
+        # Không bao giờ được gửi sang navigation classifier.
+        # Chỉ coi là trò chuyện bình thường.
+        # ============================================================
+
+        if not has_wake_word:
+
+            self.log_signal.emit(
+                "[VOICE] Không có wake word Bé Son -> không navigation"
+            )
+
+            self._ask_ai(text)
+
+            return
+
+        # ============================================================
+        # 4. CÓ GỌI "BÉ SON"
+        #
+        # Lúc này mới kiểm tra xem là:
+        # - navigate
+        # - hay chat
+        # ============================================================
+
         if self._waypoints_provider is not None:
+
             self._classify_intent(text)
+
         else:
+
             self._ask_ai(text)
 
     # ----------------------------------------------------------- helpers ---

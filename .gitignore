@@ -60,3 +60,4 @@ tool/debug_controller/*.txt
 *.pth
 *.onnx
 
+**/tempCodeRunnerFile.py

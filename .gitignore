@@ -61,3 +61,5 @@ tool/debug_controller/*.txt
 *.onnx
 
 **/tempCodeRunnerFile.py
+
+robot_ui/language_settings.json

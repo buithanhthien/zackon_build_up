@@ -9,6 +9,7 @@ from openai import OpenAI
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
 from PyQt6.QtGui import QFont
+from language_config import get_language
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -139,14 +140,14 @@ def _normalize_room_names(text: str) -> str:
     )
 
     # ============================================================
-    # 1. Dạng X5.3-3
+    # 1. Dạng X5.3.3
     #
     # STT có thể nghe:
     #
     # X NĂM CHẤM BA CHẤM BA
     # NĂM CHẤM BA CHẤM BA
     #
-    # -> x5.3-3
+    # -> x5.3.3
     # ============================================================
 
     three_level_pattern = re.compile(
@@ -180,8 +181,6 @@ def _normalize_room_names(text: str) -> str:
         ):
             return match.group(0)
 
-        # Các waypoint của hệ thống đang thuộc nhà X5.
-        # Chỉ tự thêm X khi số đầu là 5.
         if first != 5:
             return match.group(0)
 
@@ -289,34 +288,64 @@ _load_env()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL   = "gpt-5.4-mini"
 
-SYSTEM_PROMPT = (
-    "Bạn là Bé Son.\n"
+def get_system_prompt(language):
 
-    "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn, "
-    "hài hước và tự nhiên.\n"
+    # ============================================================
+    # English
+    # ============================================================
 
-    "Bạn là robot trợ lý tại Đại học Công nghiệp "
-    "Thành phố Hồ Chí Minh (IUH).\n"
+    if language == "en":
 
-    "Khi người dùng hỏi về IUH, Khoa Công nghệ Điện, "
-    "giảng viên, chuyên ngành, cơ sở, địa chỉ, liên hệ, "
-    "lịch sử hoặc các thông tin có trong CƠ SỞ DỮ LIỆU IUH "
-    "bên dưới, hãy ưu tiên sử dụng dữ liệu này.\n"
+        return (
+            "You are Be Son.\n"
+            "You are an assistant robot at the "
+            "Industrial University of Ho Chi Minh City (IUH).\n"
+            "Always answer in English clearly, naturally, "
+            "briefly, and in a friendly manner.\n"
+            "When the user asks about IUH, the Faculty of "
+            "Electrical Engineering Technology, lecturers, "
+            "academic programs, campuses, addresses, contacts, "
+            "history, or information contained in the IUH DATABASE "
+            "below, prioritize this database.\n"
+            "Do not invent IUH information that is not contained "
+            "in the database.\n"
+            "If the database does not contain enough information, "
+            "the system may use Web Search before answering.\n"
+            "Do not use quotation marks unnecessarily.\n"
+            "Keep answers concise, normally 2 to 4 sentences.\n"
+            "Use natural spoken language suitable for a robot.\n"
+            "\n"
+            "===== IUH DATABASE =====\n"
+            + IUH_DATABASE_TEXT +
+            "\n===== END IUH DATABASE =====\n"
+        )
 
-    "Không được tự bịa thông tin không tồn tại trong database.\n"
+    # ============================================================
+    # Tiếng Việt
+    # ============================================================
 
-    "Nếu database không chứa câu trả lời, hãy nói ngắn gọn "
-    "rằng bạn chưa có thông tin đó thay vì đoán.\n"
-
-    "Không sử dụng dấu ngoặc kép trong câu trả lời.\n"
-    "Hãy trả lời ngắn gọn trong 2 đến 3 câu.\n"
-    "Dùng ngôn ngữ đời thường.\n"
-
-    "\n"
-    "===== CƠ SỞ DỮ LIỆU IUH =====\n"
-    + IUH_DATABASE_TEXT +
-    "\n===== KẾT THÚC CƠ SỞ DỮ LIỆU IUH =====\n"
-)
+    return (
+        "Bạn là Bé Son.\n"
+        "Bạn là robot trợ lý tại Đại học Công nghiệp "
+        "Thành phố Hồ Chí Minh (IUH).\n"
+        "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn, "
+        "hài hước và tự nhiên.\n"
+        "Khi người dùng hỏi về IUH, Khoa Công nghệ Điện, "
+        "giảng viên, chuyên ngành, cơ sở, địa chỉ, liên hệ, "
+        "lịch sử hoặc các thông tin có trong CƠ SỞ DỮ LIỆU IUH "
+        "bên dưới, hãy ưu tiên sử dụng dữ liệu này.\n"
+        "Không được tự bịa thông tin về IUH không tồn tại "
+        "trong database.\n"
+        "Nếu câu hỏi không có đủ thông tin trong database, "
+        "hệ thống có thể sử dụng Web Search trước khi trả lời.\n"
+        "Không sử dụng dấu ngoặc kép không cần thiết.\n"
+        "Hãy trả lời ngắn gọn khoảng 2 đến 4 câu.\n"
+        "Dùng ngôn ngữ đời thường, phù hợp để robot nói.\n"
+        "\n"
+        "===== CƠ SỞ DỮ LIỆU IUH =====\n"
+        + IUH_DATABASE_TEXT +
+        "\n===== KẾT THÚC CƠ SỞ DỮ LIỆU IUH =====\n"
+    )
 
 # ── Intent classification (voice navigation) ──────────────────────────────
 INTENT_SYSTEM_PROMPT_TEMPLATE = (
@@ -381,41 +410,460 @@ class _AIChatWorker(QObject):
     error_occurred = pyqtSignal(str)
     finished       = pyqtSignal()
 
-    def __init__(self, history):
+    def __init__(self, history, language):
+
         super().__init__()
+
         self.history = history
+        self.language = language
+
+    def _response_language_instruction(self):
+
+        if self.language == "en":
+
+            return (
+                "Answer ONLY in English. "
+                "Do NOT answer in Vietnamese, even if previous "
+                "conversation messages are in Vietnamese."
+            )
+
+        return (
+            "Chỉ trả lời bằng tiếng Việt. "
+            "Không trả lời bằng tiếng Anh, kể cả khi lịch sử "
+            "hội thoại trước đó có tiếng Anh."
+        )
+
+    # ============================================================
+    # Lấy câu hỏi gần nhất của người dùng
+    # ============================================================
+
+    def _get_latest_user_question(self):
+
+        for message in reversed(self.history):
+
+            if message.get("role") == "user":
+
+                return str(
+                    message.get("content", "")
+                ).strip()
+
+        return ""
+
+     # ============================================================
+    # Lấy ngữ cảnh hội thoại gần đây
+    # Không lấy system prompt/database vì quá dài
+    # ============================================================
+
+    def _get_recent_context(self):
+
+        lines = []
+
+        for message in self.history[-8:]:
+
+            role = message.get("role")
+
+            if role == "system":
+                continue
+
+            content = str(
+                message.get("content", "")
+            ).strip()
+
+            if not content:
+                continue
+
+            if role == "user":
+                prefix = "Người dùng"
+
+            elif role == "assistant":
+                prefix = "Bé Son"
+
+            else:
+                continue
+
+            lines.append(
+                f"{prefix}: {content}"
+            )
+
+        return "\n".join(lines)
+
+    # ============================================================
+    # BƯỚC 1
+    #
+    # Kiểm tra xem IUH database có đủ dữ liệu hay không.
+    #
+    # Nếu có:
+    # {
+    #     "source": "database",
+    #     "answer": "..."
+    # }
+    #
+    # Nếu không:
+    # {
+    #     "source": "web",
+    #     "answer": ""
+    # }
+    # ============================================================
+
+    def _check_database(
+        self,
+        client,
+        question,
+        context
+    ):
+        language_instruction = (
+            self._response_language_instruction()
+        )
+
+        prompt = f"""
+            Bạn là bộ kiểm tra dữ liệu cho robot Bé Son.
+
+            Nhiệm vụ:
+
+            Kiểm tra xem CƠ SỞ DỮ LIỆU IUH bên dưới có đủ thông tin
+            để trả lời câu hỏi của người dùng hay không.
+
+            QUY TẮC RẤT QUAN TRỌNG:
+
+            1. Chỉ sử dụng dữ liệu có trong CƠ SỞ DỮ LIỆU IUH.
+
+            2. Không được dùng kiến thức riêng của mô hình để giả vờ
+            rằng thông tin có trong database.
+
+            3. Nếu database có đủ thông tin:
+            trả về:
+
+            {{
+                "source": "database",
+                "answer": "câu trả lời"
+            }}
+
+            4. Nếu database không có hoặc không đủ thông tin:
+            trả về:
+
+            {{
+                "source": "web",
+                "answer": ""
+            }}
+
+            5. Nếu câu hỏi là kiến thức chung không liên quan tới IUH,
+            ví dụ:
+            - danh lam thắng cảnh Việt Nam
+            - lịch sử thế giới
+            - khoa học
+            - công nghệ
+            - thể thao
+
+            thì database IUH không chứa dữ liệu phù hợp,
+            vì vậy phải chọn "web".
+
+            6. Nếu câu hỏi yêu cầu thông tin hiện tại như:
+            - hôm nay
+            - mới nhất
+            - hiện nay
+            - thời tiết
+            - tin tức
+            - sự kiện
+            - giá cả
+
+            và database không chứa dữ liệu cập nhật đó,
+            phải chọn "web".
+
+            7. Nếu trả lời từ database:
+
+            {language_instruction}
+
+            - Bắt buộc tuân thủ đúng ngôn ngữ trên.
+            - Trả lời ngắn gọn.
+            - Trả lời tự nhiên.
+            - Không bịa thêm thông tin.
+
+            8. Chỉ trả về JSON.
+            Không markdown.
+            Không giải thích bên ngoài JSON.
+
+
+            ===== CƠ SỞ DỮ LIỆU IUH =====
+
+            {IUH_DATABASE_TEXT}
+
+            ===== KẾT THÚC DATABASE =====
+
+
+            Ngữ cảnh hội thoại gần đây:
+
+            {context}
+
+
+            Câu hỏi hiện tại:
+
+            {question}
+        """
+
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+
+            max_completion_tokens=500,
+            temperature=0,
+        )
+
+        raw = (
+            response
+            .choices[0]
+            .message
+            .content
+            or ""
+        ).strip()
+
+        # Nếu model lỡ bọc JSON bằng ```json
+        if raw.startswith("```"):
+
+            raw = raw.strip("`").strip()
+
+            if raw.lower().startswith("json"):
+                raw = raw[4:].strip()
+
+        data = json.loads(raw)
+
+        if not isinstance(data, dict):
+            raise ValueError(
+                "Database router không trả JSON object"
+            )
+
+        source = data.get("source")
+
+        if source not in (
+            "database",
+            "web"
+        ):
+            raise ValueError(
+                f"Database router trả source không hợp lệ: {source}"
+            )
+
+        return data
+
+    # ============================================================
+    # BƯỚC 2
+    #
+    # Database không đủ -> Web Search
+    # ============================================================
+
+    def _search_web(
+        self,
+        client,
+        question,
+        context
+    ):
+
+        # print("[CHAT WEB] Searching Internet...")
+
+        language_instruction = (self._response_language_instruction())
+
+        instructions = f"""
+            Bạn là Bé Son, robot trợ lý tại
+            Đại học Công nghiệp Thành phố Hồ Chí Minh.
+
+            QUY TẮC NGÔN NGỮ BẮT BUỘC:
+
+            {language_instruction}
+
+            QUY TẮC TRẢ LỜI:
+
+            - Phải tuân thủ đúng ngôn ngữ được yêu cầu ở trên.
+            - Trả lời rõ ràng, tự nhiên và thân thiện.
+            - Ưu tiên nguồn đáng tin cậy.
+            - Không tự bịa thông tin.
+            - Với câu hỏi có yếu tố thời gian,
+            ưu tiên thông tin mới nhất tìm được.
+            - KHÔNG hiển thị URL.
+            - KHÔNG hiển thị markdown link.
+            - KHÔNG hiển thị citation.
+            - KHÔNG hiển thị tên miền nguồn.
+            - KHÔNG thêm phần "Nguồn", "Tham khảo" hoặc "Link".
+            - Chỉ trả về nội dung câu trả lời cuối cùng.
+            - Không nói rằng đã tìm kiếm trên Internet.
+            - Trả lời ngắn gọn khoảng 2 đến 4 câu.
+            - Câu trả lời sẽ được robot đọc bằng TTS.
+        """
+
+        web_input = f"""
+    Ngữ cảnh hội thoại gần đây:
+
+    {context}
+
+    Câu hỏi hiện tại:
+
+    {question}
+
+    Hãy tìm kiếm Internet để trả lời câu hỏi trên.
+
+    Ngôn ngữ hiện tại của hệ thống:
+    {self.language}
+    """
+
+        response = client.responses.create(
+            model=OPENAI_MODEL,
+
+            tools=[
+                {
+                    "type": "web_search",
+                    "search_context_size": "low",
+                }
+            ],
+
+            tool_choice="required",
+
+            instructions=instructions,
+
+            input=web_input,
+        )
+
+        answer = (
+            response.output_text
+            or ""
+        ).strip()
+
+        if not answer:
+
+            raise RuntimeError(
+                "Web Search không trả về nội dung"
+            )
+
+        return answer
+
+    # ============================================================
+    # MAIN
+    # ============================================================
+
 
     def run(self):
         try:
             client = OpenAI(api_key=OPENAI_API_KEY)
-            stream = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=self.history,
-                max_completion_tokens=1000,
-                temperature=0.7,
-                stream=True,
+            question = (self._get_latest_user_question())
+            if not question:
+
+                raise ValueError(
+                    "Không tìm thấy câu hỏi người dùng"
+                )
+
+            context = (
+                self._get_recent_context()
             )
-            full = []
-            for chunk in stream:
-                token = (chunk.choices[0].delta.content or "") if chunk.choices else ""
-                if token:
-                    full.append(token)
-            self.response_ready.emit("".join(full).strip())
+
+            # ----------------------------------------------------
+            # Bước 1: hỏi database
+            # ----------------------------------------------------
+
+            route = self._check_database(
+                client,
+                question,
+                context
+            )
+
+            source = route.get("source")
+
+            #print(f"[CHAT ROUTE] source={source}")
+
+            # ----------------------------------------------------
+            # Database có dữ liệu
+            # ----------------------------------------------------
+
+            if source == "database":
+
+                answer = str(
+                    route.get("answer", "")
+                ).strip()
+
+                if not answer:
+
+                    raise ValueError(
+                        "Database có source=database "
+                        "nhưng answer rỗng"
+                    )
+
+                print(
+                    "[CHAT ROUTE] "
+                    "Using IUH database"
+                )
+
+            # ----------------------------------------------------
+            # Database không có -> Internet
+            # ----------------------------------------------------
+
+            else:
+
+                print(
+                    "[CHAT ROUTE] "
+                    "Database insufficient -> Web Search"
+                )
+
+                answer = self._search_web(
+                    client,
+                    question,
+                    context
+                )
+
+            self.response_ready.emit(
+                answer
+            )
+
         except Exception as e:
-            self.error_occurred.emit(str(e)[:200])
+
+            print(
+                f"[CHAT ERROR] {e}"
+            )
+
+            self.error_occurred.emit(
+                str(e)[:300]
+            )
+
         finally:
+
             self.finished.emit()
 
-
 class _IntentWorker(QObject):
-    """Classifies a voice transcript as a navigation command or plain chat,
-    using a dedicated (non-streaming, temperature=0) OpenAI call that must
-    return strict JSON: {"intent": "navigate"|"chat", "waypoints": [...]}.
+    """
+        Phân loại câu nói của người dùng thành:
+        - lệnh điều hướng cho robot;
+        - hoặc hội thoại thông thường.
 
-    `waypoints` accepts either a list of plain key strings, or a list of
-    dicts like {"key": "X5.7", "aliases": ["phong x5.7", ...]} — the latter
-    lets the classifier match whatever phrasing the user actually said back
-    to the correct canonical key."""
+        Bộ phân loại sử dụng một lời gọi OpenAI riêng,
+        không sử dụng streaming và đặt temperature = 0.
+
+        Kết quả bắt buộc phải là JSON đúng định dạng:
+
+        {
+            "intent": "navigate" | "chat",
+            "waypoints": [...]
+        }
+
+        Trường "waypoints" có thể nhận:
+
+        1. Danh sách tên waypoint dạng chuỗi:
+
+        ["X5.7", "X5.11"]
+
+        2. Hoặc danh sách dictionary có dạng:
+
+        {
+            "key": "X5.7",
+            "aliases": [
+                "phong x5.7",
+                "cua x5.7"
+            ]
+        }
+
+        Việc sử dụng aliases giúp bộ phân loại nhận ra
+        nhiều cách gọi khác nhau của cùng một địa điểm
+        và ánh xạ chúng về đúng tên waypoint chính.
+    """
     intent_ready   = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
     finished       = pyqtSignal()
@@ -473,21 +921,28 @@ class _IntentWorker(QObject):
         finally:
             self.finished.emit()
 
-
 class ChatPanel(QWidget):
-    # Emits log messages so startup_layout can display them in the system log
     log_signal       = pyqtSignal(str)
-    # Emits a comma-separated waypoint slot/name list (matching the format
-    # expected by WaypointsModeLayout.voice_navigate_to_waypoint), whenever
-    # the AI intent classifier decides the voice command was a navigation
-    # request rather than a general chat message.
+
     waypoint_command = pyqtSignal(str)
 
     navigation_stop = pyqtSignal()
 
     def __init__(self, parent=None):
+
         super().__init__(parent)
-        self._chat_history  = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        self._language = get_language()
+
+        self._chat_history = [
+            {
+                "role": "system",
+                "content": get_system_prompt(
+                    self._language
+                )
+            }
+        ]
+
         self._ai_worker     = None
         self._ai_thread     = None
         self._intent_worker = None
@@ -496,10 +951,6 @@ class ChatPanel(QWidget):
         self._pending_reply = None
         self._did_speak     = False
 
-        # Optional callbacks wired in by the host layout (e.g. WaypointsModeLayout)
-        # to enable voice-driven navigation. When _waypoints_provider is None,
-        # ChatPanel behaves exactly as before: every transcript goes to the
-        # general-purpose AI chat.
         self._pose_provider      = None
         self._waypoints_provider = None
 
@@ -550,55 +1001,204 @@ class ChatPanel(QWidget):
         self._typing_dots += 1
 
     # ------------------------------------------------------- host wiring ---
+    def set_language(self, language):
+
+        if language not in (
+            "vi",
+            "en"
+        ):
+            return
+
+        if language == self._language:
+            return
+
+        self._language = language
+
+        # ============================================================
+        # Đổi ngôn ngữ TTS
+        # ============================================================
+        self._voice_engine.set_language(language)
+
+        # ============================================================
+        # Cập nhật system prompt
+        # ============================================================
+
+        new_system_prompt = (
+            get_system_prompt(language)
+        )
+
+        if (
+            self._chat_history
+            and
+            self._chat_history[0].get("role")
+            == "system"
+        ):
+
+            self._chat_history[0] = {
+                "role": "system",
+                "content": new_system_prompt
+            }
+
+        else:
+
+            self._chat_history.insert(
+                0,
+                {
+                    "role": "system",
+                    "content": new_system_prompt
+                }
+            )
+
+        print(
+            f"[CHAT LANGUAGE] "
+            f"Đã chuyển ChatPanel sang: "
+            f"{language}"
+        )
+
     def set_pose_provider(self, provider):
-        """provider: zero-arg callable returning the current robot Pose (or
-        None if unavailable). Used to freeze the robot's current position at
-        the moment a 'return here' voice command is issued, before it starts
-        moving toward any other waypoints in the same command."""
+        """
+            provider: một hàm không nhận tham số, dùng để trả về
+            vị trí hiện tại của robot dưới dạng Pose.
+
+            Nếu chưa lấy được vị trí hiện tại thì provider có thể trả về None.
+
+            Hàm này được dùng để ghi lại vị trí hiện tại của robot
+            tại thời điểm người dùng ra lệnh kiểu "quay lại đây".
+
+            Vị trí đó sẽ được lưu lại trước khi robot bắt đầu di chuyển
+            đến các waypoint khác trong cùng một lệnh.
+        """
         self._pose_provider = provider
 
     def set_waypoints_provider(self, provider):
-        """provider: zero-arg callable returning a list of waypoint
-        descriptors for the current map, either plain key strings or dicts
-        like {"key": "X5.7", "aliases": [...]}. Passing aliases lets the
-        intent classifier recognize whatever phrasing the user says (e.g.
-        an alias from waypoints.json) and still resolve it to the correct
-        canonical key. Setting this enables voice intent classification
-        (navigate vs chat); leaving it unset preserves the original
-        behavior of always treating speech as general chat."""
+        """
+            provider: một hàm không nhận tham số, dùng để trả về
+            danh sách waypoint của bản đồ hiện tại.
+
+            Mỗi waypoint có thể là:
+
+            - một chuỗi chứa tên chính, ví dụ:
+            "X5.7"
+
+            - hoặc một dictionary có dạng:
+            {
+                "key": "X5.7",
+                "aliases": [...]
+            }
+
+            Việc truyền thêm aliases giúp bộ phân loại ý định
+            nhận ra nhiều cách gọi khác nhau của cùng một địa điểm,
+            ví dụ các cách gọi được khai báo trong waypoints.json,
+            sau đó ánh xạ chúng về đúng tên waypoint chính.
+
+            Khi thiết lập provider này, hệ thống sẽ bật chức năng
+            phân loại câu nói bằng giọng nói thành:
+            - lệnh điều hướng;
+            - hoặc hội thoại thông thường.
+
+            Nếu không thiết lập provider, hệ thống sẽ giữ cách hoạt động cũ:
+            mọi câu nói đều được xử lý như hội thoại thông thường.
+        """
         self._waypoints_provider = provider
 
     # ----------------------------------------------------------- AI call ---
     def _ask_ai(self, text: str):
-        if self._ai_thread and self._ai_thread.isRunning():
+
+        if (
+            self._ai_thread
+            and self._ai_thread.isRunning()
+        ):
             return
 
-        self._chat_history.append({"role": "user", "content": text})
-        self.log_signal.emit(f"[Bạn] {text}")
+        self._chat_history.append(
+            {
+                "role": "user",
+                "content": text
+            }
+        )
 
-        # Show thinking animation
+        self.log_signal.emit(
+            f"[Bạn] {text}"
+        )
+
         self.voice_status_label.show()
+
         self._typing_dots = 0
         self._typing_timer.start(400)
 
-        self._ai_worker = _AIChatWorker(list(self._chat_history))
+        # ============================================================
+        # Khóa ngôn ngữ tại thời điểm gửi request
+        # ============================================================
+
+        self._ai_request_language = (
+            self._language
+        )
+
+        print(
+            "[CHAT] Request language:",
+            self._ai_request_language
+        )
+
+        self._ai_worker = _AIChatWorker(
+            list(self._chat_history),
+            self._ai_request_language
+        )
+
         self._ai_thread = QThread()
-        self._ai_worker.moveToThread(self._ai_thread)
-        self._ai_thread.started.connect(self._ai_worker.run)
-        self._ai_worker.response_ready.connect(self._on_response)
-        self._ai_worker.error_occurred.connect(self._on_error)
-        self._ai_worker.finished.connect(self._ai_thread.quit)
+
+        self._ai_worker.moveToThread(
+            self._ai_thread
+        )
+
+        self._ai_thread.started.connect(
+            self._ai_worker.run
+        )
+
+        self._ai_worker.response_ready.connect(
+            self._on_response
+        )
+
+        self._ai_worker.error_occurred.connect(
+            self._on_error
+        )
+
+        self._ai_worker.finished.connect(
+            self._ai_thread.quit
+        )
+
         self._ai_thread.start()
 
     def _on_response(self, reply):
-        self._typing_timer.stop()
-        self._chat_history.append({"role": "assistant", "content": reply})
-        self.log_signal.emit(f"[Bé Son] {reply}")
-        print(f"[CHAT] Assistant: {reply}")
 
-        # Always speak the reply — voice was active when the user spoke
+        self._typing_timer.stop()
+
+        self._chat_history.append(
+            {
+                "role": "assistant",
+                "content": reply
+            }
+        )
+
+        self.log_signal.emit(
+            f"[Bé Son] {reply}"
+        )
+
+        print(
+            f"[CHAT] Assistant: {reply}"
+        )
+
         self._pending_reply = reply
-        self._voice_engine.speak(reply)
+
+        response_language = getattr(
+            self,
+            "_ai_request_language",
+            self._language
+        )
+
+        self._voice_engine.speak_in_language(
+            reply,
+            response_language
+        )
 
     def _on_error(self, error):
         self._typing_timer.stop()
@@ -609,13 +1209,24 @@ class ChatPanel(QWidget):
         self.voice_status_label.hide()
 
     # ------------------------------------------------- intent classification
-    def _classify_intent(self, text: str):
+    def _classify_intent(
+        self,
+        text: str,
+        original_text: str = None
+    ):
+
         if self._intent_thread and self._intent_thread.isRunning():
             return
 
+        if original_text is None:
+            original_text = text
+
         waypoints = []
+
         try:
-            waypoints = list(self._waypoints_provider() or [])
+            waypoints = list(
+                self._waypoints_provider() or []
+            )
         except Exception:
             waypoints = []
 
@@ -623,13 +1234,41 @@ class ChatPanel(QWidget):
         self._typing_dots = 0
         self._typing_timer.start(400)
 
-        self._intent_worker = _IntentWorker(text, waypoints)
+        self._intent_worker = _IntentWorker(
+            text,
+            waypoints
+        )
+
         self._intent_thread = QThread()
-        self._intent_worker.moveToThread(self._intent_thread)
-        self._intent_thread.started.connect(self._intent_worker.run)
-        self._intent_worker.intent_ready.connect(lambda data: self._on_intent_ready(data, text))
-        self._intent_worker.error_occurred.connect(lambda err: self._on_intent_error(err, text))
-        self._intent_worker.finished.connect(self._intent_thread.quit)
+
+        self._intent_worker.moveToThread(
+            self._intent_thread
+        )
+
+        self._intent_thread.started.connect(
+            self._intent_worker.run
+        )
+
+        self._intent_worker.intent_ready.connect(
+            lambda data:
+            self._on_intent_ready(
+                data,
+                original_text
+            )
+        )
+
+        self._intent_worker.error_occurred.connect(
+            lambda err:
+            self._on_intent_error(
+                err,
+                original_text
+            )
+        )
+
+        self._intent_worker.finished.connect(
+            self._intent_thread.quit
+        )
+
         self._intent_thread.start()
 
     def _on_intent_ready(self, data: dict, original_text: str):
@@ -711,6 +1350,134 @@ class ChatPanel(QWidget):
         else:
             self.voice_status_label.setStyleSheet("color:#5a7abf; background-color:transparent;")
 
+    def _answer_current_location(self):
+
+        # ============================================================
+        # 1. Lấy Pose hiện tại từ AMCL
+        # ============================================================
+
+        pose = None
+
+        if self._pose_provider is not None:
+            try:
+                pose = self._pose_provider()
+            except Exception as e:
+                print(
+                    f"[LOCATION] Không lấy được pose: {e}"
+                )
+
+        if pose is None:
+
+            reply = (
+                "Bé Son chưa xác định được vị trí hiện tại. "
+                "Bạn hãy chờ hệ thống định vị AMCL ổn định."
+            )
+
+            self.log_signal.emit(
+                f"[Bé Son] {reply}"
+            )
+
+            self._pending_reply = reply
+            self._voice_engine.speak(reply)
+
+            return
+
+        robot_x = pose.position.x
+        robot_y = pose.position.y
+
+        print(
+            f"[LOCATION] Robot pose: "
+            f"x={robot_x:.3f}, y={robot_y:.3f}"
+        )
+
+        # ============================================================
+        # 2. Lấy waypoint
+        # ============================================================
+
+        waypoints = []
+
+        if self._waypoints_provider is not None:
+            try:
+                waypoints = list(
+                    self._waypoints_provider() or []
+                )
+            except Exception as e:
+                print(
+                    f"[LOCATION] Không lấy được waypoints: {e}"
+                )
+
+        # ============================================================
+        # 3. Tìm waypoint gần nhất
+        # ============================================================
+
+        nearest = None
+        nearest_distance = float("inf")
+
+        for wp in waypoints:
+
+            if not isinstance(wp, dict):
+                continue
+
+            x = wp.get("x")
+            y = wp.get("y")
+
+            if x is None or y is None:
+                continue
+
+            dx = robot_x - float(x)
+            dy = robot_y - float(y)
+
+            distance = (
+                dx * dx
+                + dy * dy
+            ) ** 0.5
+
+            if distance < nearest_distance:
+
+                nearest_distance = distance
+                nearest = wp
+
+        # ============================================================
+        # 4. Trả lời
+        # ============================================================
+
+        if nearest is not None:
+
+            room = nearest.get(
+                "key",
+                "một khu vực trên tầng 5"
+            )
+
+            reply = (
+                f"Bạn đang ở tầng 5, tòa X, "
+                f"gần khu vực {room}. "
+                f"Đây là cơ sở 12 Nguyễn Văn Bảo của IUH."
+            )
+
+            print(
+                f"[LOCATION] Nearest waypoint: "
+                f"{room}, "
+                f"distance={nearest_distance:.2f} m"
+            )
+
+        else:
+
+            reply = (
+                "Bạn đang ở tầng 5, tòa X, "
+                "tại cơ sở 12 Nguyễn Văn Bảo của IUH. "
+                "Bé Son chưa xác định được phòng gần nhất."
+            )
+
+        self.log_signal.emit(
+            f"[Bé Son] {reply}"
+        )
+
+        self._pending_reply = reply
+
+        self._voice_engine.speak(
+            reply
+        )
+
     def _on_voice_transcript(self, text):
 
         text = text.strip()
@@ -728,21 +1495,45 @@ class ChatPanel(QWidget):
         # Vì đây là lệnh an toàn nên KHÔNG bắt buộc phải nói "Bé Son".
         # ============================================================
 
-        stop_commands = [
-            "dừng lại",
-            "dừng robot",
-            "dừng xe",
-            "hủy lệnh",
-            "hủy hành trình",
-            "dừng hành trình",
-            "stop",
+        stop_commands = {
+            "vi": [
+            "dung lai",
+            "dung robot",
+            "huy lenh",
+            "huy hanh trinh",
+            ],
+
+            "en": [
+                "stop",
+                "stop robot",
+                "stop moving",
+                "cancel",
+                "cancel navigation",
+            ],
+        }
+
+        location_commands = [
+            "toi dang o dau",
+            "toi dang o cho nao",
+            "day la dau",
+            "day la cho nao",
+            "vi tri hien tai",
+            "vi tri hien tai cua toi",
+            "be son toi dang o dau",
+            "be son cho toi biet toi dang o dau",
         ]
+
+        active_stop_commands = (
+            stop_commands.get(
+                self._language,
+                stop_commands["vi"]
+            )
+        )
 
         if any(
             cmd in normalized
-            for cmd in stop_commands
+            for cmd in active_stop_commands
         ):
-
             self.log_signal.emit(
                 "[VOICE] Phát hiện lệnh dừng"
             )
@@ -755,6 +1546,13 @@ class ChatPanel(QWidget):
 
             return
 
+        if any(
+            cmd in normalized
+            for cmd in location_commands
+        ):
+            self._answer_current_location()
+            return
+
         # ============================================================
         # 2. WAKE WORD
         # ============================================================
@@ -762,8 +1560,9 @@ class ChatPanel(QWidget):
         wake_words = [
             "bé son",
             "be son",
-            "bé sơn",
-            "be sơn",
+            "bson",
+            "haha",
+            "ha ha" 
         ]
 
         has_wake_word = any(
@@ -798,11 +1597,16 @@ class ChatPanel(QWidget):
 
         if self._waypoints_provider is not None:
 
-            self._classify_intent(normalized)
+            self._classify_intent(
+                normalized,
+                text
+            )
 
         else:
 
-            self._ask_ai(text)
+            self._ask_ai(
+                text
+            )
 
     # ----------------------------------------------------------- helpers ---
 

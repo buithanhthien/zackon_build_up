@@ -234,6 +234,13 @@
             "STM32 (vi điều khiển)",
             "LiDAR (cảm biến khoảng cách)"
         ],
+        "trien_khai_hien_tai": {
+            "co_so": "Trụ sở chính",
+            "dia_chi": "Số 12 Nguyễn Văn Bảo, Phường Hạnh Thông, Thành phố Hồ Chí Minh",
+            "toa": "X",
+            "tang": 5,
+            "map_name": "X5_08042026"
+        },
         "lien_quan_den_khoa": "Dự án do sinh viên và giảng viên Khoa Công nghệ Điện (FEET) phát triển."
     }
 }

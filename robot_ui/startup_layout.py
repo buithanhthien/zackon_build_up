@@ -3,16 +3,24 @@ import json
 import math
 import os
 import re
+import html
 import sys
 import subprocess
 import threading
 import time
 
+
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QTextEdit, QLabel,
                              QSizePolicy)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import (
+    QFont,
+    QColor,
+    QTextCursor,
+    QTextBlockFormat,
+    QTextCharFormat,
+)
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
@@ -21,6 +29,8 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Empty
 from load_map_dialog import LoadMapDialog
+from language_dialog import LanguageDialog
+from language_config import (get_language, get_ui_text)
 from chat_panel_widget import ChatPanel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
@@ -31,6 +41,7 @@ from process_manager import ProcessManager
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 from action_msgs.msg import GoalStatus
+
 
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
@@ -229,23 +240,54 @@ class LocalizationWorker(QObject):
 class RobotUI(QMainWindow):
     def __init__(self, skip_micro_ros=False):
         super().__init__()
-        self.process_mgr = ProcessManager()
-        self.prev_stm32_status       = None
-        self.prev_lidar_status       = None
-        self.prev_lidar_rear_status  = None
-        self.localization_worker     = None
-        self.localization_thread     = None
-        self._latest_pose            = None
+        self.process_mgr                 = ProcessManager()
+        # Tránh khởi động Nav2 nhiều lần
+        self._nav2_started               = False
+        self.prev_stm32_status           = None
+        self.prev_lidar_status           = None
+        self.prev_lidar_rear_status      = None
+        self.localization_worker         = None
+        self.localization_thread         = None
+
+        # ============================================================
+        # Vị trí cuối cùng của robot
+        # ============================================================
+        self._latest_pose                = None
+        self._latest_amcl_msg            = None
+        self._last_pose_file = (
+            "/home/khoaiuh/zackon_build_up/"
+            "robot_ui/last_robot_pose.json"
+        )
+
+        # Chỉ ghi file khoảng 1 lần / giây
+        self._last_pose_save_time = 0.0
+
+        # Quan trọng:
+        # Không cho AMCL mới khởi động ghi đè pose cũ
+        # trước khi restore hoàn tất.
+        self._allow_pose_save = False
         self._stm32_last_msg_time        = None
         self._front_lidar_last_msg_time  = None
         self._rear_lidar_last_msg_time   = None
-        self._switching_layout       = False  # Track if switching to another layout
+        self._switching_layout           = False  # Track if switching to another layout
 
         try:
             rclpy.init()
         except Exception:
             pass
         self._ros_node = Node('robot_ui_node')
+
+        # ============================================================
+        # Publisher dùng để khôi phục vị trí cho AMCL
+        # ============================================================
+
+        self._initialpose_pub = (
+            self._ros_node.create_publisher(
+                PoseWithCovarianceStamped,
+                "/initialpose",
+                10
+            )
+        )
 
         # ============================================================
         # Voice navigation -> Nav2
@@ -317,6 +359,11 @@ class RobotUI(QMainWindow):
         if not skip_micro_ros:
             self.start_micro_ros()
 
+        #QTimer.singleShot(
+        #    5000,
+        #    self.start_nav2
+        #)
+
     def _ros_spin_once(self):
         try:
             if rclpy.ok():
@@ -325,7 +372,360 @@ class RobotUI(QMainWindow):
             self._ros_spin_timer.stop()
 
     def _amcl_callback(self, msg):
+
         self._latest_pose = msg.pose.pose
+        self._latest_amcl_msg = msg
+
+        # ========================================================
+        # Chưa restore xong thì KHÔNG được ghi đè pose cũ
+        # ========================================================
+
+        if not self._allow_pose_save:
+            return
+
+        # ========================================================
+        # Chỉ lưu khoảng 1 lần mỗi giây
+        # ========================================================
+
+        now = time.monotonic()
+
+        if (
+            now
+            - self._last_pose_save_time
+            < 1.0
+        ):
+            return
+
+        self._last_pose_save_time = now
+
+        self._save_last_robot_pose(
+            msg
+        )
+
+    def _save_last_robot_pose(
+        self,
+        msg
+    ):
+
+        try:
+
+            pose = msg.pose.pose
+
+            data = {
+                "frame_id": "map",
+
+                "position": {
+                    "x": float(
+                        pose.position.x
+                    ),
+                    "y": float(
+                        pose.position.y
+                    ),
+                    "z": float(
+                        pose.position.z
+                    ),
+                },
+
+                "orientation": {
+                    "x": float(
+                        pose.orientation.x
+                    ),
+                    "y": float(
+                        pose.orientation.y
+                    ),
+                    "z": float(
+                        pose.orientation.z
+                    ),
+                    "w": float(
+                        pose.orientation.w
+                    ),
+                },
+
+                "covariance": [
+                    float(value)
+                    for value
+                    in msg.pose.covariance
+                ],
+
+                "saved_at": time.time(),
+            }
+
+            # Ghi file tạm trước.
+            # Nếu máy tắt đúng lúc ghi,
+            # file chính sẽ không bị hỏng.
+            temp_file = (
+                self._last_pose_file
+                + ".tmp"
+            )
+
+            with open(
+                temp_file,
+                "w",
+                encoding="utf-8"
+            ) as f:
+
+                json.dump(
+                    data,
+                    f,
+                    indent=4
+                )
+
+            os.replace(
+                temp_file,
+                self._last_pose_file
+            )
+
+        except Exception as e:
+
+            self.log(
+                f"Lỗi lưu vị trí robot: {e}"
+            )
+
+    def _load_last_robot_pose(
+        self
+    ):
+
+        if not os.path.exists(
+            self._last_pose_file
+        ):
+
+            self.log(
+                "Chưa có vị trí robot đã lưu"
+            )
+
+            return None
+
+        try:
+
+            with open(
+                self._last_pose_file,
+                "r",
+                encoding="utf-8"
+            ) as f:
+
+                data = json.load(f)
+
+            if (
+                data.get("frame_id")
+                != "map"
+            ):
+
+                self.log(
+                    "Pose đã lưu không thuộc map frame"
+                )
+
+                return None
+
+            position = data.get(
+                "position",
+                {}
+            )
+
+            orientation = data.get(
+                "orientation",
+                {}
+            )
+
+            covariance = data.get(
+                "covariance",
+                []
+            )
+
+            if len(covariance) != 36:
+
+                self.log(
+                    "Covariance pose đã lưu "
+                    "không hợp lệ"
+                )
+
+                return None
+
+            msg = (
+                PoseWithCovarianceStamped()
+            )
+
+            msg.header.frame_id = "map"
+
+            msg.header.stamp = (
+                self._ros_node
+                .get_clock()
+                .now()
+                .to_msg()
+            )
+
+            msg.pose.pose.position.x = float(
+                position["x"]
+            )
+
+            msg.pose.pose.position.y = float(
+                position["y"]
+            )
+
+            msg.pose.pose.position.z = float(
+                position.get(
+                    "z",
+                    0.0
+                )
+            )
+
+            msg.pose.pose.orientation.x = float(
+                orientation["x"]
+            )
+
+            msg.pose.pose.orientation.y = float(
+                orientation["y"]
+            )
+
+            msg.pose.pose.orientation.z = float(
+                orientation["z"]
+            )
+
+            msg.pose.pose.orientation.w = float(
+                orientation["w"]
+            )
+
+            msg.pose.covariance = [
+                float(value)
+                for value
+                in covariance
+            ]
+
+            return msg
+
+        except Exception as e:
+
+            self.log(
+                "Lỗi đọc vị trí robot đã lưu: "
+                f"{e}"
+            )
+
+            return None
+
+    def restore_last_robot_pose(
+        self,
+        attempt=0
+    ):
+
+        max_attempts = 40
+
+        # ========================================================
+        # Chờ AMCL subscribe /initialpose
+        # ========================================================
+
+        subscriber_count = (
+            self._initialpose_pub
+            .get_subscription_count()
+        )
+
+        if subscriber_count == 0:
+
+            if attempt < max_attempts:
+
+                QTimer.singleShot(
+                    500,
+                    lambda: (
+                        self.restore_last_robot_pose(
+                            attempt + 1
+                        )
+                    )
+                )
+
+            else:
+
+                self.log(
+                    "Không restore được vị trí: "
+                    "AMCL chưa sẵn sàng"
+                )
+
+                # Không có AMCL thì tuyệt đối
+                # chưa ghi pose mới.
+                self._allow_pose_save = False
+
+            return
+
+        # ========================================================
+        # Đọc pose cũ
+        # ========================================================
+
+        msg = (
+            self._load_last_robot_pose()
+        )
+
+        # ========================================================
+        # Trường hợp lần đầu tiên chạy
+        # chưa có file pose
+        # ========================================================
+
+        if msg is None:
+
+            self.log(
+                "Không có pose cũ, "
+                "sử dụng vị trí hiện tại của AMCL"
+            )
+
+            # Cho AMCL chạy ổn một chút rồi mới lưu.
+            QTimer.singleShot(
+                3000,
+                self._enable_pose_saving
+            )
+
+            return
+
+        # ========================================================
+        # Publish pose cũ vào /initialpose
+        # ========================================================
+
+        self._initialpose_pub.publish(
+            msg
+        )
+
+        x = (
+            msg.pose.pose.position.x
+        )
+
+        y = (
+            msg.pose.pose.position.y
+        )
+
+        self.log(
+            "Đã gửi vị trí cũ cho AMCL | "
+            f"x={x:.3f}, "
+            f"y={y:.3f}"
+        )
+
+        # Gửi lại thêm lần nữa để chắc chắn
+        QTimer.singleShot(
+            300,
+            lambda: (
+                self._initialpose_pub.publish(
+                    msg
+                )
+            )
+        )
+
+        QTimer.singleShot(
+            600,
+            lambda: (
+                self._initialpose_pub.publish(
+                    msg
+                )
+            )
+        )
+
+        # Chờ AMCL hội tụ rồi mới cho phép
+        # ghi file pose mới.
+        QTimer.singleShot(
+            2500,
+            self._enable_pose_saving
+        )
+
+    def _enable_pose_saving(self):
+
+        self._allow_pose_save = True
+
+        self.log(
+            "Đã bật lưu vị trí robot"
+        )
 
     def _stm32_odom_callback(self, msg):
         self._stm32_last_msg_time = time.monotonic()
@@ -363,6 +763,81 @@ class RobotUI(QMainWindow):
         wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
+        UI_TEXT = {
+            "vi": {
+                "waypoints": "Điểm đến",
+                "docking": "Về trạm sạc",
+                "load_map": "Tải bản đồ",
+                "new_map": "Bản đồ mới",
+                "tracking": "Theo dõi",
+                "reestimate": "Định vị lại",
+                "nav2": "Nav2",
+                "language": "Ngôn Ngữ",
+                "developer": "⚙ Developer",
+
+                "select_language": "CHỌN NGÔN NGỮ",
+                "select": "Chọn",
+                "cancel": "Hủy",
+            },
+
+            "en": {
+                "waypoints": "Destinations",
+                "docking": "Docking",
+                "load_map": "Load Map",
+                "new_map": "New Map",
+                "tracking": "Tracking",
+                "reestimate": "Relocalize",
+                "nav2": "Nav2",
+                "language": "Language",
+                "developer": "⚙ Developer",
+
+                "select_language": "SELECT LANGUAGE",
+                "select": "Select",
+                "cancel": "Cancel",
+            },
+        }
+
+        def update_language_ui(self):
+
+            lang = get_language()
+            text = UI_TEXT[lang]
+
+            self.btn_waypoints.setText(
+                text["waypoints"]
+            )
+
+            self.btn_docking.setText(
+                text["docking"]
+            )
+
+            self.btn_load_map.setText(
+                text["load_map"]
+            )
+
+            self.btn_new_map.setText(
+                text["new_map"]
+            )
+
+            self.btn_tracking.setText(
+                text["tracking"]
+            )
+
+            self.btn_reestimate.setText(
+                text["reestimate"]
+            )
+
+            self.btn_nav2.setText(
+                text["nav2"]
+            )
+
+            self.btn_language.setText(
+                text["language"]
+            )
+
+            self.btn_dev.setText(
+                text["developer"]
+            )
+
         self.btn_waypoints  = QPushButton("Điểm đến")
         self.btn_docking    = QPushButton("Về trạm sạc")
         self.btn_load_map   = QPushButton("Tải bản đồ")
@@ -370,10 +845,19 @@ class RobotUI(QMainWindow):
         self.btn_tracking   = QPushButton("Theo dõi")
         self.btn_reestimate = QPushButton("Định vị lại")
         self.btn_nav2       = QPushButton("Nav2")
+        self.btn_language   = QPushButton("Ngôn Ngữ")
 
         mono = QFont("JetBrains Mono", 22)
-        for btn in [self.btn_waypoints, self.btn_docking, self.btn_load_map,
-                    self.btn_new_map, self.btn_tracking, self.btn_reestimate, self.btn_nav2]:
+        for btn in [
+            self.btn_waypoints, 
+            self.btn_docking, 
+            self.btn_load_map,
+            self.btn_new_map, 
+            self.btn_tracking, 
+            self.btn_reestimate, 
+            self.btn_nav2, 
+            self.btn_language
+        ]:
             btn.setObjectName("mode-btn")
             btn.setFont(mono)
             btn.setMinimumHeight(72)
@@ -400,7 +884,10 @@ class RobotUI(QMainWindow):
         self.btn_load_map.clicked.connect(self.load_map)
         self.btn_docking.clicked.connect(self.start_docking)
         self.btn_nav2.clicked.connect(lambda: self.mode_changed("Nav2"))
+        self.btn_language.clicked.connect(self.open_language_dialog)
         self.btn_dev.clicked.connect(self.open_developer_mode)
+        # Áp dụng ngôn ngữ đã lưu khi mở chương trình
+        self.update_language_ui()
 
         # ── Right area ────────────────────────────────────────────────────────
         right_widget = QWidget()
@@ -444,60 +931,219 @@ class RobotUI(QMainWindow):
         right_layout.addWidget(cards_widget)
 
         # ── Voice panel fills the right content area ──────────────────────
+        # ================================================================
+        # ChatPanel
+        # ================================================================
+
         self.chat_panel = ChatPanel()
-        self.chat_panel.hide()  # hidden — only owns the voice engine
 
-        # ── Voice panel (right of log) ─────────────────────────────────────
+        # ChatPanel không tự hiển thị UI.
+        # Chúng ta chỉ lấy VoiceEngine, button và signal từ nó.
+        self.chat_panel.hide()
+
+
+        # ================================================================
+        # KHU VỰC BÊN TRÁI: VOICE CONTROL
+        # ================================================================
+
         voice_panel = QWidget()
-        voice_panel.setObjectName("voice-panel")
-        voice_panel.setFixedWidth(560)
-        voice_layout = QVBoxLayout(voice_panel)
-        voice_layout.setContentsMargins(16, 12, 16, 12)
-        voice_layout.setSpacing(12)
-        voice_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
 
-        mic_btn = self.chat_panel.voice_btn
-        mic_btn.setFixedSize(500, 500)
+        voice_panel.setObjectName("voice-panel")
+        voice_layout = QVBoxLayout(voice_panel)
+
+        voice_layout.setContentsMargins(30, 20, 30, 20)
+
+        voice_layout.setSpacing(14)
+
+        voice_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+
+        # ------------------------------------------------
+        # Nút CLICK TO SPEAK
+        # ------------------------------------------------
+
+        mic_btn = (self.chat_panel.voice_btn)
+
+        mic_btn.setFixedSize(390, 390)
+
         mic_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
         mic_btn.setStyleSheet("""
             QPushButton {
                 background-color: #214196;
                 color: #ffffff;
+
                 border: 3px solid #a8bce8;
-                border-radius: 250px;
-                font-size: 60px;
+
+                border-radius: 195px;
+
+                font-size: 46px;
                 font-weight: bold;
             }
+
             QPushButton:hover {
                 background-color: #1a3278;
+
                 border: 3px solid #fcb525;
             }
+
             QPushButton:checked {
                 background-color: #ef4444;
+
                 border: 3px solid #fca5a5;
             }
         """)
 
-        voice_status = self.chat_panel.voice_status_label
+
+        # ------------------------------------------------
+        # Trạng thái LISTENING / THINKING / SPEAKING
+        # ------------------------------------------------
+
+        voice_status = (self.chat_panel.voice_status_label)
+
         voice_status.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
         voice_status.show()
 
-        interrupt_btn = self.chat_panel.interrupt_btn
-        interrupt_btn.setFixedSize(200, 130)
+
+        # ------------------------------------------------
+        # Nút Dừng
+        # ------------------------------------------------
+
+        interrupt_btn = (self.chat_panel.interrupt_btn)
+
+        interrupt_btn.setFixedSize(180,90)
+
 
         voice_layout.addStretch()
+
         voice_layout.addWidget(mic_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+
         voice_layout.addWidget(voice_status, 0, Qt.AlignmentFlag.AlignHCenter)
-        voice_layout.addSpacing(16)
+
+        voice_layout.addSpacing(10)
+
         voice_layout.addWidget(interrupt_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+
         voice_layout.addStretch()
 
-        # ── Main content row: voice panel fills full width ────────────────
+
+        # ================================================================
+        # KHU VỰC BÊN PHẢI: HỘI THOẠI USER <-> AI
+        # ================================================================
+
+        chat_widget = QWidget()
+
+        chat_widget.setObjectName(
+            "conversation-panel"
+        )
+
+        chat_layout = QVBoxLayout(
+            chat_widget
+        )
+
+        chat_layout.setContentsMargins(
+            18,
+            18,
+            18,
+            18
+        )
+
+        chat_layout.setSpacing(
+            12
+        )
+
+
+        # ------------------------------------------------
+        # Tiêu đề
+        # ------------------------------------------------
+
+        chat_title = QLabel(
+            "HỘI THOẠI"
+        )
+
+        chat_title.setFont(
+            QFont(
+                "JetBrains Mono",
+                17,
+                QFont.Weight.Bold
+            )
+        )
+
+        chat_title.setStyleSheet("""
+            color: #17306f;
+            padding-bottom: 4px;
+        """)
+
+        chat_layout.addWidget(
+            chat_title
+        )
+
+
+        # ------------------------------------------------
+        # Khung lịch sử hội thoại
+        # ------------------------------------------------
+
+        self.chat_history_box = QTextEdit()
+
+        self.chat_history_box.setReadOnly(
+            True
+        )
+
+        self.chat_history_box.setObjectName(
+            "chat-history"
+        )
+
+        self.chat_history_box.setStyleSheet("""
+            QTextEdit {
+                background-color: #ffffff;
+
+                color: #172554;
+
+                border: 2px solid #c7d5f3;
+
+                border-radius: 18px;
+
+                padding: 16px;
+
+                font-family: "DM Sans";
+
+                font-size: 18px;
+            }
+        """)
+
+        self.chat_history_box.setPlaceholderText("Cuộc hội thoại với Bé Son sẽ xuất hiện ở đây...")
+        chat_layout.addWidget(self.chat_history_box, 1)
+
+
+        # ================================================================
+        # Kết nối nội dung ChatPanel -> hộp hội thoại
+        # ================================================================
+
+        self.chat_panel.log_signal.connect(self._append_chat_message)
+
+
+        # ================================================================
+        # Main content row
+        # ================================================================
+
         content_row = QWidget()
         content_layout = QHBoxLayout(content_row)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(0)
-        content_layout.addWidget(voice_panel)
+        content_layout.setContentsMargins(24, 20, 24, 20)
+        content_layout.setSpacing(26)
+
+
+        # Voice bên trái
+        content_layout.addWidget(voice_panel, 45)
+
+        # Hội thoại bên phải
+        content_layout.addWidget(chat_widget, 55)
+
+
+        right_layout.addWidget(
+            content_row,
+            1
+        )
 
         right_layout.addWidget(content_row, 1)
 
@@ -515,7 +1161,163 @@ class RobotUI(QMainWindow):
         self._reestimate_pulse_timer.timeout.connect(self._pulse_reestimate)
         self._pulse_state = False
 
-        QTimer.singleShot(0, self.update_status)    # ══════════════════════════════════════════════════════════════════════════
+        QTimer.singleShot(0, self.update_status)    
+
+    def _append_chat_message(self, message):
+
+        if not message:
+            return
+
+        message = message.strip()
+
+        # ============================================================
+        # Xác định người nói
+        # ============================================================
+
+        if message.startswith("[Bạn]"):
+
+            speaker = "BẠN"
+
+            text = message.replace(
+                "[Bạn]",
+                "",
+                1
+            ).strip()
+
+            alignment = (
+                Qt.AlignmentFlag.AlignRight
+            )
+
+            speaker_color = QColor(
+                "#64748b"
+            )
+
+            text_color = QColor(
+                "#172554"
+            )
+
+            bubble_color = QColor(
+                "#dbeafe"
+            )
+
+        elif message.startswith("[Bé Son]"):
+            speaker = "BÉ SON"
+            text = message.replace("[Bé Son]", "", 1).strip()
+            alignment = (Qt.AlignmentFlag.AlignLeft)
+            speaker_color = QColor("#214196")
+            text_color = QColor("#172554")
+            bubble_color = QColor("#eef2ff")
+
+        else:
+            return
+
+        # ============================================================
+        # Cursor cuối hộp chat
+        # ============================================================
+
+        cursor = (self.chat_history_box.textCursor())
+
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+
+        # ============================================================
+        # Tạo block mới
+        # ============================================================
+
+        block_format = QTextBlockFormat()
+
+        block_format.setAlignment(
+            alignment
+        )
+
+        block_format.setTopMargin(
+            12
+        )
+
+        block_format.setBottomMargin(
+            12
+        )
+
+        block_format.setLeftMargin(
+            18
+        )
+
+        block_format.setRightMargin(
+            18
+        )
+
+        cursor.insertBlock(
+            block_format
+        )
+
+        # ============================================================
+        # Tên người nói
+        # ============================================================
+
+        speaker_format = QTextCharFormat()
+
+        speaker_format.setForeground(
+            speaker_color
+        )
+
+        speaker_format.setFontWeight(
+            QFont.Weight.Bold
+        )
+
+        speaker_format.setFontPointSize(
+            10
+        )
+
+        cursor.insertText(
+            speaker,
+            speaker_format
+        )
+
+        # Xuống dòng nhưng vẫn giữ cùng căn lề
+        cursor.insertText(
+            "\n"
+        )
+
+        # ============================================================
+        # Nội dung
+        # ============================================================
+
+        text_format = QTextCharFormat()
+
+        text_format.setForeground(
+            text_color
+        )
+
+        text_format.setBackground(
+            bubble_color
+        )
+
+        text_format.setFontPointSize(
+            14
+        )
+
+        cursor.insertText(
+            text,
+            text_format
+        )
+
+        # ============================================================
+        # Cuộn xuống tin mới nhất
+        # ============================================================
+
+        self.chat_history_box.setTextCursor(
+            cursor
+        )
+
+        scroll_bar = (
+            self.chat_history_box
+            .verticalScrollBar()
+        )
+
+        scroll_bar.setValue(
+            scroll_bar.maximum()
+        )
+    
+    # ══════════════════════════════════════════════════════════════════════════
     #  Existing UI helpers (unchanged)
     # ══════════════════════════════════════════════════════════════════════════
 
@@ -666,6 +1468,55 @@ class RobotUI(QMainWindow):
             )
             return {}
 
+    def update_language_ui(self):
+
+        language = get_language()
+
+        text = get_ui_text(
+            language
+        )
+
+        print(
+            f"[LANGUAGE UI] Cập nhật giao diện: "
+            f"{language}"
+        )
+
+        self.btn_waypoints.setText(
+            text["waypoints"]
+        )
+
+        self.btn_docking.setText(
+            text["docking"]
+        )
+
+        self.btn_load_map.setText(
+            text["load_map"]
+        )
+
+        self.btn_new_map.setText(
+            text["new_map"]
+        )
+
+        self.btn_tracking.setText(
+            text["tracking"]
+        )
+
+        self.btn_reestimate.setText(
+            text["reestimate"]
+        )
+
+        self.btn_nav2.setText(
+            text["nav2"]
+        )
+
+        self.btn_language.setText(
+            text["language"]
+        )
+
+        self.btn_dev.setText(
+            text["developer"]
+        )
+
     def mode_changed(self, mode):
         self.log(f"Đã chuyển sang chế độ {mode}")
         if mode == "Tracking":
@@ -675,12 +1526,68 @@ class RobotUI(QMainWindow):
             subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py'])
             self.close()
         elif mode == "Nav2":
+            self.start_nav2()
+
+    def start_nav2(self):
+
+        if self._nav2_started:
+
+            self.log(
+                "Nav2 đã được khởi động"
+            )
+
+            return
+
+        # ========================================================
+        # Khóa việc ghi pose.
+        #
+        # Nếu AMCL vừa start bằng một vị trí mặc định,
+        # không được cho nó ghi đè last_robot_pose.json.
+        # ========================================================
+
+        self._allow_pose_save = False
+
+        self._nav2_started = True
+
+        try:
+
             self.process_mgr.launch_terminal(
                 f'source {SOURCE_PATH}/install/setup.bash && '
-                f'ros2 launch {SOURCE_PATH}/src/view_robot/launch/NAV2_BRINGUP.launch.py; exec bash',
+                f'ros2 launch '
+                f'{SOURCE_PATH}/src/view_robot/launch/'
+                f'NAV2_BRINGUP.launch.py; '
+                f'exec bash',
                 'Nav2'
             )
-            self.log("Đã khởi động hệ thống điều hướng Nav2")
+
+            self.log(
+                "Đã khởi động hệ thống điều hướng Nav2"
+            )
+
+            # ====================================================
+            # Chờ AMCL xuất hiện rồi restore pose cũ
+            # ====================================================
+
+            QTimer.singleShot(
+                1000,
+                self.restore_last_robot_pose
+            )
+
+        except Exception as e:
+
+            self._nav2_started = False
+
+            self.log(
+                f"Lỗi khởi động Nav2: {e}"
+            )
+
+        except Exception as e:
+
+            self._nav2_started = False
+
+            self.log(
+                f"Lỗi khởi động Nav2: {e}"
+            )
 
     def start_reestimate(self):
         if self.prev_stm32_status == False:
@@ -723,6 +1630,43 @@ class RobotUI(QMainWindow):
             if map_name:
                 self.log(f"Đang tải bản đồ: {map_name}")
                 update_map_files(map_name, self.log)
+
+    def open_language_dialog(self):
+
+        dialog = LanguageDialog(self)
+
+        if dialog.exec():
+
+            language = (
+                dialog.get_selected_language()
+            )
+
+            if language == "vi":
+
+                language_name = (
+                    "Tiếng Việt"
+                )
+
+            elif language == "en":
+
+                language_name = (
+                    "English"
+                )
+
+            else:
+
+                language_name = str(
+                    language
+                )
+
+            self.update_language_ui()
+
+            self.chat_panel.set_language(language)
+
+            self.log(
+                f"Đã chọn ngôn ngữ: "
+                f"{language_name}"
+            )
 
     def log(self, message):
         print(f"[LOG] {message}")
@@ -776,14 +1720,14 @@ class RobotUI(QMainWindow):
         event.accept()
 
     def _get_voice_waypoints(self):
-
         result = []
 
         for key, data in self._waypoints.items():
-
             result.append({
                 "key": key,
-                "aliases": data.get("aliases", [])
+                "aliases": data.get("aliases", []),
+                "x": data.get("x"),
+                "y": data.get("y"),
             })
 
         return result

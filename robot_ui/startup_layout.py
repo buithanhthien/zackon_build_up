@@ -356,8 +356,9 @@ class RobotUI(QMainWindow):
         )
 
         self.chat_panel._voice_enabled = True
-        if not skip_micro_ros:
-            self.start_micro_ros()
+        # Tắt khởi động Agent từ UI vì đã có Systemd Service lo
+        # if not skip_micro_ros:
+        #     self.start_micro_ros()
 
         #QTimer.singleShot(
         #    5000,
@@ -601,12 +602,9 @@ class RobotUI(QMainWindow):
 
             return None
 
-    def restore_last_robot_pose(
-        self,
-        attempt=0
-    ):
+    def restore_last_robot_pose(self, attempt=0):
 
-        max_attempts = 40
+        max_attempts = 80
 
         # ========================================================
         # Chờ AMCL subscribe /initialpose
@@ -672,6 +670,16 @@ class RobotUI(QMainWindow):
             return
 
         # ========================================================
+        # [QUAN TRỌNG] Thêm độ trễ 1.5 giây để AMCL hoàn tất setup nội bộ
+        # rồi mới tiến hành bắn bản tin initialpose đầu tiên.
+        # ========================================================
+        QTimer.singleShot(
+            1500,
+            lambda: self._execute_publish_pose(msg)
+        )
+
+    def _execute_publish_pose(self, msg):
+        # ========================================================
         # Publish pose cũ vào /initialpose
         # ========================================================
 
@@ -718,6 +726,8 @@ class RobotUI(QMainWindow):
             2500,
             self._enable_pose_saving
         )
+
+
 
     def _enable_pose_saving(self):
 
@@ -1492,12 +1502,14 @@ class RobotUI(QMainWindow):
     def show_stm32_diagnostics(self):
 
         STM32_IP = "192.168.1.50"
+        STM32_IFACE = "enx00e04c534458"
 
         now = time.monotonic()
 
         # ========================================================
-        # 1. Kiểm tra heartbeat /odomfromSTM32
+        # 1. Heartbeat /odomfromSTM32
         # ========================================================
+
         if self._stm32_last_msg_time is None:
             odom_age = None
             odom_ok = False
@@ -1510,8 +1522,9 @@ class RobotUI(QMainWindow):
             odom_ok = odom_age < 3.0
 
         # ========================================================
-        # 2. Kiểm tra UDP port 8888 của micro-ROS Agent
+        # 2. micro-ROS Agent UDP port 8888
         # ========================================================
+
         agent_port_ok = False
 
         try:
@@ -1530,8 +1543,9 @@ class RobotUI(QMainWindow):
             agent_port_ok = False
 
         # ========================================================
-        # 3. Kiểm tra process micro_ros_agent
+        # 3. micro_ros_agent process
         # ========================================================
+
         agent_process_ok = False
 
         try:
@@ -1547,22 +1561,51 @@ class RobotUI(QMainWindow):
             )
 
             agent_process_ok = (
-                result.returncode == 0 and
-                "micro_ros_agent" in result.stdout
+                result.returncode == 0
+                and "micro_ros_agent" in result.stdout
             )
 
         except Exception:
             agent_process_ok = False
 
         # ========================================================
-        # 4. Kiểm tra STM32 có còn reachable qua Ethernet không
+        # 4. Ethernet physical carrier
         # ========================================================
+
+        ethernet_carrier_ok = False
+
+        try:
+            carrier_path = (
+                f"/sys/class/net/"
+                f"{STM32_IFACE}/carrier"
+            )
+
+            with open(
+                carrier_path,
+                "r",
+                encoding="utf-8"
+            ) as f:
+                carrier_value = f.read().strip()
+
+            ethernet_carrier_ok = (
+                carrier_value == "1"
+            )
+
+        except Exception:
+            ethernet_carrier_ok = False
+
+        # ========================================================
+        # 5. Ping STM32 qua ĐÚNG Ethernet interface
+        # ========================================================
+
         stm32_ping_ok = False
 
         try:
             result = subprocess.run(
                 [
                     "ping",
+                    "-I",
+                    STM32_IFACE,
                     "-c",
                     "1",
                     "-W",
@@ -1582,26 +1625,28 @@ class RobotUI(QMainWindow):
             stm32_ping_ok = False
 
         # ========================================================
-        # 5. ROS graph: publisher /odomfromSTM32 còn tồn tại không
+        # 6. ROS publisher /odomfromSTM32
         # ========================================================
+
         try:
             publisher_count = (
                 self._ros_node.count_publishers(
                     "/odomfromSTM32"
                 )
             )
+
         except Exception:
             publisher_count = 0
 
         # ========================================================
-        # 6. Kiểm tra stm32_odom_node
+        # 7. stm32_odom_node
         # ========================================================
+
         stm32_node_ok = False
 
         try:
             node_names = (
-                self._ros_node
-                .get_node_names()
+                self._ros_node.get_node_names()
             )
 
             stm32_node_ok = (
@@ -1610,11 +1655,12 @@ class RobotUI(QMainWindow):
             )
 
         except Exception:
-            pass
+            stm32_node_ok = False
 
         # ========================================================
-        # 7. Suy luận nguyên nhân
+        # 8. Chẩn đoán
         # ========================================================
+
         if odom_ok:
 
             diagnosis = (
@@ -1624,51 +1670,69 @@ class RobotUI(QMainWindow):
         elif not agent_process_ok:
 
             diagnosis = (
-                "micro-ROS Agent không chạy.\n"
-                "Có khả năng Agent đã bị tắt hoặc crash."
+                "micro-ROS Agent không chạy.\n\n"
+                "Có thể Agent đã bị tắt hoặc crash."
             )
 
         elif not agent_port_ok:
 
             diagnosis = (
-                "Process micro-ROS Agent tồn tại "
-                "nhưng UDP port 8888 không hoạt động."
+                "micro-ROS Agent có process nhưng "
+                "UDP port 8888 không hoạt động.\n\n"
+                "Kiểm tra lại Agent hoặc port."
+            )
+
+        elif not ethernet_carrier_ok:
+
+            diagnosis = (
+                "Không có Ethernet physical link "
+                "tới STM32.\n\n"
+                "Có thể do:\n"
+                "• Cáp Ethernet bị rút\n"
+                "• Jack/cáp bị lỗi\n"
+                "• USB Ethernet adapter mất link\n"
+                "• PHY Ethernet phía STM32 chưa lên"
             )
 
         elif not stm32_ping_ok:
 
             diagnosis = (
-                "Không liên lạc được với STM32 "
-                "tại 192.168.1.50.\n\n"
+                "Ethernet physical link đang UP "
+                "nhưng STM32 không trả lời ping.\n\n"
                 "Có thể do:\n"
-                "• STM32 mất nguồn\n"
-                "• Cáp Ethernet / switch có vấn đề\n"
-                "• Ethernet/LwIP trên STM32 bị lỗi"
+                "• STM32 mất nguồn hoặc bị treo\n"
+                "• Ethernet MAC/DMA/LwIP trên STM32 "
+                "chưa hoạt động\n"
+                "• STM32 đang trong quá trình "
+                "recover Ethernet"
             )
 
         elif publisher_count == 0:
 
             diagnosis = (
-                "STM32 và micro-ROS Agent đều reachable, "
+                "STM32 ping được và Agent đang chạy, "
                 "nhưng ROS 2 không thấy publisher "
                 "/odomfromSTM32.\n\n"
                 "Khả năng cao micro-ROS session "
-                "STM32 ↔ Agent chưa được tạo hoặc "
-                "reconnect thất bại."
+                "STM32 ↔ Agent chưa được tạo "
+                "hoặc đang reconnect."
             )
 
         else:
 
             diagnosis = (
-                "ROS 2 vẫn thấy publisher "
-                "/odomfromSTM32 nhưng không nhận dữ liệu.\n\n"
-                "Khả năng publisher hoặc task ODOM "
-                "trên STM32 đang bị dừng/kẹt."
+                "STM32 ping được và ROS 2 vẫn thấy "
+                "publisher /odomfromSTM32, "
+                "nhưng không nhận được dữ liệu.\n\n"
+                "Khả năng task publish ODOM hoặc "
+                "micro-ROS publisher trên STM32 "
+                "đang bị dừng/kẹt."
             )
 
         # ========================================================
-        # 8. Chuẩn bị thông tin hiển thị
+        # 9. Text hiển thị
         # ========================================================
+
         if odom_age is None:
             odom_text = "Chưa từng nhận dữ liệu"
         else:
@@ -1679,13 +1743,18 @@ class RobotUI(QMainWindow):
         detail = (
             f"/odomfromSTM32: "
             f"{'OK' if odom_ok else 'MẤT'}\n"
-            f"Lần cuối nhận: {odom_text}\n\n"
+
+            f"Lần cuối nhận: "
+            f"{odom_text}\n\n"
 
             f"micro-ROS process: "
             f"{'OK' if agent_process_ok else 'DOWN'}\n"
 
             f"UDP :8888: "
             f"{'OK' if agent_port_ok else 'DOWN'}\n"
+
+            f"Ethernet {STM32_IFACE}: "
+            f"{'LINK UP' if ethernet_carrier_ok else 'LINK DOWN'}\n"
 
             f"STM32 {STM32_IP}: "
             f"{'REACHABLE' if stm32_ping_ok else 'UNREACHABLE'}\n"
@@ -1859,28 +1928,30 @@ class RobotUI(QMainWindow):
             self.start_nav2()
 
     def start_nav2(self):
-
-        if self._nav2_started:
-
-            self.log(
-                "Nav2 đã được khởi động"
+        # Kiểm tra thực tế xem tiến trình Nav2 launch có đang thực sự chạy ngầm không
+        nav2_is_running = False
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", "NAV2_BRINGUP.launch.py"],
+                capture_output=True,
+                text=True,
+                timeout=1.0
             )
+            nav2_is_running = (result.returncode == 0 and bool(result.stdout.strip()))
+        except Exception:
+            nav2_is_running = False
 
+        # Nếu thực tế nó vẫn đang chạy thì không làm gì cả
+        if nav2_is_running:
+            self.log("Nav2 đã được khởi động và đang chạy")
             return
 
-        # ========================================================
-        # Khóa việc ghi pose.
-        #
-        # Nếu AMCL vừa start bằng một vị trí mặc định,
-        # không được cho nó ghi đè last_robot_pose.json.
-        # ========================================================
-
+        # Nếu thực tế nó đã tắt (hoặc chưa từng chạy), reset lại cờ trạng thái
+        self._nav2_started = False
         self._allow_pose_save = False
-
         self._nav2_started = True
 
         try:
-
             self.process_mgr.launch_terminal(
                 f'source {SOURCE_PATH}/install/setup.bash && '
                 f'ros2 launch '
@@ -1894,27 +1965,14 @@ class RobotUI(QMainWindow):
                 "Đã khởi động hệ thống điều hướng Nav2"
             )
 
-            # ====================================================
             # Chờ AMCL xuất hiện rồi restore pose cũ
-            # ====================================================
-
             QTimer.singleShot(
                 1000,
                 self.restore_last_robot_pose
             )
 
         except Exception as e:
-
             self._nav2_started = False
-
-            self.log(
-                f"Lỗi khởi động Nav2: {e}"
-            )
-
-        except Exception as e:
-
-            self._nav2_started = False
-
             self.log(
                 f"Lỗi khởi động Nav2: {e}"
             )
@@ -2009,6 +2067,7 @@ class RobotUI(QMainWindow):
         )
 
     def closeEvent(self, event):
+        self._nav2_started = False
 
         if self.localization_worker:
             self.localization_worker.stop()

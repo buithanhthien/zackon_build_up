@@ -1,3 +1,5 @@
+name: hindsight
+
 services:
   hindsight:
     image: ghcr.io/vectorize-io/hindsight:0.4.9
@@ -10,11 +12,26 @@ services:
       - "127.0.0.1:${HINDSIGHT_CONTROL_PLANE_PORT:-9999}:9999"
     environment:
       HINDSIGHT_API_LLM_PROVIDER: openai
-      HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_API_LLM_MODEL:-gpt-4o}
+      HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_API_LLM_MODEL:-gpt-5.4-mini}
       HINDSIGHT_API_LLM_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in the project .env file}
       HINDSIGHT_API_WORKER_ID: zackon-robot
     volumes:
       - hindsight-data:/home/hindsight/.pg0
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "from urllib.request import urlopen;
+          urlopen('http://127.0.0.1:8888/health', timeout=3).read()"
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 90s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
 
 volumes:
   hindsight-data:

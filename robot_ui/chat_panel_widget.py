@@ -14,6 +14,7 @@ from language_config import get_language
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from voice_engine import VoiceEngine
+from correction_memory import CorrectionMemory
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -410,12 +411,13 @@ class _AIChatWorker(QObject):
     error_occurred = pyqtSignal(str)
     finished       = pyqtSignal()
 
-    def __init__(self, history, language):
+    def __init__(self, history, language, memory=None):
 
         super().__init__()
 
         self.history = history
         self.language = language
+        self.memory = memory if memory is not None else CorrectionMemory()
 
     def _response_language_instruction(self):
 
@@ -757,6 +759,13 @@ class _AIChatWorker(QObject):
                 self._get_recent_context()
             )
 
+            memory_answer = self.memory.respond(
+                client, OPENAI_MODEL, question, context, self.language
+            )
+            if memory_answer is not None:
+                self.response_ready.emit(memory_answer)
+                return
+
             # ----------------------------------------------------
             # Bước 1: hỏi database
             # ----------------------------------------------------
@@ -811,7 +820,7 @@ class _AIChatWorker(QObject):
                 )
 
             self.response_ready.emit(
-                answer
+                self.memory.warning + answer
             )
 
         except Exception as e:
@@ -933,6 +942,7 @@ class ChatPanel(QWidget):
         super().__init__(parent)
 
         self._language = get_language()
+        self._correction_memory = CorrectionMemory()
 
         self._chat_history = [
             {
@@ -1141,7 +1151,8 @@ class ChatPanel(QWidget):
 
         self._ai_worker = _AIChatWorker(
             list(self._chat_history),
-            self._ai_request_language
+            self._ai_request_language,
+            self._correction_memory,
         )
 
         self._ai_thread = QThread()

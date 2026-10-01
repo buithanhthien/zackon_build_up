@@ -14,7 +14,7 @@ from nav2_msgs.action import NavigateToPose, DockRobot
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import SOURCE_PATH
+from config import SOURCE_PATH, shell_source_workspace
 
 _PARAMS_FILE = os.path.join(SOURCE_PATH, 'src/lidar_dock_detector/config/docking_params.yaml')
 with open(_PARAMS_FILE) as _f:
@@ -73,8 +73,7 @@ class DockingSequenceNode(Node):
         self.get_logger().info('Launching docking server...')
         subprocess.Popen(
             ['bash', '-c',
-             f'source {SOURCE_PATH}/install/setup.bash && '
-             f'ros2 launch lidar_dock_detector zackon_docking.launch.py'],
+             shell_source_workspace('ros2 launch lidar_dock_detector zackon_docking.launch.py')],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
         

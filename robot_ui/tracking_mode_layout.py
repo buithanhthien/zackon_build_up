@@ -2,6 +2,7 @@
 import sys
 import subprocess
 import os
+import shlex
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
@@ -13,7 +14,7 @@ from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import SOURCE_PATH
+from config import SOURCE_PATH, shell_source_workspace
 from chat_panel_widget import ChatPanel
 from styles import MAIN_STYLESHEET
 from ui_utils import append_log, setup_clock_timer
@@ -254,8 +255,9 @@ class TrackingModeUI(QMainWindow):
         
     def launch_tracking(self):
         self.launch_process = self.process_mgr.launch_terminal(
-            f'source {SOURCE_PATH}/install/setup.bash && '
-            f'ros2 launch {SOURCE_PATH}/src/human_following/launch/system.launch.py; exec bash',
+            shell_source_workspace(
+                f'ros2 launch {shlex.quote(os.path.join(SOURCE_PATH, "src/human_following/launch/system.launch.py"))}; exec bash'
+            ),
             'Human Tracking'
         )
         if self.launch_process:

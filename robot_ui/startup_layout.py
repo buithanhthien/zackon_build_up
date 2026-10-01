@@ -8,6 +8,7 @@ import sys
 import subprocess
 import threading
 import time
+import shlex
 
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
@@ -33,7 +34,7 @@ from language_dialog import LanguageDialog
 from language_config import (get_language, get_ui_text)
 from chat_panel_widget import ChatPanel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import SOURCE_PATH
+from config import SOURCE_PATH, shell_source_workspace
 from styles import MAIN_STYLESHEET
 from ui_utils import setup_clock_timer
 from map_utils import update_map_files
@@ -254,10 +255,7 @@ class RobotUI(QMainWindow):
         # ============================================================
         self._latest_pose                = None
         self._latest_amcl_msg            = None
-        self._last_pose_file = (
-            "/home/khoaiuh/zackon_build_up/"
-            "robot_ui/last_robot_pose.json"
-        )
+        self._last_pose_file = os.path.join(SOURCE_PATH, "robot_ui", "last_robot_pose.json")
 
         # Chỉ ghi file khoảng 1 lần / giây
         self._last_pose_save_time = 0.0
@@ -302,10 +300,7 @@ class RobotUI(QMainWindow):
         self._nav_goal_handle = None
         self._voice_nav_queue = []
 
-        self._waypoints_file = (
-            "/home/khoaiuh/zackon_build_up/"
-            "robot_ui/waypoints.json"
-        )
+        self._waypoints_file = os.path.join(SOURCE_PATH, "robot_ui", "waypoints.json")
 
         self._waypoints = self._load_waypoints()
         _amcl_qos = QoSProfile(
@@ -1403,9 +1398,9 @@ class RobotUI(QMainWindow):
 
         # Port chưa được dùng -> khởi động agent
         self.process_mgr.launch_terminal(
-            'source ~/zackon_build_up/install/setup.bash && '
-            'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; '
-            'exec bash',
+            shell_source_workspace(
+                'ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888; exec bash'
+            ),
             'micro-ROS agent'
         )
 
@@ -1552,11 +1547,9 @@ class RobotUI(QMainWindow):
         try:
 
             self.process_mgr.launch_terminal(
-                f'source {SOURCE_PATH}/install/setup.bash && '
-                f'ros2 launch '
-                f'{SOURCE_PATH}/src/view_robot/launch/'
-                f'NAV2_BRINGUP.launch.py; '
-                f'exec bash',
+                shell_source_workspace(
+                    f'ros2 launch {shlex.quote(os.path.join(SOURCE_PATH, "src/view_robot/launch/NAV2_BRINGUP.launch.py"))}; exec bash'
+                ),
                 'Nav2'
             )
 
@@ -1674,7 +1667,7 @@ class RobotUI(QMainWindow):
     def open_developer_mode(self):
         self.log("Đang mở chế độ Developer")
         self.process_mgr.launch_terminal(
-            f'cd {SOURCE_PATH} && source install/setup.bash && claude; exec bash',
+            f'cd {shlex.quote(SOURCE_PATH)} && source install/setup.bash && claude; exec bash',
             'Developer Mode'
         )
 

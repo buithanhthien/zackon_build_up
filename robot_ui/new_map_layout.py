@@ -6,8 +6,9 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 import sys, os
+import shlex
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import SOURCE_PATH
+from config import SOURCE_PATH, shell_source_workspace
 from chat_panel_widget import ChatPanel
 from styles import MAIN_STYLESHEET
 from ui_utils import append_log, setup_clock_timer
@@ -178,8 +179,9 @@ class NewMapUI(QMainWindow):
             self.log("Đã dừng các tiến trình điều hướng cũ")
 
             self.mapping_process = self.process_mgr.launch_terminal(
-                'source ~/zackon_build_up/install/setup.bash && '
-                'ros2 launch view_robot_pkg MAP_GENERATING.launch.py; exec bash',
+                shell_source_workspace(
+                    'ros2 launch view_robot_pkg MAP_GENERATING.launch.py; exec bash'
+                ),
                 'MAP_GENERATING'
             )
             self.log("✓ Đã khởi động MAP_GENERATING.launch.py")
@@ -211,9 +213,10 @@ class NewMapUI(QMainWindow):
         self.log(f"Đang lưu bản đồ '{map_name}' vào thư mục maps...")
         try:
             self.process_mgr.launch_terminal(
-                f'source ~/zackon_build_up/install/setup.bash && '
-                f'cd {SOURCE_PATH}/src/view_robot/maps && '
-                f'ros2 run nav2_map_server map_saver_cli -f {map_name}; exec bash',
+                shell_source_workspace(
+                    f'cd {shlex.quote(os.path.join(SOURCE_PATH, "src/view_robot/maps"))} && '
+                    f'ros2 run nav2_map_server map_saver_cli -f {shlex.quote(map_name)}; exec bash'
+                ),
                 'Map Saver'
             )
             self.log(f"Đã lưu bản đồ tại: {map_path}")

@@ -18,7 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml
 
@@ -26,6 +26,7 @@ from nav2_common.launch import RewrittenYaml
 def generate_launch_description():
     # Get the launch directory
     bringup_dir = get_package_share_directory('view_robot_pkg')
+    keepout_map = PathJoinSubstitution([bringup_dir, 'maps', 'X5_08042026_keepout.yaml'])
 
     namespace = LaunchConfiguration('namespace')
     use_sim_time = LaunchConfiguration('use_sim_time')
@@ -61,7 +62,8 @@ def generate_launch_description():
         'use_sim_time': use_sim_time,
         'default_bt_xml_filename': default_bt_xml_filename,
         'autostart': autostart,
-        'map_subscribe_transient_local': map_subscribe_transient_local}
+        'map_subscribe_transient_local': map_subscribe_transient_local,
+        'yaml_filename': keepout_map}
 
     configured_params = RewrittenYaml(
             source_file=params_file,

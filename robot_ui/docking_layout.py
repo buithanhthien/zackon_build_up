@@ -2,6 +2,7 @@
 import sys
 import subprocess
 import os
+import shlex
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QProgressBar)
 from PyQt6.QtCore import QTimer, Qt
@@ -11,7 +12,7 @@ from rclpy.node import Node
 from std_msgs.msg import Int32, Bool, Float32
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import SOURCE_PATH
+from config import SOURCE_PATH, shell_source_workspace
 from process_manager import ProcessManager
 
 
@@ -318,8 +319,9 @@ class DockingUI(QMainWindow):
         
         # Launch docking process
         self.docking_process = self.process_mgr.launch_terminal(
-            f'source {SOURCE_PATH}/install/setup.bash && '
-            f'ros2 launch {SOURCE_PATH}/src/lidar_dock_detector/launch/zackon_docking.launch.py; exec bash',
+            shell_source_workspace(
+                f'ros2 launch {shlex.quote(os.path.join(SOURCE_PATH, "src/lidar_dock_detector/launch/zackon_docking.launch.py"))}; exec bash'
+            ),
             'Docking'
         )
         

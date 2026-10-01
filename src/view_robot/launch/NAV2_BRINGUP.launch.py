@@ -38,7 +38,7 @@ def generate_launch_description():
     # warning that occurs during the first ~2s after launch.
     ekf_startup_delay_arg = DeclareLaunchArgument(
         'ekf_startup_delay',
-        default_value='3.0',
+        default_value='0.0',
         description='Seconds to wait after EKF starts before launching localization/navigation'
     )
 

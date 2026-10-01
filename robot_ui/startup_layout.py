@@ -1501,7 +1501,7 @@ class RobotUI(QMainWindow):
 
     def show_stm32_diagnostics(self):
 
-        STM32_IP = "192.168.1.50"
+        STM32_IP = "192.168.4.50"
         STM32_IFACE = "enx00e04c534458"
 
         now = time.monotonic()

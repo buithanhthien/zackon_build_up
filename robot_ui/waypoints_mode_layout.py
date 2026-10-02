@@ -3,12 +3,14 @@ import sys
 import json
 import subprocess
 import os
+import math
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                               QLabel, QListWidget, QListWidgetItem, QTextEdit,
-                              QApplication, QMainWindow, QSizePolicy, QDialog, QLineEdit)
+                              QApplication, QMainWindow, QSizePolicy, QDialog, QLineEdit,
+                              QMessageBox, QSplitter, QTabWidget)
 from PyQt6.QtCore import Qt, QTimer, QPointF, QMetaObject, Q_ARG, pyqtSignal
 from PyQt6.QtCore import pyqtSlot
-from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform, QFontDatabase
+from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform, QFontDatabase, QTextCursor
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
@@ -51,11 +53,15 @@ class MapWidget(QWidget):
     def __init__(self, map_path, yaml_data):
         super().__init__()
         self.map_image = QPixmap(map_path)
-        self.resolution = yaml_data['resolution']
-        self.origin = yaml_data['origin']
+        self.resolution = float(yaml_data.get('resolution', 1.0))
+        if not math.isfinite(self.resolution) or self.resolution <= 0:
+            self.resolution = 1.0
+        self.origin = yaml_data.get('origin', [0.0, 0.0, 0.0])
+        if not isinstance(self.origin, (list, tuple)) or len(self.origin) < 2:
+            self.origin = [0.0, 0.0, 0.0]
         self.robot_pose = None
         self.waypoints = {}
-        self.setMinimumSize(400, 400)
+        self.setMinimumSize(320, 260)
         
     def set_robot_pose(self, pose):
         self.robot_pose = pose
@@ -66,12 +72,25 @@ class MapWidget(QWidget):
         self.update()
         
     def world_to_pixel(self, x, y):
-        px = int((x - self.origin[0]) / self.resolution)
-        py = int((self.origin[1] - y) / self.resolution + self.map_image.height())
+        dx = x - self.origin[0]
+        dy = y - self.origin[1]
+        origin_yaw = self.origin[2] if len(self.origin) > 2 else 0.0
+        local_x = math.cos(origin_yaw) * dx + math.sin(origin_yaw) * dy
+        local_y = -math.sin(origin_yaw) * dx + math.cos(origin_yaw) * dy
+        px = int(local_x / self.resolution)
+        py = int(self.map_image.height() - local_y / self.resolution)
         return px, py
         
     def paintEvent(self, event):
         painter = QPainter(self)
+
+        if self.map_image.isNull():
+            painter.drawText(
+                self.rect(),
+                Qt.AlignmentFlag.AlignCenter,
+                "Không tải được bản đồ",
+            )
+            return
         
         scaled_map = self.map_image.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         x_offset = (self.width() - scaled_map.width()) // 2
@@ -157,11 +176,11 @@ class NewWaypointDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
-        btn_confirm = QPushButton("Confirm")
+        btn_confirm = QPushButton("Xác nhận")
         btn_confirm.setObjectName("ok-btn")
         btn_confirm.setFont(QFont("JetBrains Mono", 15))
         btn_confirm.clicked.connect(self.accept)
-        btn_back = QPushButton("Back")
+        btn_back = QPushButton("Hủy")
         btn_back.setObjectName("cancel-btn")
         btn_back.setFont(QFont("JetBrains Mono", 15))
         btn_back.clicked.connect(self.reject)
@@ -304,23 +323,23 @@ class PathManagerDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        self.btn_run = QPushButton("Run path")
+        self.btn_run = QPushButton("Chạy lộ trình")
         self.btn_run.setObjectName("primary-btn")
         self.btn_run.setFont(QFont("JetBrains Mono", 15))
         self.btn_run.setEnabled(False)
         self.btn_run.clicked.connect(self._on_run)
 
-        btn_new = QPushButton("New path")
+        btn_new = QPushButton("Lộ trình mới")
         btn_new.setObjectName("primary-btn")
         btn_new.setFont(QFont("JetBrains Mono", 15))
         btn_new.clicked.connect(self._on_new)
 
-        btn_remove = QPushButton("Remove path")
+        btn_remove = QPushButton("Xóa lộ trình")
         btn_remove.setObjectName("secondary-btn")
         btn_remove.setFont(QFont("JetBrains Mono", 15))
         btn_remove.clicked.connect(self._on_remove)
 
-        btn_back = QPushButton("Back")
+        btn_back = QPushButton("Quay lại")
         btn_back.setObjectName("secondary-btn")
         btn_back.setFont(QFont("JetBrains Mono", 15))
         btn_back.clicked.connect(self.reject)
@@ -451,17 +470,17 @@ class NewPathDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        btn_confirm = QPushButton("Confirm")
+        btn_confirm = QPushButton("Xác nhận")
         btn_confirm.setObjectName("primary-btn")
         btn_confirm.setFont(QFont("JetBrains Mono", 14))
         btn_confirm.clicked.connect(self._confirm)
 
-        btn_undo = QPushButton("Undo")
+        btn_undo = QPushButton("Hoàn tác")
         btn_undo.setObjectName("secondary-btn")
         btn_undo.setFont(QFont("JetBrains Mono", 14))
         btn_undo.clicked.connect(self._undo)
 
-        btn_back = QPushButton("Back")
+        btn_back = QPushButton("Hủy")
         btn_back.setObjectName("secondary-btn")
         btn_back.setFont(QFont("JetBrains Mono", 14))
         btn_back.clicked.connect(self.reject)
@@ -493,14 +512,51 @@ class NewPathDialog(QDialog):
             return
         if not self.sequence:
             return
-        try:
-            with open(self.multi_wp_file) as f:
-                data = json.load(f)
-        except Exception:
-            data = {}
+
+        data = {}
+        if os.path.exists(self.multi_wp_file):
+            try:
+                with open(self.multi_wp_file, encoding='utf-8') as file:
+                    data = json.load(file)
+            except (OSError, json.JSONDecodeError) as exc:
+                QMessageBox.warning(
+                    self,
+                    "Không thể lưu lộ trình",
+                    f"Không đọc được dữ liệu lộ trình: {exc}",
+                )
+                return
+            if not isinstance(data, dict):
+                QMessageBox.warning(
+                    self,
+                    "Không thể lưu lộ trình",
+                    "File lộ trình không đúng định dạng.",
+                )
+                return
+
+        if name in data:
+            answer = QMessageBox.question(
+                self,
+                "Lộ trình đã tồn tại",
+                f"Bạn muốn thay thế lộ trình '{name}' không?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
         data[name] = {'map_name': self.current_map, 'sequence': self.sequence}
-        with open(self.multi_wp_file, 'w') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        temp_path = self.multi_wp_file + '.tmp'
+        try:
+            with open(temp_path, 'w', encoding='utf-8') as file:
+                json.dump(data, file, indent=2, ensure_ascii=False)
+            os.replace(temp_path, self.multi_wp_file)
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                "Không thể lưu lộ trình",
+                f"Không ghi được file lộ trình: {exc}",
+            )
+            return
         self.accept()
 
 
@@ -520,6 +576,7 @@ class WaypointsModeLayout(QMainWindow):
         self.running_sequence = False
         self.current_sequence_index = 0
         self._current_nav_target = None
+        self._navigation_generation = 0
         self._announce_thread = None
         self.init_ui()
 
@@ -555,7 +612,7 @@ class WaypointsModeLayout(QMainWindow):
         wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
         left_layout.addWidget(wordmark)
 
-        mono = QFont("JetBrains Mono", 18)
+        mono = QFont("DM Sans", 14)
         self.load_map_btn   = QPushButton("Tải bản đồ")
         self.waypoints_btn  = QPushButton("Địa điểm")
         self.lo_trinh_btn   = QPushButton("Tạo lộ trình")
@@ -567,12 +624,12 @@ class WaypointsModeLayout(QMainWindow):
                     self.new_btn, self.stop_btn, self.back_btn]:
             btn.setObjectName("action-btn")
             btn.setFont(mono)
-            btn.setMinimumHeight(64)
+            btn.setMinimumHeight(52)
             btn.setCheckable(False)
             left_layout.addWidget(btn)
 
         # Position section
-        pos_title = QLabel("POSITION")
+        pos_title = QLabel("VỊ TRÍ")
         pos_title.setObjectName("section-title")
         pos_title.setFont(QFont("DM Sans", 11))
         left_layout.addWidget(pos_title)
@@ -582,7 +639,7 @@ class WaypointsModeLayout(QMainWindow):
         self.pos_label.setFont(QFont("JetBrains Mono", 13))
         left_layout.addWidget(self.pos_label)
 
-        orient_title = QLabel("ORIENTATION")
+        orient_title = QLabel("HƯỚNG")
         orient_title.setObjectName("section-title")
         orient_title.setFont(QFont("DM Sans", 11))
         left_layout.addWidget(orient_title)
@@ -610,11 +667,11 @@ class WaypointsModeLayout(QMainWindow):
         # Header bar
         header = QWidget()
         header.setObjectName("header-bar")
-        header.setFixedHeight(48)
+        header.setFixedHeight(68)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(20, 0, 20, 0)
 
-        header_title = QLabel("WAYPOINTS MODE")
+        header_title = QLabel("ĐIỀU HƯỚNG ĐIỂM ĐẾN")
         header_title.setObjectName("header-title")
         header_title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
         header_title.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
@@ -628,17 +685,23 @@ class WaypointsModeLayout(QMainWindow):
         header_layout.addWidget(self.clock_label)
         right_layout.addWidget(header)
 
-        # Map + mic
+        # Map
         map_container = QWidget()
         map_container.setStyleSheet("background-color: #f0f4ff; padding: 12px;")
         map_layout = QVBoxLayout(map_container)
         map_layout.setContentsMargins(12, 12, 12, 0)
         map_layout.setSpacing(0)
 
-        map_yaml_path = get_current_map_path()
-        map_dir = os.path.dirname(map_yaml_path)
-        yaml_data = load_map_yaml(map_yaml_path)
-        map_image_path = os.path.join(map_dir, yaml_data['image'])
+        map_load_error = None
+        try:
+            map_yaml_path = get_current_map_path()
+            map_dir = os.path.dirname(map_yaml_path)
+            yaml_data = load_map_yaml(map_yaml_path)
+            map_image_path = os.path.join(map_dir, yaml_data['image'])
+        except Exception as exc:
+            yaml_data = {'resolution': 1.0, 'origin': [0.0, 0.0, 0.0]}
+            map_image_path = ''
+            map_load_error = str(exc)
 
         self.map_widget = MapWidget(map_image_path, yaml_data)
         self.map_widget.set_waypoints(self.waypoints)
@@ -649,54 +712,54 @@ class WaypointsModeLayout(QMainWindow):
             lambda: self.ros_node.current_pose.pose.pose if self.ros_node.current_pose else None
         )
         self.chat_widget.set_waypoints_provider(
-            lambda: [k for k, v in self.waypoints.items()
-                     if v.get('map_name') == get_current_map_name()]
+            self._get_current_map_waypoint_descriptors
         )
 
+        map_layout.addWidget(self.map_widget)
+
         mic_btn = self.chat_widget.voice_btn
-        mic_btn.setFixedSize(225, 225)
-        mic_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        mic_btn.setText("Mic")
+        mic_btn.setToolTip("Bắt đầu hoặc dừng nghe")
+        mic_btn.setFixedSize(58, 44)
         mic_btn.setStyleSheet("""
             QPushButton {
                 background-color: #214196;
                 color: #ffffff;
-                border: 3px solid #a8bce8;
-                border-radius: 112px;
-                font-size: 90px;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 600;
             }
-            QPushButton:hover {
-                background-color: #1a3278;
-                border: 3px solid #fcb525;
-            }
-            QPushButton:checked {
-                background-color: #ef4444;
-                border: 3px solid #fca5a5;
-            }
+            QPushButton:hover { background-color: #1a3278; }
+            QPushButton:checked { background-color: #b42318; }
         """)
 
-        mic_label = QLabel("Nhấn vào tôi để nói")
-        mic_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        mic_label.setStyleSheet("color: #5a7abf; font-size: 25px; margin-top: -5px;")
-        mic_label.setFont(QFont("DM Sans", 11))
+        self.navigation_status = QLabel()
+        self.navigation_status.setMinimumWidth(150)
+        self._set_navigation_status(
+            "Nav2 sẵn sàng" if self.ros_node.nav_server_available else "Nav2 chưa sẵn sàng",
+            "ready" if self.ros_node.nav_server_available else "error",
+        )
 
-        mic_container = QWidget()
-        mic_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        mic_vbox = QVBoxLayout(mic_container)
-        mic_vbox.setContentsMargins(8, 0, 8, 0)
-        mic_vbox.setSpacing(4)
-        mic_vbox.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-        mic_vbox.addWidget(mic_btn, 0, Qt.AlignmentFlag.AlignHCenter)
-        mic_vbox.addWidget(mic_label, 0, Qt.AlignmentFlag.AlignHCenter)
+        voice_status = self.chat_widget.voice_status_label
+        voice_status.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        voice_status.setMinimumWidth(130)
 
-        map_and_mic = QWidget()
-        map_and_mic_layout = QHBoxLayout(map_and_mic)
-        map_and_mic_layout.setContentsMargins(0, 0, 0, 0)
-        map_and_mic_layout.setSpacing(8)
-        map_and_mic_layout.addWidget(self.map_widget, 4)
-        map_and_mic_layout.addWidget(mic_container, 1, Qt.AlignmentFlag.AlignVCenter)
-        map_layout.addWidget(map_and_mic)
+        stop_voice_btn = self.chat_widget.interrupt_btn
+        stop_voice_btn.setText("Dừng")
+        stop_voice_btn.setFixedSize(58, 44)
+        stop_voice_btn.setToolTip("Dừng nghe hoặc phát âm")
 
-        right_layout.addWidget(map_container, 2)
+        voice_controls = QWidget()
+        voice_controls_layout = QHBoxLayout(voice_controls)
+        voice_controls_layout.setContentsMargins(0, 0, 0, 0)
+        voice_controls_layout.setSpacing(8)
+        voice_controls_layout.addWidget(self.navigation_status)
+        voice_controls_layout.addWidget(voice_status)
+        voice_controls_layout.addWidget(mic_btn)
+        voice_controls_layout.addWidget(stop_voice_btn)
+        header_layout.insertWidget(1, voice_controls)
+        self.chat_widget.hide()
 
         # Log panel
         self.log_panel = QWidget()
@@ -705,7 +768,7 @@ class WaypointsModeLayout(QMainWindow):
         log_layout.setContentsMargins(16, 12, 16, 12)
         log_layout.setSpacing(6)
 
-        log_header = QLabel("SYSTEM LOG")
+        log_header = QLabel("NHẬT KÝ HỆ THỐNG")
         log_header.setFont(QFont("DM Sans", 11, QFont.Weight.Bold))
         log_header.setStyleSheet("color: #214196; padding: 4px 0;")
         log_layout.addWidget(log_header)
@@ -716,15 +779,39 @@ class WaypointsModeLayout(QMainWindow):
         self.log_text.setFont(QFont("Fira Code", 13))
         log_layout.addWidget(self.log_text)
 
-        # Horizontal splitter for log and chat
-        panels_splitter = QWidget()
-        panels_layout = QHBoxLayout(panels_splitter)
-        panels_layout.setContentsMargins(0, 0, 0, 0)
-        panels_layout.setSpacing(8)
-        panels_layout.addWidget(self.log_panel, 1)
-        panels_layout.addWidget(self.chat_widget, 1)
+        self.chat_history_box = QTextEdit()
+        self.chat_history_box.setReadOnly(True)
+        self.chat_history_box.setPlaceholderText("Hội thoại sẽ xuất hiện ở đây")
+        self.chat_history_box.setStyleSheet("""
+            QTextEdit {
+                background-color: #ffffff;
+                color: #1a2a5e;
+                border: none;
+                padding: 12px;
+                font-family: "DM Sans";
+                font-size: 15px;
+            }
+        """)
 
-        right_layout.addWidget(panels_splitter, 1)
+        chat_panel = QWidget()
+        chat_panel.setObjectName("chat-panel")
+        chat_panel_layout = QVBoxLayout(chat_panel)
+        chat_panel_layout.setContentsMargins(8, 8, 8, 8)
+        chat_panel_layout.addWidget(self.chat_history_box)
+
+        self.activity_tabs = QTabWidget()
+        self.activity_tabs.addTab(chat_panel, "Hội thoại")
+        self.activity_tabs.addTab(self.log_panel, "Nhật ký")
+        self.chat_widget.log_signal.connect(self._append_chat_message)
+
+        workspace_splitter = QSplitter(Qt.Orientation.Vertical)
+        workspace_splitter.setChildrenCollapsible(False)
+        workspace_splitter.addWidget(map_container)
+        workspace_splitter.addWidget(self.activity_tabs)
+        workspace_splitter.setStretchFactor(0, 4)
+        workspace_splitter.setStretchFactor(1, 1)
+        workspace_splitter.setSizes([680, 240])
+        right_layout.addWidget(workspace_splitter, 1)
 
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
@@ -736,9 +823,43 @@ class WaypointsModeLayout(QMainWindow):
 
         if not self.ros_node.nav_server_available:
             self.log("[CẢNH BÁO] Máy chủ Nav2 chưa sẵn sàng")
+        if map_load_error:
+            self.log(f'[ERROR] Không tải được bản đồ: {map_load_error}')
 
     def _auto_start_voice(self):
         self.chat_widget._voice_enabled = True
+
+    def _set_navigation_status(self, message, state='ready'):
+        status_label = getattr(self, 'navigation_status', None)
+        if status_label is None:
+            return
+
+        colors = {
+            'ready': '#18794e',
+            'active': '#214196',
+            'checking': '#8a6100',
+            'error': '#b42318',
+        }
+        status_label.setText(message)
+        status_label.setStyleSheet(
+            f'color: {colors.get(state, colors["ready"])}; font-weight: 600;'
+        )
+
+    def _append_chat_message(self, message):
+        if not message:
+            return
+
+        if message.startswith(('[Bạn]', '[Bé Son]')):
+            target = self.chat_history_box
+            self.activity_tabs.setCurrentIndex(0)
+        else:
+            target = self.log_text
+
+        cursor = target.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(message.rstrip() + '\n')
+        target.setTextCursor(cursor)
+        target.ensureCursorVisible()
 
     def log(self, message):
         append_log(self.log_text, message)
@@ -753,16 +874,39 @@ class WaypointsModeLayout(QMainWindow):
             self.orient_label.setText(f"qx: {o.x:.2f}   qy: {o.y:.2f}\nqz: {o.z:.2f}   qw: {o.w:.2f}")
             self.map_widget.set_robot_pose(msg)
     
-    def navigate_to_waypoint(self, slot_num):
-        if str(slot_num) not in self.waypoints:
-            self.log(f'[NAV] Không tìm thấy địa điểm "{slot_num}"')
+    def navigate_to_waypoint(self, slot_num, generation=None):
+        if generation is None:
+            generation = self._navigation_generation
+        if generation != self._navigation_generation:
+            return
+
+        target = str(slot_num)
+        waypoint = self.waypoints.get(target)
+        if waypoint is None:
+            self.log(f'[NAV] Không tìm thấy địa điểm "{target}"')
+            self._set_navigation_status('Không tìm thấy điểm đến', 'error')
+            self.running_sequence = False
+            return
+
+        required_fields = ('x', 'y', 'z', 'qx', 'qy', 'qz', 'qw')
+        missing_fields = [field for field in required_fields if field not in waypoint]
+        if missing_fields:
+            self.log(
+                f'[NAV] Địa điểm "{target}" thiếu dữ liệu: '
+                f'{", ".join(missing_fields)}'
+            )
+            self._set_navigation_status('Dữ liệu điểm đến không hợp lệ', 'error')
+            self.running_sequence = False
             return
         
+        self._set_navigation_status('Đang kết nối Nav2', 'checking')
         if not self.ros_node.nav_server_available:
             self.log('[NAV] Đang chờ máy chủ Nav2...')
             self.ros_node.nav_server_available = self.ros_node.nav_client.wait_for_server(timeout_sec=3.0)
         if not self.ros_node.nav_server_available:
             self.log('[NAV] [LỖI] Máy chủ Nav2 không khả dụng')
+            self._set_navigation_status('Nav2 chưa sẵn sàng', 'error')
+            self.running_sequence = False
             return
         
         if self.ros_node.current_goal_handle is not None:
@@ -770,37 +914,57 @@ class WaypointsModeLayout(QMainWindow):
             self.ros_node.current_goal_handle.cancel_goal_async()
             self.ros_node.current_goal_handle = None
             
-        wp = self.waypoints[str(slot_num)]
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose = PoseStamped()
         goal_msg.pose.header.frame_id = 'map'
         goal_msg.pose.header.stamp = self.ros_node.get_clock().now().to_msg()
-        goal_msg.pose.pose.position.x = wp['x']
-        goal_msg.pose.pose.position.y = wp['y']
-        goal_msg.pose.pose.position.z = wp['z']
-        goal_msg.pose.pose.orientation.x = wp['qx']
-        goal_msg.pose.pose.orientation.y = wp['qy']
-        goal_msg.pose.pose.orientation.z = wp['qz']
-        goal_msg.pose.pose.orientation.w = wp['qw']
-        if wp.get('yaw_tolerance'):
-            self._set_yaw_tolerance(wp['yaw_tolerance'])
+        goal_msg.pose.pose.position.x = float(waypoint['x'])
+        goal_msg.pose.pose.position.y = float(waypoint['y'])
+        goal_msg.pose.pose.position.z = float(waypoint['z'])
+        goal_msg.pose.pose.orientation.x = float(waypoint['qx'])
+        goal_msg.pose.pose.orientation.y = float(waypoint['qy'])
+        goal_msg.pose.pose.orientation.z = float(waypoint['qz'])
+        goal_msg.pose.pose.orientation.w = float(waypoint['qw'])
+        if waypoint.get('yaw_tolerance'):
+            self._set_yaw_tolerance(waypoint['yaw_tolerance'])
         
         send_goal_future = self.ros_node.nav_client.send_goal_async(goal_msg)
-        self._current_nav_target = str(slot_num)
-        send_goal_future.add_done_callback(lambda future: self._goal_response_callback(future, slot_num))
+        self._current_nav_target = target
+        self._set_navigation_status(f'Đang gửi điểm đến: {target}', 'active')
+        send_goal_future.add_done_callback(
+            lambda future, target=target, generation=generation:
+            self._goal_response_callback(future, target, generation)
+        )
         
-    def _goal_response_callback(self, future, slot_num):
-        goal_handle = future.result()
+    def _goal_response_callback(self, future, target, generation):
+        try:
+            goal_handle = future.result()
+        except Exception as exc:
+            if generation == self._navigation_generation:
+                self.log(f'[NAV] Không nhận được phản hồi goal: {exc}')
+                self.running_sequence = False
+                self._set_navigation_status('Không nhận được phản hồi từ Nav2', 'error')
+            return
+
+        if generation != self._navigation_generation:
+            if goal_handle.accepted:
+                goal_handle.cancel_goal_async()
+            return
+
         if goal_handle.accepted:
             self.ros_node.current_goal_handle = goal_handle
-            self.log(f'Đang điều hướng đến {slot_num}')
+            self.log(f'Đang điều hướng đến {target}')
+            self._set_navigation_status(f'Đang tới: {target}', 'active')
             result_future = goal_handle.get_result_async()
-            result_future.add_done_callback(self._goal_result_callback)
+            result_future.add_done_callback(
+                lambda future, target=target, generation=generation:
+                self._goal_result_callback(future, target, generation)
+            )
         else:
-            self.log(f'Mục tiêu {slot_num} bị từ chối')
+            self.log(f'Mục tiêu {target} bị từ chối')
             self.ros_node.current_goal_handle = None
-            if self.running_sequence:
-                self.running_sequence = False
+            self.running_sequence = False
+            self._set_navigation_status('Nav2 từ chối điểm đến', 'error')
 
     def _set_yaw_tolerance(self, value: float):
         """Dynamically set yaw_goal_tolerance on controller_server via ros2 param."""
@@ -809,27 +973,42 @@ class WaypointsModeLayout(QMainWindow):
             'goal_checker.yaw_goal_tolerance', str(value)
         ])
 
-    def _goal_result_callback(self, future):
-        status = future.result().status
-        print(f"[Nav] _goal_result_callback fired — status={status} (SUCCEEDED={GoalStatus.STATUS_SUCCEEDED})")
-        # Restore default yaw tolerance if it was relaxed for a return-here waypoint
-        wp = self.waypoints.get(str(self._current_nav_target), {})
-        if wp.get('yaw_tolerance'):
-            self._set_yaw_tolerance(0.25)
-        if status != GoalStatus.STATUS_SUCCEEDED:
-            self.log(f'[NAV] Mục tiêu không thành công (status={status}) — dừng chuỗi')
-            self.running_sequence = False
+    def _goal_result_callback(self, future, target, generation):
+        if generation != self._navigation_generation:
             return
 
-        self.log(f'Đã đến {self._current_nav_target}')
-        self._announce_arrival(self._current_nav_target)
+        try:
+            status = future.result().status
+        except Exception as exc:
+            self.ros_node.current_goal_handle = None
+            self.running_sequence = False
+            self.log(f'[NAV] Không nhận được kết quả goal: {exc}')
+            self._set_navigation_status('Không nhận được kết quả từ Nav2', 'error')
+            return
+        print(f"[Nav] result target={target}, status={status} (SUCCEEDED={GoalStatus.STATUS_SUCCEEDED})")
+        waypoint = self.waypoints.get(target, {})
+        self.ros_node.current_goal_handle = None
+        if waypoint.get('yaw_tolerance'):
+            self._set_yaw_tolerance(0.25)
+        if status != GoalStatus.STATUS_SUCCEEDED:
+            self.log(f'[NAV] Mục tiêu {target} không thành công (status={status}) — dừng chuỗi')
+            self.running_sequence = False
+            self._set_navigation_status(f'Không tới được: {target}', 'error')
+            return
+
+        self.log(f'Đã đến {target}')
+        self._announce_arrival(target)
 
         if self.running_sequence and self.current_sequence_index < len(self.selected_sequence) - 1:
             self.current_sequence_index += 1
-            self.navigate_to_waypoint(self.selected_sequence[self.current_sequence_index])
+            self.navigate_to_waypoint(
+                self.selected_sequence[self.current_sequence_index],
+                generation,
+            )
         else:
             self.running_sequence = False
             self.log('Đã hoàn thành chuỗi điều hướng')
+            self._set_navigation_status(f'Đã tới: {target}', 'ready')
 
     def _announce_arrival(self, target: str):
         print(f"[Announce] _announce_arrival called with target='{target}'")
@@ -845,18 +1024,26 @@ class WaypointsModeLayout(QMainWindow):
             self.log('Chưa chọn địa điểm nào.')
             return
         
+        self._navigation_generation += 1
+        generation = self._navigation_generation
         self.log(f'Bắt đầu chuỗi: {self.selected_sequence}')
         self.running_sequence = True
         self.current_sequence_index = 0
-        self.navigate_to_waypoint(self.selected_sequence[0])
+        self.navigate_to_waypoint(self.selected_sequence[0], generation)
     
     def reset_sequence(self):
+        self._navigation_generation += 1
+        if self.ros_node.current_goal_handle is not None:
+            self.ros_node.current_goal_handle.cancel_goal_async()
+            self.ros_node.current_goal_handle = None
         self.selected_sequence = []
         self.running_sequence = False
         self.current_sequence_index = 0
         self.log('Đã đặt lại chuỗi')
+        self._set_navigation_status('Lộ trình đã xóa', 'ready')
         
     def stop_navigation(self):
+        self._navigation_generation += 1
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
             self.ros_node.current_goal_handle = None
@@ -866,24 +1053,23 @@ class WaypointsModeLayout(QMainWindow):
         
         self.running_sequence = False
         self.selected_sequence = []
+        self.current_sequence_index = 0
         self.log('Đã xóa chuỗi')
+        self._set_navigation_status('Đã dừng điều hướng', 'ready')
 
-        def _get_current_map_waypoint_descriptors(self):
-            """Returns [{'key': ..., 'aliases': [...]}] for waypoints on the
-            current map, so ChatPanel's intent classifier can match whatever
-            alias the user says (from waypoints.json) back to the correct key."""
-            current_map = get_current_map_name()
-            return [
-                {'key': k, 'aliases': v.get('aliases', [])}
-                for k, v in self.waypoints.items()
-                if v.get('map_name') == current_map
-            ]
+    def _get_current_map_waypoint_descriptors(self):
+        current_map = get_current_map_name()
+        return [
+            {'key': key, 'aliases': waypoint.get('aliases', [])}
+            for key, waypoint in self.waypoints.items()
+            if waypoint.get('map_name') == current_map
+        ]
         
     def update_map_waypoints(self):
         """Show only waypoints belonging to the current map on the map widget."""
         current_map = get_current_map_name()
         filtered = {k: v for k, v in self.waypoints.items()
-                    if v.get('map_name') == current_map}
+                    if isinstance(v, dict) and v.get('map_name') == current_map}
         self.map_widget.set_waypoints(filtered)
 
     def open_waypoint_picker(self):
@@ -895,7 +1081,8 @@ class WaypointsModeLayout(QMainWindow):
                 self.selected_sequence = [key]
                 self.running_sequence = True
                 self.current_sequence_index = 0
-                self.navigate_to_waypoint(key)
+                self._navigation_generation += 1
+                self.navigate_to_waypoint(key, self._navigation_generation)
 
     def open_path_manager(self):
         multi_wp_file = f'{SOURCE_PATH}/robot_ui/multi_waypoints.json'
@@ -912,27 +1099,80 @@ class WaypointsModeLayout(QMainWindow):
             break   # accepted (run) or rejected (back)
 
     def _run_multi_path(self, sequence):
-        if not sequence:
+        if not isinstance(sequence, list) or not sequence:
+            self.log('[CẢNH BÁO] Lộ trình không có điểm đến hợp lệ')
+            return
+        missing_waypoints = [key for key in sequence if key not in self.waypoints]
+        if missing_waypoints:
+            self.log(
+                '[CẢNH BÁO] Lộ trình có điểm chưa tồn tại: '
+                + ', '.join(str(key) for key in missing_waypoints)
+            )
             return
         self.log(f'Đang chạy lộ trình: {sequence}')
-        self.selected_sequence = sequence
+        self.selected_sequence = list(sequence)
         self.running_sequence = True
         self.current_sequence_index = 0
-        self.navigate_to_waypoint(sequence[0])
+        self._navigation_generation += 1
+        self.navigate_to_waypoint(sequence[0], self._navigation_generation)
 
     def load_waypoints(self):
         try:
-            with open(self.waypoints_file, 'r') as f:
-                content = f.read().strip()
+            with open(self.waypoints_file, 'r', encoding='utf-8') as file:
+                content = file.read().strip()
                 if not content:
                     return {}
-                return json.loads(content)
-        except (FileNotFoundError, json.JSONDecodeError):
+                data = json.loads(content)
+            if not isinstance(data, dict):
+                raise ValueError('Waypoint file must contain a JSON object')
+
+            required_fields = ('x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'map_name')
+            valid_waypoints = {}
+            for key, waypoint in data.items():
+                if not isinstance(key, str) or not isinstance(waypoint, dict):
+                    continue
+                if any(field not in waypoint for field in required_fields):
+                    continue
+                if not isinstance(waypoint['map_name'], str):
+                    continue
+                try:
+                    coordinates = {
+                        field: float(waypoint[field])
+                        for field in required_fields[:-1]
+                    }
+                except (TypeError, ValueError):
+                    continue
+                if not all(math.isfinite(value) for value in coordinates.values()):
+                    continue
+                clean_waypoint = dict(waypoint)
+                clean_waypoint.update(coordinates)
+                aliases = clean_waypoint.get('aliases', [])
+                clean_waypoint['aliases'] = (
+                    [alias for alias in aliases if isinstance(alias, str)]
+                    if isinstance(aliases, list) else []
+                )
+                valid_waypoints[key] = clean_waypoint
+
+            skipped_count = len(data) - len(valid_waypoints)
+            if skipped_count:
+                print(f'[WAYPOINTS] Bỏ qua {skipped_count} waypoint không hợp lệ')
+            return valid_waypoints
+        except FileNotFoundError:
+            return {}
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            print(f'[WAYPOINTS] Không đọc được waypoint: {exc}')
             return {}
             
     def save_waypoints(self):
-        with open(self.waypoints_file, 'w') as f:
-            json.dump(self.waypoints, f, indent=2)
+        temp_path = self.waypoints_file + '.tmp'
+        try:
+            with open(temp_path, 'w', encoding='utf-8') as file:
+                json.dump(self.waypoints, file, indent=2, ensure_ascii=False)
+            os.replace(temp_path, self.waypoints_file)
+        except OSError as exc:
+            self.log(f'[ERROR] Không lưu được waypoint: {exc}')
+            return False
+        return True
             
     def log(self, message):
         from datetime import datetime
@@ -1004,14 +1244,8 @@ class WaypointsModeLayout(QMainWindow):
         self.selected_sequence = resolved
         self.running_sequence = True
         self.current_sequence_index = 0
-        self.navigate_to_waypoint(resolved[0])
-
-    def _on_voice_transcript(self, text: str):
-        """Forward unrecognized voice input to the AI chat panel."""
-        self.tab_chat.setChecked(True)
-        self._show_chat_panel()
-        self.chat_widget.chat_input.setText(text)
-        self.chat_widget.send_message()
+        self._navigation_generation += 1
+        self.navigate_to_waypoint(resolved[0], self._navigation_generation)
 
     def open_new_waypoint_dialog(self):
         if not self.ros_node.current_pose:
@@ -1037,9 +1271,11 @@ class WaypointsModeLayout(QMainWindow):
                 'qw': pose.pose.pose.orientation.w,
                 'map_name': get_current_map_name(),
             }
-            self.save_waypoints()
-            self.update_map_waypoints()
-            self.log(f'Đã lưu địa điểm mới: {name}')
+            if self.save_waypoints():
+                self.update_map_waypoints()
+                self.log(f'Đã lưu địa điểm mới: {name}')
+            else:
+                del self.waypoints[name]
 
     def load_map(self):
         dialog = LoadMapDialog(self)
@@ -1047,15 +1283,24 @@ class WaypointsModeLayout(QMainWindow):
             map_name = dialog.get_selected_map()
             if map_name:
                 self.log(f"Đang tải bản đồ: {map_name}")
-                update_map_files(map_name, self.log)
-                # Reload map display with new map image
-                map_yaml_path = get_current_map_path()
-                map_dir = os.path.dirname(map_yaml_path)
-                yaml_data = load_map_yaml(map_yaml_path)
-                map_image_path = os.path.join(map_dir, yaml_data['image'])
+                if self.running_sequence or self.ros_node.current_goal_handle is not None:
+                    self.stop_navigation()
+                if not update_map_files(map_name, self.log):
+                    return
+                try:
+                    map_yaml_path = get_current_map_path()
+                    map_dir = os.path.dirname(map_yaml_path)
+                    yaml_data = load_map_yaml(map_yaml_path)
+                    map_image_path = os.path.join(map_dir, yaml_data['image'])
+                except (OSError, KeyError, TypeError, ValueError, SyntaxError) as exc:
+                    self.log(f'[ERROR] Không tải được bản đồ mới: {exc}')
+                    return
+
                 self.map_widget.map_image = QPixmap(map_image_path)
-                self.map_widget.resolution = yaml_data['resolution']
+                self.map_widget.resolution = float(yaml_data['resolution'])
                 self.map_widget.origin = yaml_data['origin']
+                if self.map_widget.map_image.isNull():
+                    self.log('[ERROR] Không đọc được ảnh bản đồ đã chọn')
                 self.update_map_waypoints()
                 self.map_widget.update()
 
@@ -1066,6 +1311,7 @@ class WaypointsModeLayout(QMainWindow):
         self.close()
     
     def closeEvent(self, event):
+        self._navigation_generation += 1
         if self.ros_node.current_goal_handle is not None:
             self.ros_node.current_goal_handle.cancel_goal_async()
         if self.ros_node:

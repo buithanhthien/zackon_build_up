@@ -24,6 +24,11 @@ STOP_WORDS = {
     "thong", "tin", "toi", "ve", "xin",
 }
 
+PERSON_TITLE_TOKENS = {
+    "tien", "si", "thac", "cu", "nhan", "pho", "giao", "su",
+    "ts", "pgs", "gs",
+}
+
 # Query phrases that identify an attribute even when the JSON field name differs.
 ATTRIBUTE_ALIASES = {
     "dia_chi": (
@@ -58,10 +63,22 @@ PLURAL_PHRASES = (
 )
 
 FRESHNESS_PHRASES = (
+    # Questions that inherently require current information.
     "hom nay", "bay gio", "hien tai", "hien nay", "moi nhat", "moi day",
     "thoi tiet", "tin tuc", "gia ca", "ty gia",
     "today", "right now", "current", "currently", "latest", "newest",
     "weather", "news", "price", "exchange rate",
+
+    # Explicit requests from the user to use the Internet.
+    "tren mang",
+    "tim tren mang",
+    "tra tren mang",
+    "tra cuu tren mang",
+    "tim tren internet",
+    "tra cuu tren internet",
+    "search the web",
+    "search online",
+    "look it up online",
 )
 
 _DESCRIPTOR_KEYS = {"ten", "ten_day_du", "ten_tieng_anh", "viet_tat"}
@@ -261,6 +278,113 @@ class IuhLocalSearch:
             return record.value_type == "dien_thoai" or "dien thoai" in field
         return normalize_text(attribute.replace("_", " ")) == field
 
+    def _bo_mon_entries(self):
+        """Return known departments from the current structured IUH JSON."""
+        khoa = self.database.get("khoa_cong_nghe_dien", {})
+
+        if not isinstance(khoa, dict):
+            return []
+
+        bo_mon = khoa.get("bo_mon", [])
+
+        if not isinstance(bo_mon, list):
+            return []
+
+        result = []
+
+        for index, item in enumerate(bo_mon):
+            if not isinstance(item, dict):
+                continue
+
+            name = item.get("ten")
+
+            if isinstance(name, str) and name.strip():
+                result.append((index, name.strip()))
+
+        return result
+
+
+    def _mentioned_bo_mon(self, question_norm):
+        """
+        Detect a department explicitly mentioned by the user.
+
+        Example:
+        "bo mon cung cap"
+        -> Bộ môn Cung cấp & Hệ thống điện
+        """
+        if "bo mon" not in question_norm:
+            return None
+
+        query_tokens = _tokenize(question_norm)
+
+        candidates = []
+
+        for index, name in self._bo_mon_entries():
+            name_tokens = _tokenize(name)
+
+            # "bo" and "mon" identify the object type but do not
+            # distinguish one department from another.
+            distinctive_tokens = name_tokens - {"bo", "mon"}
+
+            hits = distinctive_tokens & query_tokens
+
+            if len(hits) >= 2:
+                candidates.append(
+                    (len(hits), index, name)
+                )
+
+        if not candidates:
+            return None
+
+        candidates.sort(
+            key=lambda item: (-item[0], item[1])
+        )
+
+        best = candidates[0]
+
+        # Two departments matching equally well -> do not guess.
+        if (
+            len(candidates) > 1
+            and candidates[1][0] == best[0]
+        ):
+            return None
+
+        return {
+            "index": best[1],
+            "name": best[2],
+        }
+
+
+    @staticmethod
+    def _lecturer_bo_mon_index(path):
+        """
+        Extract department index from a lecturer JSON path.
+
+        Example:
+        khoa_cong_nghe_dien.bo_mon.0.giang_vien.14
+        -> 0
+        """
+        parts = path.split(".")
+
+        try:
+            bo_mon_pos = parts.index("bo_mon")
+            giang_vien_pos = parts.index("giang_vien")
+        except ValueError:
+            return None
+
+        if giang_vien_pos <= bo_mon_pos:
+            return None
+
+        index_pos = bo_mon_pos + 1
+
+        if index_pos >= len(parts):
+            return None
+
+        try:
+            return int(parts[index_pos])
+        except ValueError:
+            return None
+
     def search(self, question: str, limit: int = 5) -> SearchResult:
         self.reload_if_changed()
         question_norm = normalize_text(question)
@@ -310,7 +434,16 @@ class IuhLocalSearch:
             if value_only_hits:
                 score += 0.5 * len(value_only_hits)
                 reasons.append("value_tokens:" + ",".join(value_only_hits))
+            if (
+                record.value_type == "text"
+                and isinstance(record.value, str)
+                and "giang_vien" in record.path
+            ):
+                scalar_tokens = _tokenize(record.value) - PERSON_TITLE_TOKENS
 
+                if len(scalar_tokens) >= 2 and scalar_tokens <= query_tokens:
+                    score += 5.0
+                    reasons.append("exact_person_scalar_tokens")
             # Strong bonus when a human-readable JSON path segment appears as a phrase.
             for part in record.path.split("."):
                 if part.isdigit():
@@ -373,11 +506,79 @@ class IuhLocalSearch:
                 "multiple_local_evidence_for_plural_question",
             )
 
+        # If every candidate matched only because of the requested
+        # attribute (email / phone / address / ...), but none matched
+        # the actual subject/entity in the question, local data is not
+        # sufficient. Do not ask the user to choose between unrelated
+        # records.
+        if near_top and all(
+            evidence.reasons
+            and all(
+                reason.startswith("attribute:")
+                for reason in evidence.reasons
+            )
+            for evidence in near_top
+        ):
+            return SearchResult(
+                "insufficient",
+                (),
+                "attribute_match_without_subject_match",
+            )
+
         if len(near_top) > 1:
             return SearchResult(
                 "ambiguous",
                 tuple(near_top[:limit]),
                 "multiple_local_candidates_with_similar_score",
+            )
+
+        # ------------------------------------------------------------
+        # Person / department consistency check
+        # ------------------------------------------------------------
+
+        actual_bo_mon_index = self._lecturer_bo_mon_index(
+            top.path
+        )
+
+        mentioned_bo_mon = self._mentioned_bo_mon(
+            question_norm
+        )
+
+        if (
+            actual_bo_mon_index is not None
+            and mentioned_bo_mon is not None
+            and actual_bo_mon_index
+                != mentioned_bo_mon["index"]
+        ):
+            actual_entries = dict(
+                self._bo_mon_entries()
+            )
+
+            actual_name = actual_entries.get(
+                actual_bo_mon_index,
+                "",
+            )
+
+            department_path = (
+                "khoa_cong_nghe_dien."
+                f"bo_mon.{actual_bo_mon_index}.ten"
+            )
+
+            department_evidence = Evidence(
+                path=department_path,
+                field="ten",
+                value=actual_name,
+                score=top.score,
+                reasons=("actual_parent_department",),
+            )
+
+            return SearchResult(
+                "ambiguous",
+                (
+                    top,
+                    department_evidence,
+                ),
+                "person_department_conflict",
             )
 
         return SearchResult("sufficient", (top,), "single_strong_local_evidence")

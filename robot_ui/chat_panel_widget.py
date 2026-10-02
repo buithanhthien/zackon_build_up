@@ -611,6 +611,15 @@ class _AIChatWorker(QObject):
             - Không nói rằng đã tìm kiếm trên Internet.
             - Trả lời ngắn gọn khoảng 2 đến 4 câu.
             - Câu trả lời sẽ được robot đọc bằng TTS.
+            - Khi câu hỏi yêu cầu số điện thoại, email hoặc thông tin liên hệ
+            của một giảng viên/cá nhân tại IUH, chỉ sử dụng thông tin được công khai
+            trên nguồn chính thức của IUH hoặc website chính thức của đơn vị thuộc IUH.
+            - Không sử dụng số điện thoại cá nhân lấy từ mạng xã hội, danh bạ,
+            trang tổng hợp, diễn đàn hoặc nguồn bên thứ ba.
+            - Nếu không tìm thấy thông tin liên hệ cá nhân trên nguồn chính thức,
+            hãy nói rõ rằng chưa tìm thấy thông tin liên hệ cá nhân được IUH công khai.
+            - Không được lấy số điện thoại chung của Khoa, Phòng hoặc Trường
+            rồi trình bày như thể đó là số điện thoại cá nhân của giảng viên.
         """
 
         web_input = f"""

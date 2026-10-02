@@ -90,6 +90,107 @@ class IuhLocalSearchTests(unittest.TestCase):
         )
         self.assertIsInstance(result.evidence[0].value, list)
 
+    def test_exact_lecturer_name_prefers_scalar_item_hoang_dinh_khoi(self):
+        result = self.search.search(
+            "Thông tin về thầy Hoàng Đình Khôi của Khoa Công nghệ Điện"
+        )
+
+        self.assertEqual(result.status, "sufficient")
+        self.assertEqual(
+            result.evidence[0].path,
+            "khoa_cong_nghe_dien.bo_mon.3.giang_vien.5",
+        )
+        self.assertEqual(
+            result.evidence[0].value,
+            "Tiến Sĩ Hoàng Đình Khôi",
+        )
+
+
+    def test_exact_lecturer_name_prefers_scalar_item_phan_xuan_le(self):
+        result = self.search.search(
+            "Thông tin về thầy Phan Xuân Lễ của Khoa Công nghệ Điện"
+        )
+
+        self.assertEqual(result.status, "sufficient")
+        self.assertEqual(
+            result.evidence[0].path,
+            "khoa_cong_nghe_dien.bo_mon.0.giang_vien.14",
+        )
+        self.assertEqual(
+            result.evidence[0].value,
+            "Tiến Sĩ Phan Xuân Lễ",
+        )
+
+    def test_person_department_conflict_is_detected(self):
+        result = self.search.search(
+            "Thông tin về thầy Phan Xuân Lễ của Bộ môn Cung cấp"
+        )
+
+        self.assertEqual(result.status, "ambiguous")
+        self.assertIn(
+            "khoa_cong_nghe_dien.bo_mon.0.giang_vien.14",
+            [e.path for e in result.evidence],
+        )
+
+    def test_person_correct_department_remains_sufficient(self):
+        result = self.search.search(
+            "Thông tin về thầy Phan Xuân Lễ của Bộ môn Cơ sở ngành"
+        )
+
+        self.assertEqual(result.status, "sufficient")
+        self.assertEqual(
+            result.evidence[0].path,
+            "khoa_cong_nghe_dien.bo_mon.0.giang_vien.14",
+        )
+
+    def test_person_phone_does_not_fall_back_to_faculty_phone(self):
+        result = self.search.search(
+            "Số điện thoại của thầy Trần Thanh Ngọc trưởng khoa "
+            "Khoa Công nghệ Điện là bao nhiêu?"
+        )
+
+        self.assertEqual(result.status, "insufficient")
+
+        selected_paths = [
+            evidence.path
+            for evidence in result.evidence
+        ]
+
+        self.assertNotIn(
+            "khoa_cong_nghe_dien.lien_he_truc_tiep.dien_thoai",
+            selected_paths,
+        )
+
+    def test_explicit_web_request_requires_web(self):
+        self.assertTrue(
+            requires_web_for_freshness(
+                "Hãy tìm trên mạng số điện thoại của "
+                "Khoa Công nghệ Hóa học ở IUH"
+            )
+        )
+
+    def test_training_office_location_missing_is_insufficient_not_ambiguous(self):
+        result = self.search.search(
+            "Phòng Đào tạo của Trường Đại học Công nghiệp nằm ở đâu?"
+        )
+
+        self.assertEqual(result.status, "insufficient")
+
+    def test_plural_campus_address_query_is_not_treated_as_missing_subject(self):
+        result = self.search.search(
+            "Cho tôi địa chỉ các cơ sở của IUH"
+        )
+
+        self.assertNotEqual(result.status, "insufficient")
+        self.assertTrue(result.evidence)
+
+        self.assertTrue(
+            any(
+                evidence.path.startswith("co_so.")
+                and evidence.field == "dia_chi"
+                for evidence in result.evidence
+            )
+        )
 
 if __name__ == "__main__":
     unittest.main()

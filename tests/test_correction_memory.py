@@ -226,6 +226,19 @@ class WorkerIntegrationTests(unittest.TestCase):
         instance._search_web.assert_not_called()
         instance.response_ready.emit.assert_called_once_with("memory offline: local answer")
 
+    def test_explicit_web_request_forces_web_even_if_local_matches(self):
+        instance = self._run_worker(
+            local_status="sufficient",
+            force_web=True,
+        )
+
+        instance._search_web.assert_called_once()
+        instance._answer_from_local.assert_not_called()
+        instance.response_ready.emit.assert_called_once_with(
+            "web answer"
+        )
+    
+
 
 if __name__ == "__main__":
     unittest.main()

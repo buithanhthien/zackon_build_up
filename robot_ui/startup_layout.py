@@ -1496,8 +1496,8 @@ class RobotUI(QMainWindow):
 
     def show_stm32_diagnostics(self):
 
-        STM32_IP = "192.168.4.50"
-        STM32_IFACE = "enx00e04c534458"
+        STM32_IP = os.environ.get("STM32_IP", "192.168.4.50")
+        STM32_IFACE = os.environ.get("STM32_IFACE", "enx00e04c534458")
 
         now = time.monotonic()
 
@@ -1536,6 +1536,22 @@ class RobotUI(QMainWindow):
 
         except Exception:
             agent_port_ok = False
+
+        # Report systemd's startup state as well as the UDP socket.
+        service_state = "Không đọc được trạng thái"
+        try:
+            result = subprocess.run(
+                ["systemctl", "show", "microros_agent.service",
+                 "--property=ActiveState,SubState,Result"],
+                capture_output=True, text=True, timeout=1.0
+            )
+            if result.returncode == 0:
+                values = dict(line.split("=", 1) for line in
+                              result.stdout.splitlines() if "=" in line)
+                service_state = "/".join(values.get(key, "?") for key in
+                                        ("ActiveState", "SubState", "Result"))
+        except (OSError, subprocess.TimeoutExpired):
+            pass
 
         # ========================================================
         # 3. micro_ros_agent process
@@ -1666,7 +1682,9 @@ class RobotUI(QMainWindow):
 
             diagnosis = (
                 "micro-ROS Agent không chạy.\n\n"
-                "Có thể Agent đã bị tắt hoặc crash."
+                f"Service: {service_state}.\n"
+                "Nếu ở activating/start-pre: kiểm tra điều kiện "
+                "ExecStartPre và IP Ethernet của mini PC."
             )
 
         elif not agent_port_ok:
@@ -1741,6 +1759,8 @@ class RobotUI(QMainWindow):
 
             f"Lần cuối nhận: "
             f"{odom_text}\n\n"
+
+            f"Service Agent: {service_state}\n"
 
             f"micro-ROS process: "
             f"{'OK' if agent_process_ok else 'DOWN'}\n"

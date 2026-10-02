@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from urllib.error import URLError
 
 from robot_ui.correction_memory import CorrectionMemory, MemoryUnavailable
+from robot_ui.conversation_policy import answer_turn
 
 
 def client_for(action, fact="", document_id="", answer=""):
@@ -56,7 +57,9 @@ class MemoryTests(unittest.TestCase):
         with patch.object(self.memory, "recall", return_value=[{"document_id": "a-room"}]), \
                 patch.object(self.memory, "retain") as retain:
             self.respond(client_for("correct", fact="A is at X5.8", document_id="a-room"))
-        retain.assert_called_once_with("A is at X5.8", "a-room")
+        retain.assert_called_once()
+        self.assertEqual(retain.call_args.args[:2], ("A is at X5.8", "a-room"))
+        self.assertEqual(retain.call_args.args[2]["derivation"], "stated")
 
     def test_unknown_document_cannot_be_overwritten(self):
         with patch.object(self.memory, "recall", return_value=[]), \
@@ -154,9 +157,9 @@ class MemoryTests(unittest.TestCase):
 
 class WorkerIntegrationTests(unittest.TestCase):
     def _run_worker(self, local_status="sufficient", memory_answer=None,
-                    force_web=False, warning=""):
+                    force_web=False, warning="", route=None, language_plan=None):
         # Execute the actual worker method without importing Qt/ROS/audio hardware.
-        source = Path("robot_ui/chat_panel_widget.py").read_text()
+        source = Path("robot_ui/chat_panel_widget.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         worker = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "_AIChatWorker")
         run = next(n for n in worker.body if isinstance(n, ast.FunctionDef) and n.name == "run")
@@ -165,7 +168,12 @@ class WorkerIntegrationTests(unittest.TestCase):
             "OpenAI": Mock(),
             "OPENAI_API_KEY": "test",
             "OPENAI_MODEL": "test",
-            "requires_web_for_freshness": Mock(return_value=force_web),
+            "plan_turn": Mock(return_value={
+                "route": route or ("web" if force_web else "local"),
+                "query": "Where is A?",
+                **(language_plan or {}),
+            }),
+            "answer_turn": answer_turn,
         }
         exec(compile(module, "worker-test", "exec"), namespace)
 
@@ -184,6 +192,7 @@ class WorkerIntegrationTests(unittest.TestCase):
         instance._answer_from_local.return_value = "local answer"
         instance._search_web.return_value = "web answer"
         instance._clarify_local.return_value = "clarify"
+        instance._answer_general.return_value = "general answer"
 
         namespace["run"](instance)
         return instance
@@ -208,14 +217,13 @@ class WorkerIntegrationTests(unittest.TestCase):
     def test_current_question_forces_web_and_disables_old_memory_answer(self):
         instance = self._run_worker(local_status="sufficient", force_web=True)
         instance._search_web.assert_called_once()
-        kwargs = instance.memory.respond.call_args.kwargs
-        self.assertIs(kwargs["allow_memory_answer"], False)
+        instance.memory.respond.assert_not_called()
 
-    def test_ambiguous_local_question_clarifies_without_memory_or_web(self):
+    def test_ambiguous_retrieval_does_not_force_clarification(self):
         instance = self._run_worker(local_status="ambiguous")
         instance.memory.respond.assert_not_called()
-        instance._search_web.assert_not_called()
-        instance.response_ready.emit.assert_called_once_with("clarify")
+        instance._search_web.assert_called_once()
+        instance.response_ready.emit.assert_called_once_with("web answer")
 
     def test_memory_warning_does_not_block_local_answer(self):
         instance = self._run_worker(
@@ -224,7 +232,34 @@ class WorkerIntegrationTests(unittest.TestCase):
         )
         instance._answer_from_local.assert_called_once()
         instance._search_web.assert_not_called()
-        instance.response_ready.emit.assert_called_once_with("memory offline: local answer")
+        instance.response_ready.emit.assert_called_once_with("local answer")
+
+    def test_general_task_skips_iuh_retrieval_and_memory(self):
+        instance = self._run_worker(route="general", warning="memory offline: ")
+        instance._search_local.assert_not_called()
+        instance.memory.respond.assert_not_called()
+        instance._search_web.assert_not_called()
+        instance.response_ready.emit.assert_called_once_with("general answer")
+        instance.finished.emit.assert_called_once()
+
+    def test_reply_language_and_future_preference_are_forwarded_separately(self):
+        instance = self._run_worker(route="memory", language_plan={
+            "reply_language": "en", "conversation_language": "vi"})
+        instance.language_ready.emit.assert_called_once_with("en", "vi")
+        self.assertEqual(instance.memory.respond.call_args.args[4], "en")
+
+    def test_clarification_uses_conversation_instead_of_iuh_template(self):
+        instance = self._run_worker(route="clarify")
+        instance._search_local.assert_not_called()
+        instance._clarify_local.assert_not_called()
+        instance._answer_general.assert_called_once()
+
+    def test_explicit_memory_turn_preserves_save_acknowledgement(self):
+        instance = self._run_worker(route="memory", memory_answer="not saved long term")
+        instance._search_local.assert_called_once()
+        self.assertTrue(instance.memory.respond.call_args.kwargs["local_evidence"])
+        self.assertIn("not saved long term", instance._answer_general.call_args.args[1])
+        instance.response_ready.emit.assert_called_once_with("general answer")
 
     def test_explicit_web_request_forces_web_even_if_local_matches(self):
         instance = self._run_worker(

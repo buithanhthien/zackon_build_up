@@ -84,6 +84,45 @@ python3 -m unittest discover -s tests -v
 API contract checked against the pinned version:
 https://github.com/vectorize-io/hindsight/blob/v0.4.9/hindsight-api/hindsight_api/api/http.py
 
+## Local IUH lookup and correction overlay
+
+`robot_ui/iuh_database.json` remains the repository-managed source of IUH data.
+The chat route now searches that JSON deterministically through
+`robot_ui/iuh_local_search.py` and keeps the selected JSON path with each local
+evidence item. The LLM may phrase the final answer, but it no longer decides by
+itself whether the whole JSON database is sufficient.
+
+The local search object checks the JSON file modification time before every
+search. If an operator edits `iuh_database.json` while the UI is running, the
+next chat lookup reloads the file automatically after the edit has been saved.
+
+A correction that targets one local JSON fact is stored as an overlay, not
+written back into `iuh_database.json`. Its Hindsight metadata includes the exact
+`json_path` and the JSON value that was present when the correction was taught
+(`base_json_value`). Only a correction with the same path and the same base value
+may override local evidence. Corrections for other paths are filtered out before
+they are shown to the correction-routing LLM.
+
+Each scoped JSON path uses one stable correction document ID. Re-teaching the
+same path replaces that correction instead of creating parallel versions. If the
+repository value later changes, the old correction becomes stale and no longer
+overrides the repository value.
+
+Questions that clearly request fresh information (for example latest news,
+weather, prices, or current information) bypass the local answer and use web
+search. Ambiguous local questions ask for clarification rather than guessing. If
+Hindsight is unavailable, local JSON lookup and web fallback continue normally;
+only persisted corrections from earlier sessions may be unavailable.
+
+Regression tests for this routing can be run with:
+
+```bash
+python3 -m unittest -v \
+  tests/test_iuh_local_search.py \
+  tests/test_correction_scope.py \
+  tests/test_correction_memory.py
+```
+
 ## Start and stop
 
 The container restarts automatically after a Docker/PC restart once it has been

@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from voice_engine import VoiceEngine
 from correction_memory import CorrectionMemory
+from iuh_local_search import IuhLocalSearch, requires_web_for_freshness
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -411,13 +412,17 @@ class _AIChatWorker(QObject):
     error_occurred = pyqtSignal(str)
     finished       = pyqtSignal()
 
-    def __init__(self, history, language, memory=None):
+    def __init__(self, history, language, memory=None, local_search=None):
 
         super().__init__()
 
         self.history = history
         self.language = language
         self.memory = memory if memory is not None else CorrectionMemory()
+        self.local_search = (
+            local_search if local_search is not None
+            else IuhLocalSearch(IUH_DATABASE_PATH)
+        )
 
     def _response_language_instruction(self):
 
@@ -490,166 +495,79 @@ class _AIChatWorker(QObject):
         return "\n".join(lines)
 
     # ============================================================
-    # BƯỚC 1
-    #
-    # Kiểm tra xem IUH database có đủ dữ liệu hay không.
-    #
-    # Nếu có:
-    # {
-    #     "source": "database",
-    #     "answer": "..."
-    # }
-    #
-    # Nếu không:
-    # {
-    #     "source": "web",
-    #     "answer": ""
-    # }
+    # LOCAL IUH RETRIEVAL
+    # Deterministic routing with verifiable JSON paths.
     # ============================================================
 
-    def _check_database(
-        self,
-        client,
-        question,
-        context
-    ):
-        language_instruction = (
-            self._response_language_instruction()
+    def _search_local(self, question):
+        result = self.local_search.search(question)
+        paths = [item.path for item in result.evidence]
+        print(
+            f"[CHAT LOCAL] status={result.status} "
+            f"reason={result.reason} paths={paths}"
         )
+        return result
+
+    def _clarify_local(self, question):
+        normalized = _remove_vietnamese_accents(question)
+        if self.language == "en":
+            if "address" in normalized or "where" in normalized:
+                return "Which IUH campus, office, or subject do you mean?"
+            if "email" in normalized:
+                return "Which IUH unit or person do you want the email for?"
+            return "Could you specify which IUH subject or item you mean?"
+
+        if "dia chi" in normalized or "o dau" in normalized:
+            return "Bạn muốn hỏi địa chỉ của cơ sở, phòng hoặc đối tượng nào của IUH?"
+        if "email" in normalized:
+            return "Bạn muốn hỏi email của đơn vị hoặc người nào ở IUH?"
+        if "dien thoai" in normalized or "so dien thoai" in normalized:
+            return "Bạn muốn hỏi số điện thoại của đơn vị hoặc cơ sở nào ở IUH?"
+        return "Bạn nói rõ giúp mình đang hỏi đối tượng hoặc thông tin nào của IUH nhé."
+
+    def _answer_from_local(self, client, question, context, local_result):
+        language_instruction = self._response_language_instruction()
+        evidence = []
+        for item in local_result.evidence:
+            if hasattr(item, "to_dict"):
+                evidence.append(item.to_dict())
+            else:
+                evidence.append({
+                    "path": getattr(item, "path", ""),
+                    "value": getattr(item, "value", ""),
+                })
 
         prompt = f"""
-            Bạn là bộ kiểm tra dữ liệu cho robot Bé Son.
-
-            Nhiệm vụ:
-
-            Kiểm tra xem CƠ SỞ DỮ LIỆU IUH bên dưới có đủ thông tin
-            để trả lời câu hỏi của người dùng hay không.
-
-            QUY TẮC RẤT QUAN TRỌNG:
-
-            1. Chỉ sử dụng dữ liệu có trong CƠ SỞ DỮ LIỆU IUH.
-
-            2. Không được dùng kiến thức riêng của mô hình để giả vờ
-            rằng thông tin có trong database.
-
-            3. Nếu database có đủ thông tin:
-            trả về:
-
-            {{
-                "source": "database",
-                "answer": "câu trả lời"
-            }}
-
-            4. Nếu database không có hoặc không đủ thông tin:
-            trả về:
-
-            {{
-                "source": "web",
-                "answer": ""
-            }}
-
-            5. Nếu câu hỏi là kiến thức chung không liên quan tới IUH,
-            ví dụ:
-            - danh lam thắng cảnh Việt Nam
-            - lịch sử thế giới
-            - khoa học
-            - công nghệ
-            - thể thao
-
-            thì database IUH không chứa dữ liệu phù hợp,
-            vì vậy phải chọn "web".
-
-            6. Nếu câu hỏi yêu cầu thông tin hiện tại như:
-            - hôm nay
-            - mới nhất
-            - hiện nay
-            - thời tiết
-            - tin tức
-            - sự kiện
-            - giá cả
-
-            và database không chứa dữ liệu cập nhật đó,
-            phải chọn "web".
-
-            7. Nếu trả lời từ database:
+            Bạn là Bé Son, robot trợ lý tại IUH.
 
             {language_instruction}
 
-            - Bắt buộc tuân thủ đúng ngôn ngữ trên.
-            - Trả lời ngắn gọn.
-            - Trả lời tự nhiên.
-            - Không bịa thêm thông tin.
-
-            8. Chỉ trả về JSON.
-            Không markdown.
-            Không giải thích bên ngoài JSON.
-
-
-            ===== CƠ SỞ DỮ LIỆU IUH =====
-
-            {IUH_DATABASE_TEXT}
-
-            ===== KẾT THÚC DATABASE =====
-
+            Chỉ trả lời dựa trên LOCAL EVIDENCE bên dưới.
+            Không dùng kiến thức riêng, không suy đoán, không bổ sung dữ kiện
+            không có trong evidence. JSON path chỉ dùng để kiểm chứng nội bộ;
+            không cần đọc path cho người dùng trừ khi họ hỏi cách xác minh.
+            Trả lời tự nhiên, ngắn gọn khoảng 1 đến 3 câu.
 
             Ngữ cảnh hội thoại gần đây:
-
             {context}
 
-
-            Câu hỏi hiện tại:
-
+            Câu hỏi:
             {question}
+
+            LOCAL EVIDENCE:
+            {json.dumps(evidence, ensure_ascii=False, indent=2)}
         """
 
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
-
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-
-            max_completion_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+            max_completion_tokens=350,
             temperature=0,
         )
-
-        raw = (
-            response
-            .choices[0]
-            .message
-            .content
-            or ""
-        ).strip()
-
-        # Nếu model lỡ bọc JSON bằng ```json
-        if raw.startswith("```"):
-
-            raw = raw.strip("`").strip()
-
-            if raw.lower().startswith("json"):
-                raw = raw[4:].strip()
-
-        data = json.loads(raw)
-
-        if not isinstance(data, dict):
-            raise ValueError(
-                "Database router không trả JSON object"
-            )
-
-        source = data.get("source")
-
-        if source not in (
-            "database",
-            "web"
-        ):
-            raise ValueError(
-                f"Database router trả source không hợp lệ: {source}"
-            )
-
-        return data
+        answer = (response.choices[0].message.content or "").strip()
+        if not answer:
+            raise RuntimeError("Local evidence answer is empty")
+        return answer
 
     # ============================================================
     # BƯỚC 2
@@ -748,93 +666,63 @@ class _AIChatWorker(QObject):
     def run(self):
         try:
             client = OpenAI(api_key=OPENAI_API_KEY)
-            question = (self._get_latest_user_question())
+            question = self._get_latest_user_question()
             if not question:
+                raise ValueError("Không tìm thấy câu hỏi người dùng")
 
-                raise ValueError(
-                    "Không tìm thấy câu hỏi người dùng"
-                )
+            context = self._get_recent_context()
+            force_web = requires_web_for_freshness(question)
+            local_result = self._search_local(question)
 
-            context = (
-                self._get_recent_context()
-            )
-
-            memory_answer = self.memory.respond(
-                client, OPENAI_MODEL, question, context, self.language
-            )
-            if memory_answer is not None:
-                self.response_ready.emit(memory_answer)
+            # Ambiguous local evidence must be clarified rather than guessed.
+            # Current/freshness questions are an exception: they intentionally go web.
+            if local_result.status == "ambiguous" and not force_web:
+                self.response_ready.emit(self._clarify_local(question))
                 return
 
-            # ----------------------------------------------------
-            # Bước 1: hỏi database
-            # ----------------------------------------------------
-
-            route = self._check_database(
-                client,
-                question,
-                context
+            local_evidence = (
+                local_result.evidence
+                if local_result.status == "sufficient"
+                else None
             )
 
-            source = route.get("source")
+            # Correction recognition still happens on every non-ambiguous turn.
+            # For current-data questions, old memory is not allowed to suppress web,
+            # but an explicit new correction can still be captured/acknowledged.
+            memory_answer = self.memory.respond(
+                client,
+                OPENAI_MODEL,
+                question,
+                context,
+                self.language,
+                local_evidence=local_evidence,
+                allow_memory_answer=not force_web,
+            )
+            if memory_answer is not None:
+                self.response_ready.emit(self.memory.warning + memory_answer)
+                return
 
-            #print(f"[CHAT ROUTE] source={source}")
+            if force_web:
+                print("[CHAT ROUTE] Current/fresh question -> Web Search")
+                answer = self._search_web(client, question, context)
 
-            # ----------------------------------------------------
-            # Database có dữ liệu
-            # ----------------------------------------------------
-
-            if source == "database":
-
-                answer = str(
-                    route.get("answer", "")
-                ).strip()
-
-                if not answer:
-
-                    raise ValueError(
-                        "Database có source=database "
-                        "nhưng answer rỗng"
-                    )
-
-                print(
-                    "[CHAT ROUTE] "
-                    "Using IUH database"
+            elif local_result.status == "sufficient":
+                print("[CHAT ROUTE] Using deterministic IUH local evidence")
+                answer = self._answer_from_local(
+                    client, question, context, local_result
                 )
-
-            # ----------------------------------------------------
-            # Database không có -> Internet
-            # ----------------------------------------------------
 
             else:
+                print("[CHAT ROUTE] Local evidence insufficient -> Web Search")
+                answer = self._search_web(client, question, context)
 
-                print(
-                    "[CHAT ROUTE] "
-                    "Database insufficient -> Web Search"
-                )
-
-                answer = self._search_web(
-                    client,
-                    question,
-                    context
-                )
-
-            self.response_ready.emit(
-                self.memory.warning + answer
-            )
+            self.response_ready.emit(self.memory.warning + answer)
 
         except Exception as e:
-
-            print(
-                f"[CHAT ERROR] {e}"
-            )
-
-            self.error_occurred.emit(
-                str(e)[:300]
-            )
+            print(f"[CHAT ERROR] {e}")
+            self.error_occurred.emit(str(e)[:300])
 
         finally:
-
             self.finished.emit()
 
 class _IntentWorker(QObject):
@@ -943,6 +831,7 @@ class ChatPanel(QWidget):
 
         self._language = get_language()
         self._correction_memory = CorrectionMemory()
+        self._local_search = IuhLocalSearch(IUH_DATABASE_PATH)
 
         self._chat_history = [
             {
@@ -1153,6 +1042,7 @@ class ChatPanel(QWidget):
             list(self._chat_history),
             self._ai_request_language,
             self._correction_memory,
+            self._local_search,
         )
 
         self._ai_thread = QThread()

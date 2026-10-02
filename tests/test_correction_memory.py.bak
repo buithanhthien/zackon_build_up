@@ -153,78 +153,36 @@ class MemoryTests(unittest.TestCase):
 
 
 class WorkerIntegrationTests(unittest.TestCase):
-    def _run_worker(self, local_status="sufficient", memory_answer=None,
-                    force_web=False, warning=""):
+    def test_memory_precedes_local_and_web_and_always_finishes(self):
         # Execute the actual worker method without importing Qt/ROS/audio hardware.
         source = Path("robot_ui/chat_panel_widget.py").read_text()
         tree = ast.parse(source)
         worker = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "_AIChatWorker")
         run = next(n for n in worker.body if isinstance(n, ast.FunctionDef) and n.name == "run")
         module = ast.Module(body=[run], type_ignores=[])
-        namespace = {
-            "OpenAI": Mock(),
-            "OPENAI_API_KEY": "test",
-            "OPENAI_MODEL": "test",
-            "requires_web_for_freshness": Mock(return_value=force_web),
-        }
-        exec(compile(module, "worker-test", "exec"), namespace)
-
-        evidence = (SimpleNamespace(path="lien_he.phong_dao_tao", value="x"),)
-        local_result = SimpleNamespace(
-            status=local_status,
-            evidence=evidence if local_status != "insufficient" else (),
-            reason="test",
-        )
-        instance = Mock(language="en")
-        instance.memory.warning = warning
-        instance.memory.respond.return_value = memory_answer
-        instance._get_latest_user_question.return_value = "Where is A?"
-        instance._get_recent_context.return_value = "context"
-        instance._search_local.return_value = local_result
-        instance._answer_from_local.return_value = "local answer"
-        instance._search_web.return_value = "web answer"
-        instance._clarify_local.return_value = "clarify"
-
-        namespace["run"](instance)
-        return instance
-
-    def test_local_evidence_answers_without_web(self):
-        instance = self._run_worker(local_status="sufficient")
-        instance._answer_from_local.assert_called_once()
-        instance._search_web.assert_not_called()
-        instance.response_ready.emit.assert_called_once_with("local answer")
-
-    def test_memory_can_override_matching_local_evidence(self):
-        instance = self._run_worker(local_status="sufficient", memory_answer="corrected")
-        instance._answer_from_local.assert_not_called()
-        instance._search_web.assert_not_called()
-        instance.response_ready.emit.assert_called_once_with("corrected")
-
-    def test_insufficient_local_evidence_falls_back_to_web(self):
-        instance = self._run_worker(local_status="insufficient")
-        instance._search_web.assert_called_once()
-        instance.response_ready.emit.assert_called_once_with("web answer")
-
-    def test_current_question_forces_web_and_disables_old_memory_answer(self):
-        instance = self._run_worker(local_status="sufficient", force_web=True)
-        instance._search_web.assert_called_once()
-        kwargs = instance.memory.respond.call_args.kwargs
-        self.assertIs(kwargs["allow_memory_answer"], False)
-
-    def test_ambiguous_local_question_clarifies_without_memory_or_web(self):
-        instance = self._run_worker(local_status="ambiguous")
-        instance.memory.respond.assert_not_called()
-        instance._search_web.assert_not_called()
-        instance.response_ready.emit.assert_called_once_with("clarify")
-
-    def test_memory_warning_does_not_block_local_answer(self):
-        instance = self._run_worker(
-            local_status="sufficient",
-            warning="memory offline: ",
-        )
-        instance._answer_from_local.assert_called_once()
-        instance._search_web.assert_not_called()
-        instance.response_ready.emit.assert_called_once_with("memory offline: local answer")
+        for memory_answer in ("X5.7", None):
+            factory = Mock()
+            factory.return_value.respond.return_value = memory_answer
+            namespace = {"OpenAI": Mock(), "OPENAI_API_KEY": "test", "OPENAI_MODEL": "test",
+                         "CorrectionMemory": factory}
+            exec(compile(module, "worker-test", "exec"), namespace)
+            instance = Mock(language="en")
+            instance.memory = factory.return_value
+            instance.memory.warning = ""
+            instance._get_latest_user_question.return_value = "Where is A?"
+            instance._get_recent_context.return_value = "context"
+            instance._check_database.return_value = {"source": "web"}
+            instance._search_web.return_value = "web answer"
+            namespace["run"](instance)
+            if memory_answer:
+                instance._check_database.assert_not_called()
+                instance._search_web.assert_not_called()
+            else:
+                instance._check_database.assert_called_once()
+                instance._search_web.assert_called_once()
+            instance.response_ready.emit.assert_called_once_with(memory_answer or "web answer")
+            instance.finished.emit.assert_called_once()
+            instance.error_occurred.emit.assert_not_called()
 
 
 if __name__ == "__main__":

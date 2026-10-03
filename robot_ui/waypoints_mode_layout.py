@@ -4,10 +4,11 @@ import json
 import subprocess
 import os
 import math
+import uuid
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                               QLabel, QListWidget, QListWidgetItem, QTextEdit,
                               QApplication, QMainWindow, QSizePolicy, QDialog, QLineEdit,
-                              QMessageBox, QSplitter, QTabWidget)
+                              QMessageBox, QSplitter, QTabWidget, QCheckBox)
 from PyQt6.QtCore import Qt, QTimer, QPointF, QMetaObject, Q_ARG, pyqtSignal
 from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor, QTransform, QFontDatabase, QTextCursor
@@ -28,6 +29,9 @@ from styles import MAIN_STYLESHEET, DIALOG_STYLESHEET
 from ui_utils import append_log, setup_clock_timer
 from map_utils import get_current_map_path, load_map_yaml, get_current_map_name, update_map_files
 from process_manager import ProcessManager
+from waypoint_store import (normalize_waypoints, load_waypoint_file,
+                            save_waypoint_file, deletion_reason, route_references,
+                            resolve_waypoint)
 
 
 class WaypointsNode(Node):
@@ -105,7 +109,7 @@ class MapWidget(QWidget):
             px, py = self.world_to_pixel(wp['x'], wp['y'])
             px = int(px * scale_x + x_offset)
             py = int(py * scale_y + y_offset)
-            self._draw_arrow(painter, px, py, slot)
+            self._draw_arrow(painter, px, py, wp.get('display_name', slot))
 
         if self.robot_pose:
             px, py = self.world_to_pixel(
@@ -173,6 +177,9 @@ class NewWaypointDialog(QDialog):
         self.name_input.setPlaceholderText("Enter name...")
         self.name_input.returnPressed.connect(self.accept)
         layout.addWidget(self.name_input)
+        self.deletable_checkbox = QCheckBox("Cho phép xóa")
+        self.deletable_checkbox.setChecked(True)
+        layout.addWidget(self.deletable_checkbox)
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
@@ -191,14 +198,19 @@ class NewWaypointDialog(QDialog):
     def get_name(self):
         return self.name_input.text().strip()
 
+    def get_deletable(self):
+        return self.deletable_checkbox.isChecked()
+
 
 class WaypointPickerDialog(QDialog):
-    def __init__(self, waypoints, current_map_name, parent=None):
+    def __init__(self, waypoints, current_map_name, parent=None, delete_callback=None):
         super().__init__(parent)
         self.setWindowTitle("Chọn địa điểm")
         self.setModal(True)
         self.resize(480, 560)
         self._selected_key = None
+        self._waypoints = normalize_waypoints(waypoints)
+        self._delete_callback = delete_callback
         self.setStyleSheet("""
             QDialog { background-color: #f0f4ff; color: #1a2a5e; }
             QLabel#title { color: #5a7abf; font-size: 11px; letter-spacing: 2px; padding-bottom: 8px; }
@@ -233,11 +245,13 @@ class WaypointPickerDialog(QDialog):
 
         self.list_widget = QListWidget()
         self.list_widget.setFont(QFont("JetBrains Mono", 15))
-        for key, data in waypoints.items():
+        for key, data in self._waypoints.items():
             if data.get('map_name') == current_map_name:
-                self.list_widget.addItem(QListWidgetItem(key))
-        self.list_widget.itemClicked.connect(lambda item: setattr(self, '_selected_key', item.text()))
-        self.list_widget.itemDoubleClicked.connect(lambda item: (setattr(self, '_selected_key', item.text()), self.accept()))
+                item = QListWidgetItem(data['display_name'])
+                item.setData(Qt.ItemDataRole.UserRole, key)
+                self.list_widget.addItem(item)
+        self.list_widget.currentItemChanged.connect(self._selection_changed)
+        self.list_widget.itemDoubleClicked.connect(lambda item: self.accept())
         layout.addWidget(self.list_widget)
 
         btn_row = QHBoxLayout()
@@ -247,14 +261,41 @@ class WaypointPickerDialog(QDialog):
         self.btn_ok.setFont(QFont("JetBrains Mono", 15))
         self.btn_ok.setEnabled(False)
         self.btn_ok.clicked.connect(self.accept)
-        self.list_widget.itemClicked.connect(lambda: self.btn_ok.setEnabled(True))
+        self.btn_delete = QPushButton("Xóa điểm đến")
+        self.btn_delete.setEnabled(False)
+        self.btn_delete.clicked.connect(self._delete_selected)
+        self.delete_hint = QLabel("Chọn một điểm đến để xem quyền xóa.")
+        self.delete_hint.setWordWrap(True)
+        layout.addWidget(self.delete_hint)
         btn_cancel = QPushButton("Hủy")
         btn_cancel.setObjectName("cancel-btn")
         btn_cancel.setFont(QFont("JetBrains Mono", 15))
         btn_cancel.clicked.connect(self.reject)
         btn_row.addWidget(self.btn_ok)
+        btn_row.addWidget(self.btn_delete)
         btn_row.addWidget(btn_cancel)
         layout.addLayout(btn_row)
+
+    def _selection_changed(self, item, previous=None):
+        self._selected_key = item.data(Qt.ItemDataRole.UserRole) if item else None
+        self.btn_ok.setEnabled(item is not None)
+        reason = (deletion_reason(self._selected_key, self._waypoints[self._selected_key])
+                  if item else 'Chọn một điểm đến để xem quyền xóa.')
+        if not self._delete_callback and not reason:
+            reason = 'Không có chức năng lưu thay đổi trong màn hình này.'
+        self.btn_delete.setEnabled(item is not None and not reason)
+        self.delete_hint.setText(reason)
+
+    def _delete_selected(self):
+        key = self._selected_key
+        if (not key or not self._delete_callback
+                or deletion_reason(key, self._waypoints[key])):
+            return
+        if self._delete_callback(key):
+            row = self.list_widget.currentRow()
+            self.list_widget.takeItem(row)
+            del self._waypoints[key]
+            self._selection_changed(self.list_widget.currentItem())
 
     def get_selected_key(self):
         return self._selected_key
@@ -463,7 +504,9 @@ class NewPathDialog(QDialog):
         self.goal_list.setFont(QFont("JetBrains Mono", 14))
         for key, data in self.waypoints.items():
             if data.get('map_name') == self.current_map:
-                self.goal_list.addItem(QListWidgetItem(key))
+                item = QListWidgetItem(data.get('display_name', key))
+                item.setData(Qt.ItemDataRole.UserRole, key)
+                self.goal_list.addItem(item)
         self.goal_list.itemClicked.connect(self._add_goal)
         right.addWidget(self.goal_list, 1)
 
@@ -493,7 +536,7 @@ class NewPathDialog(QDialog):
         root.addLayout(right, 1)
 
     def _add_goal(self, item):
-        self.sequence.append(item.text())
+        self.sequence.append(item.data(Qt.ItemDataRole.UserRole))
         self._refresh_preview()
 
     def _undo(self):
@@ -889,6 +932,13 @@ class WaypointsModeLayout(QMainWindow):
             return
 
         required_fields = ('x', 'y', 'z', 'qx', 'qy', 'qz', 'qw')
+        try:
+            normalize_waypoints({target: waypoint})
+        except ValueError as exc:
+            self.log(f'[ERROR] {exc}')
+            self.running_sequence = False
+            self._set_navigation_status('Dữ liệu điểm đến không hợp lệ', 'error')
+            return
         missing_fields = [field for field in required_fields if field not in waypoint]
         if missing_fields:
             self.log(
@@ -1060,7 +1110,7 @@ class WaypointsModeLayout(QMainWindow):
     def _get_current_map_waypoint_descriptors(self):
         current_map = get_current_map_name()
         return [
-            {'key': key, 'aliases': waypoint.get('aliases', [])}
+            {'key': key, 'aliases': [waypoint.get('display_name', key), *waypoint.get('aliases', [])]}
             for key, waypoint in self.waypoints.items()
             if waypoint.get('map_name') == current_map
         ]
@@ -1073,7 +1123,8 @@ class WaypointsModeLayout(QMainWindow):
         self.map_widget.set_waypoints(filtered)
 
     def open_waypoint_picker(self):
-        dialog = WaypointPickerDialog(self.waypoints, get_current_map_name(), self)
+        dialog = WaypointPickerDialog(self.waypoints, get_current_map_name(), self,
+                                      delete_callback=self.delete_waypoint)
         if dialog.exec():
             key = dialog.get_selected_key()
             if key:
@@ -1117,63 +1168,92 @@ class WaypointsModeLayout(QMainWindow):
         self.navigate_to_waypoint(sequence[0], self._navigation_generation)
 
     def load_waypoints(self):
+        self._waypoint_load_error = None
+        self._waypoints_disk_snapshot = None
         try:
-            with open(self.waypoints_file, 'r', encoding='utf-8') as file:
-                content = file.read().strip()
-                if not content:
-                    return {}
-                data = json.loads(content)
-            if not isinstance(data, dict):
-                raise ValueError('Waypoint file must contain a JSON object')
-
-            required_fields = ('x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'map_name')
-            valid_waypoints = {}
-            for key, waypoint in data.items():
-                if not isinstance(key, str) or not isinstance(waypoint, dict):
-                    continue
-                if any(field not in waypoint for field in required_fields):
-                    continue
-                if not isinstance(waypoint['map_name'], str):
-                    continue
-                try:
-                    coordinates = {
-                        field: float(waypoint[field])
-                        for field in required_fields[:-1]
-                    }
-                except (TypeError, ValueError):
-                    continue
-                if not all(math.isfinite(value) for value in coordinates.values()):
-                    continue
-                clean_waypoint = dict(waypoint)
-                clean_waypoint.update(coordinates)
-                aliases = clean_waypoint.get('aliases', [])
-                clean_waypoint['aliases'] = (
-                    [alias for alias in aliases if isinstance(alias, str)]
-                    if isinstance(aliases, list) else []
-                )
-                valid_waypoints[key] = clean_waypoint
-
-            skipped_count = len(data) - len(valid_waypoints)
-            if skipped_count:
-                print(f'[WAYPOINTS] Bỏ qua {skipped_count} waypoint không hợp lệ')
-            return valid_waypoints
-        except FileNotFoundError:
+            data, snapshot = load_waypoint_file(self.waypoints_file)
+            self._waypoints_disk_snapshot = snapshot
+            return data
+        except (OSError, ValueError, UnicodeError) as exc:
+            self._waypoint_load_error = str(exc)
+            QMessageBox.warning(self, "Dữ liệu waypoint không hợp lệ",
+                                f"{exc}\nKhông ghi/xóa cho đến khi sửa file và mở lại màn hình.")
             return {}
-        except (OSError, json.JSONDecodeError, ValueError) as exc:
-            print(f'[WAYPOINTS] Không đọc được waypoint: {exc}')
-            return {}
-            
-    def save_waypoints(self):
-        temp_path = self.waypoints_file + '.tmp'
-        try:
-            with open(temp_path, 'w', encoding='utf-8') as file:
-                json.dump(self.waypoints, file, indent=2, ensure_ascii=False)
-            os.replace(temp_path, self.waypoints_file)
-        except OSError as exc:
-            self.log(f'[ERROR] Không lưu được waypoint: {exc}')
+
+    def save_waypoints(self, candidate=None):
+        if self._waypoint_load_error:
+            QMessageBox.warning(self, "Không thể lưu waypoint", self._waypoint_load_error)
             return False
+        if candidate is None:
+            candidate = self.waypoints
+        # Return-here is a temporary voice navigation target, never persist it.
+        persistent = {k: v for k, v in candidate.items() if k != '__return_here__'}
+        try:
+            clean, snapshot = save_waypoint_file(
+                self.waypoints_file, persistent, self._waypoints_disk_snapshot)
+        except (OSError, ValueError, UnicodeError) as exc:
+            QMessageBox.warning(self, "Không thể lưu waypoint", str(exc))
+            return False
+        if '__return_here__' in candidate:
+            clean['__return_here__'] = candidate['__return_here__']
+        self.waypoints = clean
+        self._waypoints_disk_snapshot = snapshot
         return True
-            
+
+    def _waypoint_deletion_block(self, key):
+        if self._waypoint_load_error:
+            return self._waypoint_load_error
+        if key not in self.waypoints:
+            return 'Điểm đến không còn tồn tại.'
+        reason = deletion_reason(key, self.waypoints[key])
+        if reason:
+            return reason
+        if ((self.running_sequence and key in self.selected_sequence)
+                or (self._current_nav_target == key and
+                    (self.running_sequence or self.ros_node.current_goal_handle is not None))):
+            return 'Điểm đến đang được dùng để điều hướng. Hãy dừng điều hướng trước.'
+        try:
+            refs = route_references(os.path.join(os.path.dirname(self.waypoints_file),
+                                                'multi_waypoints.json'),
+                                    key, self.waypoints[key])
+        except (OSError, ValueError, UnicodeError) as exc:
+            return f'Không kiểm tra được lộ trình: {exc}'
+        if refs:
+            return 'Điểm đến đang dùng trong lộ trình đã lưu: ' + ', '.join(refs)
+        return ''
+
+    def delete_waypoint(self, key):
+        reason = self._waypoint_deletion_block(key)
+        if reason:
+            QMessageBox.warning(self, 'Không thể xóa điểm đến', reason)
+            return False
+        waypoint = self.waypoints[key]
+        prompt = f"Xóa điểm đến ‘{waypoint.get('display_name', key)}’?"
+        if waypoint.get('deletion_permission_pending', 'deletable' not in waypoint):
+            prompt = ('Điểm cũ chưa có quyền xóa. Bạn có cho phép xóa điểm này '
+                      'và xác nhận xóa ngay không?\n' + prompt)
+        answer = QMessageBox.question(self, 'Xác nhận xóa điểm đến', prompt,
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                     QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
+        # Modal confirmation can process events: recheck permission and references.
+        reason = self._waypoint_deletion_block(key)
+        if reason:
+            QMessageBox.warning(self, 'Không thể xóa điểm đến', reason)
+            return False
+        candidate = dict(self.waypoints)
+        del candidate[key]
+        if not self.save_waypoints(candidate):
+            return False
+        self.selected_sequence = [k for k in self.selected_sequence if k != key]
+        if self._current_nav_target == key:
+            self._current_nav_target = None
+        self.update_map_waypoints()
+        # The voice provider reads self.waypoints each time; no cached alias table.
+        self.log(f'Đã xóa điểm đến: {key}')
+        return True
+
     def log(self, message):
         from datetime import datetime
         ts = datetime.now().strftime("%H:%M:%S")
@@ -1192,7 +1272,6 @@ class WaypointsModeLayout(QMainWindow):
     def voice_navigate_to_waypoint(self, slots: str):
         slot_list = [s.strip() for s in slots.split(',') if s.strip()]
         # case-insensitive key resolution
-        key_map = {k.lower(): k for k in self.waypoints}
         resolved = []
         for s in slot_list:
             if s.startswith('__return_here__:'):
@@ -1207,6 +1286,8 @@ class WaypointsModeLayout(QMainWindow):
                     'x': rx, 'y': ry, 'z': 0.0,
                     'qx': 0.0, 'qy': 0.0, 'qz': rqz, 'qw': rqw,
                     'yaw_tolerance': 3.14,
+                    'map_name': get_current_map_name(),
+                    'deletable': False,
                 }
                 resolved.append(_RETURN_KEY)
             elif s == '__return_here__':
@@ -1223,12 +1304,14 @@ class WaypointsModeLayout(QMainWindow):
                         'qz': pose.pose.pose.orientation.z,
                         'qw': pose.pose.pose.orientation.w,
                         'yaw_tolerance': 3.14,
+                        'map_name': get_current_map_name(),
+                        'deletable': False,
                     }
                     resolved.append(_RETURN_KEY)
                 else:
                     resolved.append(None)  # will be caught as missing
             else:
-                resolved.append(key_map.get(s.lower()))
+                resolved.append(resolve_waypoint(self.waypoints, s, get_current_map_name()))
         missing = [slot_list[i] for i, r in enumerate(resolved) if r is None]
         if missing:
             has_return_sentinel = any(s.startswith('__return_here__') for s in missing)
@@ -1257,11 +1340,15 @@ class WaypointsModeLayout(QMainWindow):
             if not name:
                 self.log('[CẢNH BÁO] Tên địa điểm không được để trống')
                 return
-            if name in self.waypoints:
+            if name.startswith('__') or any(name.casefold() == k.casefold() for k in self.waypoints):
                 self.log(f'[CẢNH BÁO] Địa điểm "{name}" đã tồn tại — hãy chọn tên khác')
                 return
             pose = self.ros_node.current_pose
-            self.waypoints[name] = {
+            candidate = dict(self.waypoints)
+            candidate[name] = {
+                'id': str(uuid.uuid4()),
+                'display_name': name,
+                'deletable': dialog.get_deletable(),
                 'x': pose.pose.pose.position.x,
                 'y': pose.pose.pose.position.y,
                 'z': pose.pose.pose.position.z,
@@ -1271,11 +1358,9 @@ class WaypointsModeLayout(QMainWindow):
                 'qw': pose.pose.pose.orientation.w,
                 'map_name': get_current_map_name(),
             }
-            if self.save_waypoints():
+            if self.save_waypoints(candidate):
                 self.update_map_waypoints()
                 self.log(f'Đã lưu địa điểm mới: {name}')
-            else:
-                del self.waypoints[name]
 
     def load_map(self):
         dialog = LoadMapDialog(self)

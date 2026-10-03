@@ -37,7 +37,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH, shell_source_workspace
 from styles import MAIN_STYLESHEET
 from ui_utils import setup_clock_timer
-from map_utils import update_map_files
+from map_utils import update_map_files, get_current_map_name
+from waypoint_store import load_waypoint_file, resolve_waypoint
 from process_manager import ProcessManager
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
@@ -1999,12 +2000,7 @@ class RobotUI(QMainWindow):
 
     def _load_waypoints(self):
         try:
-            with open(
-                self._waypoints_file,
-                "r",
-                encoding="utf-8"
-            ) as f:
-                data = json.load(f)
+            data, _ = load_waypoint_file(self._waypoints_file)
 
             self.log(
                 f"Đã tải {len(data)} waypoint cho Bé Son"
@@ -2258,12 +2254,15 @@ class RobotUI(QMainWindow):
         event.accept()
 
     def _get_voice_waypoints(self):
+        self._waypoints = self._load_waypoints()
         result = []
 
         for key, data in self._waypoints.items():
+            if data['map_name'] != get_current_map_name():
+                continue
             result.append({
                 "key": key,
-                "aliases": data.get("aliases", []),
+                "aliases": [data.get("display_name", key), *data.get("aliases", [])],
                 "x": data.get("x"),
                 "y": data.get("y"),
             })
@@ -2341,7 +2340,9 @@ class RobotUI(QMainWindow):
 
         else:
 
-            waypoint = self._waypoints.get(target)
+            self._waypoints = self._load_waypoints()
+            key = resolve_waypoint(self._waypoints, target, get_current_map_name())
+            waypoint = self._waypoints.get(key)
 
             if waypoint is None:
                 self.log(
@@ -2349,7 +2350,7 @@ class RobotUI(QMainWindow):
                 )
                 return
 
-            display_name = target
+            display_name = waypoint.get('display_name', target)
 
         # ============================================================
         # Kiểm tra Nav2

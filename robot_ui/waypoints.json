@@ -3,7 +3,10 @@
     "aliases": [
       "x5.1",
       "phong x5.1",
-      "cua x5.1"
+      "cua x5.1",
+      "truong khoa",
+      "truong khoa tran thanh ngoc",
+      "thay tran thanh ngoc"
     ],
     "x": 22.826784664004595,
     "y": 5.364074460766774,
@@ -12,13 +15,19 @@
     "qy": 0.0,
     "qz": 0.35785912937710973,
     "qw": 0.9337755852031349,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "3319f24f-f566-5317-9b87-ce8b7fe39c28",
+    "display_name": "X5.1",
+    "deletable": false
   },
   "X5.2.1": {
     "aliases": [
       "x5.2.1",
       "phong x5.2.1",
-      "cua x5.2.1"
+      "cua x5.2.1",
+      "giao vu vo thi my phuong",
+      "support staff vo thi my phuong",
+      "co vo thi my phuong"
     ],
     "x": 15.67203481177612,
     "y": 4.0137158405216695,
@@ -27,13 +36,18 @@
     "qy": 0.0,
     "qz": 0.1944928643457344,
     "qw": 0.9809039329713138,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "99a27c4e-67dc-5325-a46a-8d2e79f11afb",
+    "display_name": "X5.2.1",
+    "deletable": false
   },
   "X5.2.2": {
     "aliases": [
       "phong x5.2.2",
       "x5.2.2",
-      "cua x5.2.2"
+      "cua x5.2.2",
+      "pho truong khoa duong thanh long",
+      "thay duong thanh long"
     ],
     "x": 12.907394733537888,
     "y": 4.018653835327851,
@@ -42,13 +56,18 @@
     "qy": 0.0,
     "qz": 0.19708798547444717,
     "qw": 0.9803858046614221,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "fd9d07bd-48cf-5352-8bda-f59803f1a42f",
+    "display_name": "X5.2.2",
+    "deletable": false
   },
   "X5.2.3": {
     "aliases": [
       "x5.2.3",
       "phong x5.2.3",
-      "cua x5.2.3"
+      "cua x5.2.3",
+      "pho truong khoa bach thanh quy",
+      "thay bach thanh quy"
     ],
     "x": 10.159758918408786,
     "y": 4.701827196501533,
@@ -57,7 +76,10 @@
     "qy": 0.0,
     "qz": -0.027400689162907783,
     "qw": 0.9996245306280742,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "8c5d820e-d202-5533-a636-d1e661633e1e",
+    "display_name": "X5.2.3",
+    "deletable": false
   },
   "x5.2.4": {
     "aliases": [
@@ -74,11 +96,15 @@
     "qy": 0.0,
     "qz": 0.0023872776879846863,
     "qw": 0.9999971504485603,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "fbed626e-0d8a-5663-9ba3-2afec806c49c",
+    "display_name": "x5.2.4",
+    "deletable": false
   },
   "x5.2.5": {
     "aliases": [
-      "co tam",
+      "giao vu dang thanh tam",
+      "co dang thanh tam",
       "phong co tam",
       "phong co dang thanh tam"
     ],
@@ -89,13 +115,18 @@
     "qy": 0.0,
     "qz": -0.0534719594914205,
     "qw": 0.9985693513963604,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "e9b4597f-fb55-59af-a937-0a13f74c6a72",
+    "display_name": "x5.2.5",
+    "deletable": false
   },
   "X5.3.1": {
     "aliases": [
       "x5.3.1",
       "phong x5.3.1",
-      "cua x5.3.1"
+      "cua x5.3.1",
+      "giao vu phung van thang",
+      "support staff phung van thang"
     ],
     "x": 26.555765590950426,
     "y": 4.636367431077984,
@@ -104,7 +135,10 @@
     "qy": 0.0,
     "qz": -0.061719177535762566,
     "qw": 0.9980935542945406,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "32c69a45-7195-533a-9b7b-b87559364354",
+    "display_name": "X5.3.1",
+    "deletable": false
   },
   "x5.3.2": {
     "aliases": [
@@ -119,7 +153,10 @@
     "qy": 0.0,
     "qz": -0.7342662137848475,
     "qw": 0.6788616407590464,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "f5fcdb80-5511-5015-bd6d-3d2afe6f0c86",
+    "display_name": "x5.3.2",
+    "deletable": false
   },
   "x5.3.3": {
     "aliases": [
@@ -134,7 +171,10 @@
     "qy": 0.0,
     "qz": -0.7099538177566088,
     "qw": 0.704248235108059,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "361db18b-2b84-590b-b7b6-6e97bd7e7611",
+    "display_name": "x5.3.3",
+    "deletable": false
   },
   "x5.3.4": {
     "aliases": [
@@ -149,7 +189,10 @@
     "qy": 0.0,
     "qz": -0.6925777221888024,
     "qw": 0.7213432599863744,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "cad596f5-cd63-5301-892e-71efad48f894",
+    "display_name": "x5.3.4",
+    "deletable": false
   },
   "X5.3.5": {
     "aliases": [
@@ -164,7 +207,10 @@
     "qy": 0.0,
     "qz": -0.7001390614674156,
     "qw": 0.7140065087991331,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "bcc72250-1007-596b-a5b9-c63553ba14ef",
+    "display_name": "X5.3.5",
+    "deletable": false
   },
   "x5.4": {
     "aliases": [
@@ -180,7 +226,10 @@
     "qy": 0.0,
     "qz": -0.6733616493875084,
     "qw": 0.7393132550780719,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "b68325bd-7a37-566d-a4a9-c2f758b58de7",
+    "display_name": "x5.4",
+    "deletable": false
   },
   "X5.5": {
     "aliases": [
@@ -196,7 +245,10 @@
     "qy": 0.0,
     "qz": 0.6879787736723758,
     "qw": 0.7257308088928386,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "f9aea0c1-d3a8-5ab5-a069-808f06b27efe",
+    "display_name": "X5.5",
+    "deletable": false
   },
   "X5.6": {
     "aliases": [
@@ -212,7 +264,10 @@
     "qy": 0.0,
     "qz": 0.7295635417017692,
     "qw": 0.6839130343980665,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "a78e3d8e-adeb-5548-b714-418b8b4e09ac",
+    "display_name": "X5.6",
+    "deletable": false
   },
   "X5.7": {
     "aliases": [
@@ -228,7 +283,10 @@
     "qy": 0.0,
     "qz": -0.7173081668110974,
     "qw": 0.6967560504409723,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "1ff9258a-8389-5b21-857c-491a9cefea3f",
+    "display_name": "X5.7",
+    "deletable": false
   },
   "X5.8": {
     "aliases": [
@@ -244,7 +302,10 @@
     "qy": 0.0,
     "qz": 0.7050708641553224,
     "qw": 0.7091368531667684,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "b64436f3-a6f3-5df0-a361-14fe66e36e4e",
+    "display_name": "X5.8",
+    "deletable": false
   },
   "X5.9": {
     "aliases": [
@@ -260,7 +321,10 @@
     "qy": 0.0,
     "qz": 0.44104846591437163,
     "qw": 0.8974832871505627,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "e6d6b1bf-d3c6-5d50-9f6f-53bc793b9fc3",
+    "display_name": "X5.9",
+    "deletable": false
   },
   "x5.10": {
     "aliases": [
@@ -276,7 +340,10 @@
     "qy": 0.0,
     "qz": -0.7146964870627192,
     "qw": 0.6994347227441662,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "2cb88d76-6838-52ec-a3a1-1d570cfae071",
+    "display_name": "x5.10",
+    "deletable": false
   },
   "X5.11": {
     "aliases": [
@@ -292,7 +359,10 @@
     "qy": 0.0,
     "qz": -0.7094444267340472,
     "qw": 0.7047613818704875,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "617ebb34-8c52-5a06-9360-b0eb612563c7",
+    "display_name": "X5.11",
+    "deletable": false
   },
   "x5.12": {
     "aliases": [
@@ -308,7 +378,10 @@
     "qy": 0.0,
     "qz": -0.7184341642977691,
     "qw": 0.6955949622947007,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "65444cec-499c-5496-bc21-fee05940ae79",
+    "display_name": "x5.12",
+    "deletable": false
   },
   "X5.13": {
     "aliases": [
@@ -324,7 +397,10 @@
     "qy": 0.0,
     "qz": -0.651415275259806,
     "qw": 0.7587213844081312,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "a1ec46d8-e936-5d43-be18-119a5a656195",
+    "display_name": "X5.13",
+    "deletable": false
   },
   "X5.14": {
     "aliases": [
@@ -339,7 +415,10 @@
     "qy": 0.0,
     "qz": 0.7347316998330545,
     "qw": 0.67835781801379,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "f9aca3f3-abc6-5ba3-80e5-9b1875c4f8f8",
+    "display_name": "X5.14",
+    "deletable": false
   },
   "x5.17": {
     "aliases": [
@@ -354,7 +433,10 @@
     "qy": 0.0,
     "qz": -0.6891643434184169,
     "qw": 0.7246050702007696,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "6233dbf3-998f-54a0-9a95-197197fcd2c4",
+    "display_name": "x5.17",
+    "deletable": false
   },
   "home": {
     "x": 0.31185948313604744,
@@ -364,16 +446,11 @@
     "qy": 0.0,
     "qz": -0.00530791771290077,
     "qw": 0.9999859129055534,
-    "map_name": "X5_08042026"
-  },
-  "nh\u00e0": {
-    "x": 0.31185948313604744,
-    "y": 0.648045560552103,
-    "z": 0.0,
-    "qx": 0.0,
-    "qy": 0.0,
-    "qz": -0.00530791771290077,
-    "qw": 0.9999859129055534,
-    "map_name": "X5_08042026"
+    "map_name": "X5_08042026",
+    "id": "29077814-9d0e-52fb-bf2c-421362d77f25",
+    "display_name": "home",
+    "aliases": [],
+    "deletable": false,
+    "deletion_permission_pending": true
   }
 }

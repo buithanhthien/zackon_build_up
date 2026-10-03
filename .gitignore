@@ -63,3 +63,4 @@ tool/debug_controller/*.txt
 **/tempCodeRunnerFile.py
 
 robot_ui/language_settings.json
+robot_ui/last_robot_pose.json

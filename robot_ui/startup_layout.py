@@ -9,11 +9,12 @@ import subprocess
 import threading
 import time
 import shlex
+import uuid
 
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QTextEdit, QLineEdit, QLabel,
-                             QSizePolicy, QMessageBox)
+                             QSizePolicy, QMessageBox, QDialog)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
 from PyQt6.QtGui import (
     QFont,
@@ -37,8 +38,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH, shell_source_workspace
 from styles import MAIN_STYLESHEET
 from ui_utils import setup_clock_timer
-from map_utils import update_map_files, get_current_map_name
-from waypoint_store import load_waypoint_file, resolve_waypoint
+from map_utils import (update_map_files, get_current_map_name,
+                       get_current_map_path, load_map_yaml)
+from waypoint_store import load_waypoint_file, resolve_waypoint, save_waypoint_file
+from waypoint_dialogs import (DestinationDialog, WaypointPickerDialog, NewWaypointDialog,
+                              PathManagerDialog, NewPathDialog, DIALOG_STYLE)
+from waypoint_map_widget import MapWidget
 from process_manager import ProcessManager
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
@@ -299,6 +304,7 @@ class RobotUI(QMainWindow):
         )
 
         self._nav_goal_handle = None
+        self._navigation_generation = 0
         self._voice_nav_queue = []
 
         self._waypoints_file = os.path.join(SOURCE_PATH, "robot_ui", "waypoints.json")
@@ -372,6 +378,8 @@ class RobotUI(QMainWindow):
 
         self._latest_pose = msg.pose.pose
         self._latest_amcl_msg = msg
+        if getattr(self, "_map_view", None) is not None:
+            self._map_view.set_robot_pose(msg)
 
         # ========================================================
         # Chưa restore xong thì KHÔNG được ghi đè pose cũ
@@ -884,7 +892,7 @@ class RobotUI(QMainWindow):
         left_layout.addWidget(self.btn_dev)
 
         self.btn_tracking.clicked.connect(lambda: self.mode_changed("Tracking"))
-        self.btn_waypoints.clicked.connect(lambda: self.mode_changed("Waypoints"))
+        self.btn_waypoints.clicked.connect(self.open_destination_dialog)
         self.btn_reestimate.clicked.connect(self.start_reestimate)
         self.btn_new_map.clicked.connect(self.start_new_map)
         self.btn_load_map.clicked.connect(self.load_map)
@@ -918,6 +926,13 @@ class RobotUI(QMainWindow):
 
         header_layout.addWidget(self.mode_label)
         header_layout.addStretch()
+        self.btn_map = QPushButton("🗺")
+        self.btn_map.setObjectName("map-toggle")
+        self.btn_map.setFixedSize(36, 36)
+        self.btn_map.setToolTip("Mở bản đồ")
+        self.btn_map.setAccessibleName("Mở bản đồ")
+        self.btn_map.clicked.connect(self.toggle_map_window)
+        header_layout.addWidget(self.btn_map)
         header_layout.addWidget(self.clock_label)
         right_layout.addWidget(header)
 
@@ -2069,8 +2084,7 @@ class RobotUI(QMainWindow):
             subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
             self.close()
         elif mode == "Waypoints":
-            subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/waypoints_mode_layout.py'])
-            self.close()
+            self.open_destination_dialog()
         elif mode == "Nav2":
             self.start_nav2()
 
@@ -2162,7 +2176,127 @@ class RobotUI(QMainWindow):
             map_name = dialog.get_selected_map()
             if map_name:
                 self.log(f"Đang tải bản đồ: {map_name}")
-                update_map_files(map_name, self.log)
+                self.cancel_voice_navigation()
+                if update_map_files(map_name, self.log):
+                    self._latest_pose = None
+                    self._latest_amcl_msg = None
+                    self._waypoints = self._load_waypoints()
+                    self._refresh_map_window()
+
+    def open_destination_dialog(self):
+        if getattr(self, '_destination_dialog', None) is None:
+            self._destination_dialog = DestinationDialog(self)
+        self._destination_dialog.show()
+        self._destination_dialog.raise_()
+        self._destination_dialog.activateWindow()
+
+    def open_waypoint_picker(self):
+        self._waypoints = self._load_waypoints()
+        dialog = WaypointPickerDialog(self._waypoints, get_current_map_name(), self)
+        if dialog.exec() and dialog.get_selected_key():
+            self._run_waypoint_sequence([dialog.get_selected_key()])
+
+    def open_path_manager(self):
+        path = os.path.join(SOURCE_PATH, 'robot_ui', 'multi_waypoints.json')
+        while True:
+            current_map = get_current_map_name()
+            dialog = PathManagerDialog(path, current_map, self)
+            dialog.run_path_requested.connect(self._run_waypoint_sequence)
+            if dialog.exec() != 2:
+                break
+            self._waypoints = self._load_waypoints()
+            NewPathDialog(self._waypoints, current_map, path, self).exec()
+
+    def _run_waypoint_sequence(self, sequence):
+        self._waypoints = self._load_waypoints()
+        current_map = get_current_map_name()
+        if (not isinstance(sequence, list) or not sequence
+                or any(resolve_waypoint(self._waypoints, key, current_map) is None
+                       for key in sequence)):
+            QMessageBox.warning(self, 'Không thể điều hướng',
+                                'Lộ trình trống hoặc có địa điểm không thuộc bản đồ hiện tại.')
+            return
+        # Keep keys as a list: waypoint names may contain commas.
+        self.cancel_voice_navigation()
+        self._voice_nav_queue = list(sequence)
+        self._send_next_voice_goal()
+
+    def open_new_waypoint_dialog(self):
+        if self._latest_pose is None:
+            QMessageBox.warning(self, 'Chưa có vị trí',
+                                'Robot chưa có pose AMCL. Hãy định vị robot trước khi tạo địa điểm.')
+            return
+        current_map = get_current_map_name()
+        dialog = NewWaypointDialog(self)
+        if not dialog.exec():
+            return
+        if self._latest_pose is None or current_map != get_current_map_name():
+            QMessageBox.warning(self, 'Không thể lưu địa điểm',
+                                'Bản đồ hoặc pose đã thay đổi. Hãy định vị và thử lại.')
+            return
+        name = dialog.get_name()
+        try:
+            data, snapshot = load_waypoint_file(self._waypoints_file)
+            if (not name or name.startswith('__')
+                    or any(name.casefold() == key.casefold() for key in data)):
+                raise ValueError('Tên trống, trùng tên hoặc bắt đầu bằng __. Hãy chọn tên khác.')
+            pose = self._latest_pose
+            data[name] = {
+                'id': str(uuid.uuid4()), 'display_name': name,
+                'deletable': dialog.get_deletable(), 'map_name': current_map,
+                'x': pose.position.x, 'y': pose.position.y, 'z': pose.position.z,
+                'qx': pose.orientation.x, 'qy': pose.orientation.y,
+                'qz': pose.orientation.z, 'qw': pose.orientation.w,
+            }
+            self._waypoints, _ = save_waypoint_file(self._waypoints_file, data, snapshot)
+        except (OSError, ValueError, UnicodeError) as exc:
+            QMessageBox.warning(self, 'Không thể lưu địa điểm', str(exc))
+            return
+        self._refresh_map_window()
+        self.log(f'Đã lưu địa điểm mới: {name}')
+
+    def toggle_map_window(self):
+        window = getattr(self, '_map_window', None)
+        if window is not None and window.isVisible():
+            window.close()
+            return
+        if window is None:
+            self._map_window = QDialog(self)
+            self._map_window.setWindowTitle('Bản đồ')
+            self._map_window.resize(800, 600)
+            self._map_window.setStyleSheet(DIALOG_STYLE)
+            QVBoxLayout(self._map_window)
+        if self._refresh_map_window():
+            self._map_window.show()
+            self._map_window.raise_()
+            self._map_window.activateWindow()
+
+    def _refresh_map_window(self):
+        window = getattr(self, '_map_window', None)
+        if window is None:
+            return True
+        try:
+            path = get_current_map_path()
+            metadata = load_map_yaml(path)
+            widget = MapWidget(os.path.join(os.path.dirname(path), metadata['image']), metadata)
+            if widget.map_image.isNull():
+                widget.deleteLater()
+                raise ValueError('Không đọc được ảnh bản đồ.')
+        except (OSError, KeyError, TypeError, ValueError, SyntaxError) as exc:
+            window.hide()
+            QMessageBox.warning(self, 'Không thể mở bản đồ', str(exc))
+            return False
+        old = getattr(self, '_map_view', None)
+        if old is not None:
+            window.layout().removeWidget(old)
+            old.deleteLater()
+        self._map_view = widget
+        self._waypoints = self._load_waypoints()
+        widget.set_waypoints({k: v for k, v in self._waypoints.items()
+                              if v['map_name'] == get_current_map_name()})
+        widget.set_robot_pose(self._latest_amcl_msg)
+        window.layout().addWidget(widget)
+        return True
 
     def open_language_dialog(self):
 
@@ -2289,11 +2423,15 @@ class RobotUI(QMainWindow):
 
         # Cho phép nhiều điểm:
         # X5.7,X5.11,phong co Tam
+        self.cancel_voice_navigation()
         self._voice_nav_queue = names
 
         self._send_next_voice_goal()
 
-    def _send_next_voice_goal(self):
+    def _send_next_voice_goal(self, generation=None):
+        if generation is not None and generation != self._navigation_generation:
+            return
+        generation = self._navigation_generation
 
         if not self._voice_nav_queue:
             self.log(
@@ -2422,13 +2560,19 @@ class RobotUI(QMainWindow):
         )
 
         future.add_done_callback(
-            self._nav_goal_response_callback
+            lambda done: self._nav_goal_response_callback(done, generation)
         )
 
-    def _nav_goal_response_callback(self, future):
+    def _nav_goal_response_callback(self, future, generation=None):
+        if generation is None:
+            generation = self._navigation_generation
 
         try:
             goal_handle = future.result()
+            if generation != self._navigation_generation:
+                if goal_handle.accepted:
+                    goal_handle.cancel_goal_async()
+                return
 
         except Exception as e:
             self.log(
@@ -2456,10 +2600,14 @@ class RobotUI(QMainWindow):
         )
 
         result_future.add_done_callback(
-            self._nav_result_callback
+            lambda done: self._nav_result_callback(done, generation)
         )
 
-    def _nav_result_callback(self, future):
+    def _nav_result_callback(self, future, generation=None):
+        if generation is None:
+            generation = self._navigation_generation
+        if generation != self._navigation_generation:
+            return
 
         try:
             wrapped_result = future.result()
@@ -2485,7 +2633,7 @@ class RobotUI(QMainWindow):
             # thì đi điểm tiếp theo.
             QTimer.singleShot(
                 300,
-                self._send_next_voice_goal
+                lambda: self._send_next_voice_goal(generation)
             )
 
         elif status == GoalStatus.STATUS_CANCELED:
@@ -2526,6 +2674,7 @@ class RobotUI(QMainWindow):
             pass
 
     def cancel_voice_navigation(self):
+        self._navigation_generation += 1
 
         self._voice_nav_queue.clear()
 
@@ -2540,6 +2689,7 @@ class RobotUI(QMainWindow):
         )
 
         self._nav_goal_handle.cancel_goal_async()
+        self._nav_goal_handle = None
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

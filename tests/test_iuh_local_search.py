@@ -192,5 +192,40 @@ class IuhLocalSearchTests(unittest.TestCase):
             )
         )
 
+    def test_exact_lecturer_evidence_includes_parent_department_context(self):
+        result = self.search.search(
+            "Bạn có biết thầy Hoàng Đình Khôi của Khoa Công nghệ Điện không?"
+        )
+        self.assertEqual(result.status, "sufficient")
+        lecturer = result.evidence[0]
+        self.assertEqual(lecturer.value, "Tiến Sĩ Hoàng Đình Khôi")
+        self.assertEqual(lecturer.parent_department_name, "Bộ môn Tự động hóa")
+        self.assertEqual(
+            lecturer.parent_department_path,
+            "khoa_cong_nghe_dien.bo_mon.3.ten",
+        )
+        self.assertEqual(
+            lecturer.parent_department_head,
+            "Phó Giáo Sư Tiến Sĩ Ngô Thanh Quyền",
+        )
+
+    def test_third_department_uses_human_one_based_order(self):
+        result = self.search.search("Bộ môn thứ ba là gì?")
+        self.assertEqual(result.status, "sufficient")
+        self.assertEqual(result.evidence[0].value, "Bộ môn Thiết bị điện")
+        self.assertEqual(result.evidence[0].ordinal_position, 3)
+        self.assertEqual(
+            result.evidence[0].path,
+            "khoa_cong_nghe_dien.bo_mon.2.ten",
+        )
+        self.assertIn("human_ordinal_department", result.evidence[0].reasons)
+
+    def test_department_number_three_is_not_json_index_three(self):
+        result = self.search.search("Bộ môn 3 là bộ môn nào?")
+        self.assertEqual(result.status, "sufficient")
+        self.assertEqual(result.evidence[0].value, "Bộ môn Thiết bị điện")
+        self.assertNotEqual(result.evidence[0].value, "Bộ môn Tự động hóa")
+
+
 if __name__ == "__main__":
     unittest.main()

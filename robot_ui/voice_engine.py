@@ -254,9 +254,10 @@ class VoiceEngine(QObject):
 
     def __init__(self):
         super().__init__()
-        self._play_lock    = threading.Lock()
-        self._stop_flag    = threading.Event()
-        self._listen_lock  = threading.Lock()
+        self._play_lock         = threading.Lock()
+        self._stop_flag         = threading.Event()
+        self._listen_lock       = threading.Lock()
+        self._listen_stop_event = threading.Event()
 
         # Ngôn ngữ hiện tại của VoiceEngine
         self._language = get_language()
@@ -451,22 +452,155 @@ class VoiceEngine(QObject):
             raise
 
     def listen_once(self):
+        """Start one microphone capture session.
+
+        Returns True only when a new session was started.  The session keeps
+        recording until ``stop_listening()`` is requested, the initial-speech
+        timeout expires, or the maximum phrase duration is reached.
+        """
         if not self._listen_lock.acquire(blocking=False):
             print("[VoiceEngine] already listening, ignoring duplicate request")
-            return
-        threading.Thread(target=self._listen_thread, daemon=True).start()
+            return False
+
+        self._listen_stop_event.clear()
+
+        try:
+            threading.Thread(target=self._listen_thread, daemon=True).start()
+        except Exception:
+            self._listen_stop_event.clear()
+            self._listen_lock.release()
+            raise
+
+        return True
+
+    def stop_listening(self):
+        """Request early completion of the current microphone capture.
+
+        This is intentionally separate from ``stop_speaking()`` so the UI can
+        use the microphone button to finish recording while the dedicated
+        Stop button remains responsible for interrupting TTS.
+        """
+        if not self._listen_lock.locked():
+            return False
+
+        self._listen_stop_event.set()
+        return True
+
+    def is_listening(self):
+        return self._listen_lock.locked()
+
+    @staticmethod
+    def _pcm16_rms(frame_data):
+        """Return an RMS-like energy value for 16-bit PCM without numpy."""
+        if not frame_data:
+            return 0.0
+
+        usable = len(frame_data) - (len(frame_data) % 2)
+        if usable <= 0:
+            return 0.0
+
+        samples = memoryview(frame_data[:usable]).cast("h")
+        if not samples:
+            return 0.0
+
+        mean_square = sum(int(value) * int(value) for value in samples) / len(samples)
+        return mean_square ** 0.5
+
+    def _capture_audio_until_stopped(
+        self,
+        source,
+        timeout=5.0,
+        phrase_time_limit=15.0,
+    ):
+        """Read PCM chunks until the user requests stop or a safety limit fires.
+
+        ``speech_recognition.Recognizer.listen`` cannot be interrupted from the
+        GUI while it is blocked.  Reading the microphone stream in short chunks
+        lets ``stop_listening()`` end the capture promptly while still returning
+        all audio recorded so far.
+        """
+        frames = []
+        started_at = time.monotonic()
+        speech_started_at = None
+
+        while not self._listen_stop_event.is_set():
+            now = time.monotonic()
+
+            if speech_started_at is None:
+                if now - started_at >= timeout:
+                    print("[VoiceEngine] timeout — no speech detected")
+                    return None
+            elif now - speech_started_at >= phrase_time_limit:
+                break
+
+            with _suppress_stderr():
+                chunk = source.stream.read(source.CHUNK)
+
+            if not chunk:
+                continue
+
+            frames.append(chunk)
+
+            if speech_started_at is None:
+                energy = self._pcm16_rms(chunk)
+                if energy >= float(self.recognizer.energy_threshold):
+                    speech_started_at = now
+
+        if not frames:
+            return None
+
+        return sr.AudioData(
+            b"".join(frames),
+            source.SAMPLE_RATE,
+            source.SAMPLE_WIDTH,
+        )
+
+    def _recognize_captured_audio(self, audio):
+        """Run the already-configured offline recognizer for the active language."""
+        if self._language == "vi":
+            if not self._gipformer_recognizer:
+                print("[VoiceEngine] Vietnamese STT is not available")
+                return None
+
+            text = self._recognize_with_gipformer(audio)
+            if text:
+                _debug(f"[VoiceEngine] Gipformer recognized: '{text}'")
+            else:
+                print("[VoiceEngine] Gipformer could not understand audio")
+            return text
+
+        if self._language == "en":
+            if not self._english_recognizer:
+                print("[VoiceEngine] English STT is not available")
+                return None
+
+            text = self._recognize_with_english_zipformer(audio)
+            if text:
+                _debug(f"[VoiceEngine] Zipformer recognized: '{text}'")
+            else:
+                print("[VoiceEngine] Zipformer could not understand audio")
+            return text
+
+        return None
+
+    def _finish_listening_session(self):
+        """Release recording state after success, silence, timeout or error."""
+        self._listen_stop_event.clear()
+        if self._listen_lock.locked():
+            self._listen_lock.release()
+        self.state_changed.emit("")
 
     def _listen_thread(self):
-
         audio = None
 
         try:
-
             # ========================================================
             # 1. Tìm đúng ReSpeaker Lite bằng USB VID/PID
             # ========================================================
-
-            card_number = _find_usb_audio_card(SEEED_USB_VENDOR_ID, SEEED_USB_PRODUCT_ID)
+            card_number = _find_usb_audio_card(
+                SEEED_USB_VENDOR_ID,
+                SEEED_USB_PRODUCT_ID,
+            )
 
             if card_number is None:
                 print("[VoiceEngine] ❌ Không tìm thấy ReSpeaker Lite USB 2886:0019")
@@ -474,204 +608,108 @@ class VoiceEngine(QObject):
 
             _debug(
                 "[VoiceEngine] ✅ ReSpeaker Lite USB found | "
-                f"VID:PID="
-                f"{SEEED_USB_VENDOR_ID}:"
-                f"{SEEED_USB_PRODUCT_ID} | "
+                f"VID:PID={SEEED_USB_VENDOR_ID}:{SEEED_USB_PRODUCT_ID} | "
                 f"ALSA card={card_number}"
             )
 
             # ========================================================
             # 2. Tìm device_index cho SpeechRecognition
             # ========================================================
-
-            mic_index, mic_name = (_find_microphone_index_from_alsa_card(card_number, SEEED_PCM_DEVICE))
+            mic_index, mic_name = _find_microphone_index_from_alsa_card(
+                card_number,
+                SEEED_PCM_DEVICE,
+            )
 
             if mic_index is None:
-
-                print("[VoiceEngine] ❌ Tìm thấy USB ReSpeaker nhưng không tìm thấy ALSA input "
-                    f"hw:{card_number},"
-                    f"{SEEED_PCM_DEVICE}"
+                print(
+                    "[VoiceEngine] ❌ Tìm thấy USB ReSpeaker nhưng không tìm thấy ALSA input "
+                    f"hw:{card_number},{SEEED_PCM_DEVICE}"
                 )
                 return
 
             _debug(
                 "[VoiceEngine] ✅ ReSpeaker audio input | "
-                f"index={mic_index} | "
-                f"{mic_name}"
+                f"index={mic_index} | {mic_name}"
             )
-
-            # ============================================================
-            # Mở ReSpeaker Lite nhưng ẩn cảnh báo ALSA / JACK / PortAudio
-            # ============================================================
 
             source = None
             mic = None
 
             try:
-
-                # Ẩn cảnh báo ALSA / JACK ngay từ lúc PyAudio khởi tạo
                 with _suppress_stderr():
-
                     mic = sr.Microphone(
                         device_index=mic_index,
-                        sample_rate=MIC_SAMPLE_RATE
+                        sample_rate=MIC_SAMPLE_RATE,
                     )
-
                     source = mic.__enter__()
 
-                self._set_state(
-                    VoiceState.LISTENING
-                )
+                self._set_state(VoiceState.LISTENING)
 
-                # Cân chỉnh môi trường cũng có thể gọi audio backend
+                # Keep the previous ambient calibration, but check the stop
+                # request immediately afterwards so a fast second click is safe.
                 with _suppress_stderr():
-
                     self.recognizer.adjust_for_ambient_noise(
                         source,
-                        duration=0.5
+                        duration=0.5,
                     )
+
+                if self._listen_stop_event.is_set():
+                    return
 
                 _debug(
                     "[VoiceEngine] using ReSpeaker Lite | "
-                    f"USB={SEEED_USB_VENDOR_ID}:"
-                    f"{SEEED_USB_PRODUCT_ID} | "
-                    f"ALSA=hw:{card_number},"
-                    f"{SEEED_PCM_DEVICE} | "
+                    f"USB={SEEED_USB_VENDOR_ID}:{SEEED_USB_PRODUCT_ID} | "
+                    f"ALSA=hw:{card_number},{SEEED_PCM_DEVICE} | "
                     f"PyAudio index={mic_index}"
                 )
 
                 _debug(
                     "[VoiceEngine] "
-                    f"energy_threshold="
-                    f"{self.recognizer.energy_threshold:.1f}, "
+                    f"energy_threshold={self.recognizer.energy_threshold:.1f}, "
                     "listening..."
                 )
 
-                try:
-
-                    audio = self.recognizer.listen(
-                        source,
-                        timeout=5.0,
-                        phrase_time_limit=15.0
-                    )
-
-                except sr.WaitTimeoutError:
-
-                    print(
-                        "[VoiceEngine] "
-                        "timeout — no speech detected"
-                    )
-
-                    return
+                audio = self._capture_audio_until_stopped(
+                    source,
+                    timeout=5.0,
+                    phrase_time_limit=15.0,
+                )
 
             finally:
-
-                # Đóng audio device cũng có thể sinh cảnh báo ALSA/JACK
                 if source is not None:
-
                     with _suppress_stderr():
-
                         try:
-
-                            mic.__exit__(
-                                None,
-                                None,
-                                None
-                            )
-
+                            mic.__exit__(None, None, None)
                         except Exception:
-
                             pass
 
             if audio is None:
                 return
 
-            duration = (len(audio.frame_data)/(audio.sample_rate * audio.sample_width))
-
-            _debug(
-                "[VoiceEngine] "
-                f"Audio duration: {duration:.2f}s"
+            duration = (
+                len(audio.frame_data)
+                / (audio.sample_rate * audio.sample_width)
             )
-
-            _debug(
-                "[VoiceEngine] "
-                "audio captured, processing..."
-            )
+            _debug(f"[VoiceEngine] Audio duration: {duration:.2f}s")
+            _debug("[VoiceEngine] audio captured, processing...")
 
             self._set_state(VoiceState.THINKING)
+            text = self._recognize_captured_audio(audio)
 
-            # ========================================================
-            # 4. Chọn STT theo ngôn ngữ
-            # ========================================================
-
-            text = None
-
-            # ========================================================
-            # Tiếng Việt -> Gipformer
-            # ========================================================
-
-            if self._language == "vi":
-                if self._gipformer_recognizer:
-
-                    # print("[VoiceEngine] Processing Vietnamese with Gipformer...")
-
-                    text = (self._recognize_with_gipformer(audio))
-
-                    if text:
-                        _debug("[VoiceEngine] Gipformer recognized: "
-                            f"'{text}'"
-                        )
-
-                    else:
-                        print("[VoiceEngine] Gipformer could not understand audio")
-
-                else:
-
-                    print("[VoiceEngine] Vietnamese STT is not available")
-
-            # ========================================================
-            # English -> Zipformer
-            # ========================================================
-
-            elif self._language == "en":
-
-                if self._english_recognizer:
-
-                    _debug("[VoiceEngine] Processing English with Zipformer...")
-
-                    text = (self._recognize_with_english_zipformer(audio))
-
-                    if text:
-                        _debug(
-                            "[VoiceEngine] Zipformer recognized: "
-                            f"'{text}'"
-                        )
-
-                    else:
-                        print("[VoiceEngine] Zipformer could not understand audio")
-
-                else:
-                    print("[VoiceEngine] English STT is not available")
-
-            # ========================================================
-            # 5. Chỉ gửi transcript đúng 1 lần
-            # ========================================================
-
+            # A single capture session has exactly one emission point.
             if text:
-                self.transcript_ready.emit(text)
+                text = text.strip()
+                if text:
+                    self.transcript_ready.emit(text)
 
         except Exception as e:
-
-            print("[VoiceEngine] "
-                f"Microphone error: {e}"
-            )
+            print(f"[VoiceEngine] Microphone error: {e}")
 
         finally:
+            # Always make a new recording possible, including microphone errors,
+            # silence, timeout and successful recognition.
+            self._finish_listening_session()
 
-            self.state_changed.emit("")
-
-            self._listen_lock.release()
-    
     def _recognize_with_gipformer(self, audio_data):
         """Recognize speech using Gipformer offline ASR"""
         try:

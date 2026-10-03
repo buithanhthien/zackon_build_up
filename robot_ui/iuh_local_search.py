@@ -6,7 +6,7 @@ verifiable evidence with the exact JSON path that produced each match.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 import json
 from pathlib import Path
 import re
@@ -91,11 +91,18 @@ class Evidence:
     value: Any
     score: float
     reasons: tuple[str, ...]
+    # Human-readable structure for list members.  These fields deliberately
+    # duplicate parent information so an answer model never has to infer a
+    # department name from a zero-based JSON array index.
+    parent_department_name: str | None = None
+    parent_department_path: str | None = None
+    parent_department_head: str | None = None
+    ordinal_position: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["reasons"] = list(self.reasons)
-        return data
+        return {key: value for key, value in data.items() if value is not None}
 
 
 @dataclass(frozen=True)
@@ -278,6 +285,29 @@ class IuhLocalSearch:
             return record.value_type == "dien_thoai" or "dien thoai" in field
         return normalize_text(attribute.replace("_", " ")) == field
 
+    @staticmethod
+    def _requested_bo_mon_ordinal(question_norm: str) -> int | None:
+        """Return the human 1-based department ordinal explicitly requested."""
+        if "bo mon" not in question_norm:
+            return None
+
+        ordinal_words = {
+            "nhat": 1, "mot": 1, "hai": 2, "ba": 3,
+            "tu": 4, "bon": 4, "nam": 5, "sau": 6,
+            "bay": 7, "tam": 8, "chin": 9, "muoi": 10,
+        }
+        match = re.search(
+            r"\bbo mon(?:\s+(?:thu|so))?\s+"
+            r"(\d+|nhat|mot|hai|ba|tu|bon|nam|sau|bay|tam|chin|muoi)\b",
+            question_norm,
+        )
+        if not match:
+            return None
+        token = match.group(1)
+        if token.isdigit():
+            return int(token)
+        return ordinal_words.get(token)
+
     def _bo_mon_entries(self):
         """Return known departments from the current structured IUH JSON."""
         khoa = self.database.get("khoa_cong_nghe_dien", {})
@@ -304,6 +334,43 @@ class IuhLocalSearch:
         return result
 
 
+    def _bo_mon_details(self, index: int) -> dict[str, Any] | None:
+        khoa = self.database.get("khoa_cong_nghe_dien", {})
+        bo_mon = khoa.get("bo_mon", []) if isinstance(khoa, dict) else []
+        if not isinstance(bo_mon, list) or not (0 <= index < len(bo_mon)):
+            return None
+        item = bo_mon[index]
+        if not isinstance(item, dict):
+            return None
+        name = item.get("ten")
+        if not isinstance(name, str) or not name.strip():
+            return None
+        head = item.get("truong_bo_mon")
+        if not isinstance(head, str) or not head.strip():
+            head = None
+        return {
+            "index": index,
+            "ordinal_position": index + 1,
+            "name": name.strip(),
+            "path": f"khoa_cong_nghe_dien.bo_mon.{index}.ten",
+            "head": head.strip() if head else None,
+        }
+
+    def _enrich_department_context(self, evidence: Evidence) -> Evidence:
+        index = self._lecturer_bo_mon_index(evidence.path)
+        if index is None:
+            return evidence
+        details = self._bo_mon_details(index)
+        if details is None:
+            return evidence
+        return replace(
+            evidence,
+            parent_department_name=details["name"],
+            parent_department_path=details["path"],
+            parent_department_head=details["head"],
+        )
+
+
     def _mentioned_bo_mon(self, question_norm):
         """
         Detect a department explicitly mentioned by the user.
@@ -314,6 +381,12 @@ class IuhLocalSearch:
         """
         if "bo mon" not in question_norm:
             return None
+
+        ordinal = self._requested_bo_mon_ordinal(question_norm)
+        if ordinal is not None:
+            details = self._bo_mon_details(ordinal - 1)
+            if details is not None:
+                return {"index": details["index"], "name": details["name"]}
 
         query_tokens = _tokenize(question_norm)
 
@@ -394,6 +467,31 @@ class IuhLocalSearch:
         attribute = self._attribute_intent(question_norm)
         is_count = self._is_count_question(question_norm)
         is_plural = self._is_plural_question(question_norm)
+
+        # Human ordinals are 1-based.  Resolve them before generic lexical
+        # ranking so JSON index 3 can never be presented as "bộ môn thứ ba".
+        ordinal = self._requested_bo_mon_ordinal(question_norm)
+        if ordinal is not None and attribute is None and not is_count:
+            details = self._bo_mon_details(ordinal - 1)
+            if details is None:
+                return SearchResult(
+                    "insufficient", (), "department_ordinal_out_of_range"
+                )
+            return SearchResult(
+                "sufficient",
+                (Evidence(
+                    path=details["path"],
+                    field="ten",
+                    value=details["name"],
+                    score=12.0,
+                    reasons=("human_ordinal_department",),
+                    parent_department_name=details["name"],
+                    parent_department_path=details["path"],
+                    parent_department_head=details["head"],
+                    ordinal_position=details["ordinal_position"],
+                ),),
+                "department_selected_by_human_ordinal",
+            )
 
         query_tokens = _tokenize(question_norm)
         intent_tokens: set[str] = set()
@@ -483,13 +581,13 @@ class IuhLocalSearch:
             # For an attribute-only question such as "địa chỉ là gì?", keep all
             # attribute matches so ambiguity can be detected rather than guessed.
             if score >= 4.5:
-                ranked.append(Evidence(
+                ranked.append(self._enrich_department_context(Evidence(
                     path=record.path,
                     field=record.field,
                     value=evidence_value,
                     score=round(score, 3),
                     reasons=tuple(reasons),
-                ))
+                )))
 
         if not ranked:
             return SearchResult("insufficient", (), "no_matching_local_evidence")

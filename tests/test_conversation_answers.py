@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import Mock
 
 from robot_ui.conversation_policy import ANSWER_POLICY, conversation_messages
+from robot_ui.iuh_local_search import IuhLocalSearch
 
 
 class AnswerIntegrationTests(unittest.TestCase):
@@ -89,6 +90,66 @@ class AnswerIntegrationTests(unittest.TestCase):
                         instructions = "\n".join(m["content"] for m in payload["messages"])
                     self.assertIn(ANSWER_POLICY, instructions)
                     self.assertIn(self.worker._response_language_instruction(), instructions)
+
+    def test_lecturer_followup_and_department_ordinal_regression(self):
+        database = Path(__file__).resolve().parents[1] / "robot_ui" / "iuh_database.json"
+        search = IuhLocalSearch(database)
+
+        # Turn 1: an exact lecturer result carries the official parent department.
+        first = search.search("Bạn có biết thầy Hoàng Đình Khôi không?")
+        self.assertEqual(first.status, "sufficient")
+        lecturer = first.evidence[0]
+        self.assertEqual(lecturer.value, "Tiến Sĩ Hoàng Đình Khôi")
+        self.assertEqual(lecturer.parent_department_name, "Bộ môn Tự động hóa")
+
+        # Turn 2: the planner's resolved follow-up receives enough evidence to say
+        # more than a title: degree/title, department, and department head.
+        more = search.search("Cho biết thêm về thầy Hoàng Đình Khôi")
+        self.assertEqual(more.status, "sufficient")
+        self.assertEqual(more.evidence[0].parent_department_name, "Bộ môn Tự động hóa")
+        self.assertEqual(
+            more.evidence[0].parent_department_head,
+            "Phó Giáo Sư Tiến Sĩ Ngô Thanh Quyền",
+        )
+        self.worker._answer_from_local(
+            self.client,
+            "Cho biết thêm",
+            "Người dùng: Bạn có biết thầy Hoàng Đình Khôi không?",
+            more,
+        )
+        prompt = self.client.chat.completions.create.call_args.kwargs["messages"][-1]["content"]
+        self.assertIn("parent_department_name", prompt)
+        self.assertIn("Bộ môn Tự động hóa", prompt)
+        self.assertIn("parent_department_head", prompt)
+        self.assertIn("Ngô Thanh Quyền", prompt)
+        self.assertIn("tiểu sử, chuyên môn hoặc liên hệ", prompt)
+
+        # Turn 3: human "bộ môn ba" means the third item, not JSON index 3.
+        third = search.search("Bộ môn ba là bộ môn nào?")
+        self.assertEqual(third.status, "sufficient")
+        self.assertEqual(third.evidence[0].value, "Bộ môn Thiết bị điện")
+        self.assertEqual(third.evidence[0].ordinal_position, 3)
+
+        # Seed the exact historical mistake we want the answer layer to correct.
+        self.worker._answer_from_local(
+            self.client,
+            "Bộ môn ba là bộ môn nào?",
+            "Bé Son: Thầy Hoàng Đình Khôi thuộc Bộ môn 3.",
+            third,
+        )
+        correction_prompt = self.client.chat.completions.create.call_args.kwargs["messages"][-1]["content"]
+        self.assertIn("Bộ môn Thiết bị điện", correction_prompt)
+        self.assertIn('"ordinal_position": 3', correction_prompt)
+        self.assertIn("gây nhầm lẫn", correction_prompt)
+        self.assertIn("Bộ môn 3", correction_prompt)
+
+    def test_independent_third_department_question_is_self_contained(self):
+        database = Path(__file__).resolve().parents[1] / "robot_ui" / "iuh_database.json"
+        result = IuhLocalSearch(database).search("Bộ môn thứ ba là gì?")
+        self.assertEqual(result.status, "sufficient")
+        self.assertEqual(result.evidence[0].value, "Bộ môn Thiết bị điện")
+        self.assertEqual(result.evidence[0].ordinal_position, 3)
+
 
 
 if __name__ == "__main__":

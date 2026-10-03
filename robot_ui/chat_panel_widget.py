@@ -531,12 +531,25 @@ class _AIChatWorker(QObject):
 
             {language_instruction}
 
-            Chỉ trả lời dựa trên LOCAL EVIDENCE bên dưới.
+            Chỉ trả lời dựa trên các dữ kiện được cung cấp bên dưới.
             Không dùng kiến thức riêng, không suy đoán, không bổ sung dữ kiện
-            không có trong evidence. JSON path chỉ dùng để kiểm chứng nội bộ;
-            không cần đọc path cho người dùng trừ khi họ hỏi cách xác minh.
-            Đây là dữ liệu nội bộ, chưa phải xác minh web chính thức hiện tại.
-            Tôn trọng độ dài và trả lời đủ từng phần người dùng yêu cầu.
+            không có trong evidence.
+
+            QUY TẮC DIỄN ĐẠT:
+            - Trả lời như hội thoại tự nhiên với người dùng.
+            - KHÔNG nhắc các từ hoặc khái niệm nội bộ như:
+            "local", "database", "JSON", "JSON path", "evidence",
+            "dữ liệu nội bộ", "retriever", "hệ thống truy xuất".
+            - Không nói "trong dữ liệu local hiện có".
+            - Nếu thiếu một loại thông tin, nói tự nhiên rằng:
+            "Mình chưa có thêm thông tin về ..."
+            hoặc
+            "Mình chưa tìm thấy thông tin về ..."
+            tùy ngữ cảnh.
+            - Không giải thích cơ chế hệ thống trừ khi người dùng hỏi.
+            - JSON path chỉ dùng để kiểm chứng nội bộ, tuyệt đối không đọc
+            hoặc diễn giải chỉ số mảng cho người dùng.
+            - Tôn trọng độ dài và trả lời đủ từng phần người dùng yêu cầu.
 
             Ngữ cảnh hội thoại gần đây:
             {context}
@@ -612,7 +625,13 @@ class _AIChatWorker(QObject):
             - Không tự bịa thông tin.
             - Với câu hỏi có yếu tố thời gian,
             ưu tiên thông tin mới nhất tìm được.
-            - Với dữ kiện cần xác minh, nêu nguồn và liên kết hỗ trợ trực tiếp.
+            - Với dữ kiện cần xác minh, phải dựa trên nguồn tìm được trước khi trả lời.
+            - KHÔNG hiển thị URL.
+            - KHÔNG hiển thị markdown link.
+            - KHÔNG hiển thị citation hoặc ký hiệu trích dẫn.
+            - KHÔNG thêm phần "Nguồn", "Tham khảo" hoặc "Link".
+            - Có thể nói ngắn gọn "theo nguồn chính thức của IUH" nếu cần,
+            nhưng không đọc tên miền hoặc đường dẫn cho người dùng.
             - Không nói đã xác minh nếu kết quả tìm kiếm không đủ bằng chứng.
             - Ngày truy cập/cập nhật trang không chứng minh ngày đăng bài.
             - Nếu hỏi tin hôm nay, nêu ngày đăng cụ thể; không có thì nói chưa xác minh.
@@ -844,9 +863,10 @@ class ChatPanel(QWidget):
         self._ai_thread     = None
         self._intent_worker = None
         self._intent_thread = None
-        self._voice_enabled = False
-        self._pending_reply = None
-        self._did_speak     = False
+        self._voice_enabled   = False
+        self._recording_active = False
+        self._pending_reply   = None
+        self._did_speak       = False
 
         self._pose_provider      = None
         self._waypoints_provider = None
@@ -875,6 +895,7 @@ class ChatPanel(QWidget):
         self.voice_btn = QPushButton("CLICK\n TO SPEAK")
         self.voice_btn.setObjectName("voice-btn")
         self.voice_btn.setCheckable(True)
+        self.voice_btn.setToolTip("Nhấn một lần để bắt đầu thu, nhấn lần nữa để kết thúc thu")
         self.voice_btn.clicked.connect(self._on_listen_btn_clicked)
 
         # Stop-speaking button
@@ -1220,14 +1241,47 @@ class ChatPanel(QWidget):
         self._ask_ai(original_text)
 
     # ----------------------------------------------------------- voice -----
+    def _reset_recording_controls(self):
+        self._recording_active = False
+        self._voice_enabled = False
+        self.voice_btn.setEnabled(True)
+        self.voice_btn.setChecked(False)
+        self.voice_btn.setText("CLICK\n TO SPEAK")
+
     def _on_listen_btn_clicked(self):
-        if not self.voice_btn.isChecked():
-            self._voice_enabled = False
-            self._voice_engine.stop_speaking()
-            self.voice_status_label.hide()
+        # Second click: finish the current recording only.  Do not route this
+        # through stop_speaking(); the dedicated Stop button owns TTS aborts.
+        if self._recording_active:
+            self._recording_active = False
+            self.voice_btn.setChecked(False)
+            self.voice_btn.setEnabled(False)
+            self.voice_btn.setText("ĐANG\n XỬ LÝ")
+            self.voice_status_label.show()
+            self.voice_status_label.setText("[..] THINKING")
+            self.voice_status_label.setStyleSheet(
+                "color:#5a7abf; background-color:transparent;"
+            )
+            self._voice_engine.stop_listening()
             return
+
+        # First click: start a new capture session.  TTS interruption remains
+        # the responsibility of the dedicated Stop button.
+        started = self._voice_engine.listen_once()
+
+        if not started:
+            self._reset_recording_controls()
+            return
+
         self._voice_enabled = True
-        self._voice_engine.listen_once()
+        self._recording_active = True
+        self.voice_btn.setEnabled(True)
+        self.voice_btn.setChecked(True)
+        self.voice_btn.setText("NHẤN LẠI\n ĐỂ DỪNG")
+        self.voice_status_label.show()
+        self.voice_status_label.setText("[>>] LISTENING")
+        self.voice_status_label.setStyleSheet(
+            "color:#214196; background-color:transparent;"
+        )
 
     def _on_voice_state_changed(self, state):
         if "SPEAKING" in state and self._pending_reply:
@@ -1236,24 +1290,60 @@ class ChatPanel(QWidget):
             self._finish_turn()
 
         if not state:
-            # Reset button on any end-of-turn: STT failure, timeout, or after TTS
-            self._voice_enabled = False
-            self.voice_btn.setChecked(False)
-            self.voice_status_label.hide()
+            # The capture/TTS worker has fully cleaned up.  Reset only the
+            # recording controls; transcript processing continues through the
+            # existing _on_voice_transcript -> chat/navigation path.
+            self._reset_recording_controls()
+
+            # transcript_ready is emitted immediately before this end-state.
+            # If that transcript already started intent/chat processing, keep
+            # its THINKING indicator visible instead of hiding it here.
+            ai_thread = getattr(self, "_ai_thread", None)
+            intent_thread = getattr(self, "_intent_thread", None)
+            ai_busy = bool(ai_thread and ai_thread.isRunning())
+            intent_busy = bool(intent_thread and intent_thread.isRunning())
+            if not (ai_busy or intent_busy):
+                self.voice_status_label.hide()
+
             self._did_speak = False
             return
 
         self.voice_status_label.show()
+
         if "LISTENING" in state:
             self._typing_timer.stop()
+            self._recording_active = True
+            self._voice_enabled = True
+            self.voice_btn.setEnabled(True)
+            self.voice_btn.setChecked(True)
+            self.voice_btn.setText("NHẤN LẠI\n ĐỂ DỪNG")
             self.voice_status_label.setText(state)
-            self.voice_status_label.setStyleSheet("color:#214196; background-color:transparent;")
+            self.voice_status_label.setStyleSheet(
+                "color:#214196; background-color:transparent;"
+            )
+
+        elif "THINKING" in state:
+            self._typing_timer.stop()
+            self._recording_active = False
+            self.voice_btn.setChecked(False)
+            self.voice_btn.setEnabled(False)
+            self.voice_btn.setText("ĐANG\n XỬ LÝ")
+            self.voice_status_label.setText(state)
+            self.voice_status_label.setStyleSheet(
+                "color:#5a7abf; background-color:transparent;"
+            )
+
         elif "SPEAKING" in state:
             self._typing_timer.stop()
             self.voice_status_label.setText(state)
-            self.voice_status_label.setStyleSheet("color:#22c55e; background-color:transparent;")
+            self.voice_status_label.setStyleSheet(
+                "color:#22c55e; background-color:transparent;"
+            )
+
         else:
-            self.voice_status_label.setStyleSheet("color:#5a7abf; background-color:transparent;")
+            self.voice_status_label.setStyleSheet(
+                "color:#5a7abf; background-color:transparent;"
+            )
 
     def _answer_current_location(self):
 
@@ -1516,5 +1606,7 @@ class ChatPanel(QWidget):
     # ----------------------------------------------------------- helpers ---
 
     def cleanup(self):
-        if self._voice_enabled:
-            self._voice_engine.stop_speaking()
+        # Recording and TTS are independent resources and both must be stopped.
+        self._voice_engine.stop_listening()
+        self._voice_engine.stop_speaking()
+        self._reset_recording_controls()

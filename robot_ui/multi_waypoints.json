@@ -22,5 +22,12 @@
       "phong co Tam",
       "x5.4"
     ]
+  },
+  "test_odom_stable": {
+    "map_name": "X5_08042026",
+    "sequence": [
+      "X5.1",
+      "home"
+    ]
   }
 }

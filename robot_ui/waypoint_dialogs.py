@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from waypoint_store import normalize_waypoints, deletion_reason
+from virtual_keyboard import VirtualKeyboard
 
 
 class NewWaypointDialog(QDialog):
@@ -338,7 +339,10 @@ class NewPathDialog(QDialog):
         self._build_ui()
 
     def _build_ui(self):
-        root = QHBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        root = QHBoxLayout()
+        outer.addLayout(root, 1)
         root.setContentsMargins(20, 20, 20, 20)
         root.setSpacing(16)
 
@@ -363,7 +367,18 @@ class NewPathDialog(QDialog):
         self.name_input = QLineEdit()
         self.name_input.setFont(QFont("JetBrains Mono", 14))
         self.name_input.setPlaceholderText("Nhập tên...")
-        left.addWidget(self.name_input)
+        self.name_input.returnPressed.connect(self._confirm)
+        name_row = QHBoxLayout()
+        name_row.addWidget(self.name_input, 1)
+        self.keyboard_toggle = QPushButton("⌨")
+        self.keyboard_toggle.setCheckable(True)
+        self.keyboard_toggle.setAutoDefault(False)
+        self.keyboard_toggle.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.keyboard_toggle.setFixedSize(50, 50)
+        self.keyboard_toggle.setToolTip("Hiện/ẩn bàn phím ảo (chữ không dấu)")
+        self.keyboard_toggle.setAccessibleName("Hiện hoặc ẩn bàn phím ảo cho tên lộ trình")
+        name_row.addWidget(self.keyboard_toggle)
+        left.addLayout(name_row)
 
         root.addLayout(left, 1)
 
@@ -408,6 +423,20 @@ class NewPathDialog(QDialog):
         right.addLayout(btn_row)
 
         root.addLayout(right, 1)
+
+        self.virtual_keyboard = VirtualKeyboard(self.name_input, enter_label="Xác nhận")
+        self.virtual_keyboard.submitted.connect(self._confirm)
+        self.virtual_keyboard.hide()
+        outer.addWidget(self.virtual_keyboard)
+        self.keyboard_toggle.toggled.connect(self._toggle_keyboard)
+        # Physical Enter is handled only by name_input, never a default button.
+        for button in (btn_confirm, btn_undo, btn_back):
+            button.setAutoDefault(False)
+
+    def _toggle_keyboard(self, visible):
+        self.virtual_keyboard.setVisible(visible)
+        if visible:
+            self.name_input.setFocus()
 
     def _add_goal(self, item):
         self.sequence.append(item.data(Qt.ItemDataRole.UserRole))

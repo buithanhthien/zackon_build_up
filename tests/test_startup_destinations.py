@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'robot_ui'))
-from PyQt6.QtWidgets import QApplication, QDialog, QMainWindow, QPushButton
+from PyQt6.QtWidgets import QApplication, QDialog, QMainWindow, QPushButton, QLabel
 from PyQt6.QtGui import QPixmap
 from action_msgs.msg import GoalStatus
 from startup_layout import RobotUI
@@ -153,6 +153,41 @@ class StartupDestinationsTests(unittest.TestCase):
             w._run_waypoint_sequence(['other'])
             warning.assert_called_once()
             send.assert_not_called()
+
+    def test_startup_chat_keyboard_and_route_dialog_are_independent(self):
+        w = self.window
+        panel = SimpleNamespace(hide=Mock(), voice_btn=QPushButton(),
+                                voice_status_label=QLabel(), interrupt_btn=QPushButton(),
+                                log_signal=Mock(), _ai_thread=None, _ask_ai=Mock())
+        with patch('startup_layout.ChatPanel', return_value=panel), patch.object(w, 'update_status'):
+            w.init_ui()
+            self.app.processEvents()
+        for timer in (w.status_timer, w.clock_timer, w._reestimate_pulse_timer):
+            timer.stop()
+        self.assertIs(w.virtual_keyboard.target, w.chat_input)
+        w.keyboard_toggle.click()
+        w.virtual_keyboard.findChild(QPushButton, 'key-h').click()
+        w.virtual_keyboard.findChild(QPushButton, 'key-enter').click()
+        panel._ask_ai.assert_called_once_with('h')
+        self.assertEqual(w.chat_input.text(), '')
+        panel._ask_ai.reset_mock()
+        w.chat_input.setText('draft')
+        route_file = Path(self.tmp.name) / 'keyboard-route.json'
+        dialog = NewPathDialog(w._waypoints, 'test', str(route_file), w)
+        dialog.sequence = ['home']
+        dialog.keyboard_toggle.click()
+        dialog.virtual_keyboard.findChild(QPushButton, 'key-a').click()
+        dialog.virtual_keyboard.findChild(QPushButton, 'key-enter').click()
+        self.assertEqual(json.loads(route_file.read_text())['a']['sequence'], ['home'])
+        panel._ask_ai.assert_not_called()
+        self.assertEqual(w.chat_input.text(), 'draft')
+        self.assertTrue(w.keyboard_toggle.isChecked())
+        self.assertFalse(w.virtual_keyboard.isHidden())
+        send_button = next(b for b in w.findChildren(QPushButton)
+                           if b.text() == 'Gửi' and b.parent() != w.virtual_keyboard)
+        send_button.click()
+        panel._ask_ai.assert_called_once_with('draft')
+        self.assertEqual(w.chat_input.text(), '')
 
     def test_map_toggle_and_window_close_do_not_cancel_navigation(self):
         w = self.window

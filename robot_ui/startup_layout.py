@@ -43,6 +43,7 @@ from map_utils import (update_map_files, get_current_map_name,
 from waypoint_store import load_waypoint_file, resolve_waypoint, save_waypoint_file
 from waypoint_dialogs import (DestinationDialog, WaypointPickerDialog, NewWaypointDialog,
                               PathManagerDialog, NewPathDialog, DIALOG_STYLE)
+from virtual_keyboard import VirtualKeyboard
 from waypoint_map_widget import MapWidget
 from process_manager import ProcessManager
 from rclpy.action import ActionClient
@@ -1136,33 +1137,9 @@ class RobotUI(QMainWindow):
         self.chat_history_box.setPlaceholderText("Cuộc hội thoại với Bé Son sẽ xuất hiện ở đây...")
         chat_layout.addWidget(self.chat_history_box, 1)
 
-        self.virtual_keyboard = QWidget()
-        self.virtual_keyboard.setObjectName("virtual-keyboard")
-        self.virtual_keyboard.setStyleSheet("""
-            QWidget#virtual-keyboard {
-                background-color: #e8edf7;
-                border: 1px solid #c7d5f3;
-                border-radius: 10px;
-            }
-            QWidget#virtual-keyboard QPushButton {
-                min-height: 42px;
-                background-color: #ffffff;
-                color: #172554;
-                border: 1px solid #c7d5f3;
-                border-radius: 6px;
-                font-size: 16px;
-                font-weight: 600;
-            }
-            QWidget#virtual-keyboard QPushButton:hover {
-                background-color: #dbeafe;
-            }
-        """)
-        self._virtual_keyboard_layout = QVBoxLayout(self.virtual_keyboard)
-        self._virtual_keyboard_layout.setContentsMargins(8, 8, 8, 8)
-        self._virtual_keyboard_layout.setSpacing(4)
-        self._keyboard_symbols = False
-        self._keyboard_shift = False
-        self._render_virtual_keyboard()
+        self.chat_input = QLineEdit()
+        self.virtual_keyboard = VirtualKeyboard(self.chat_input)
+        self.virtual_keyboard.submitted.connect(self._send_chat_message)
         self.virtual_keyboard.hide()
         chat_layout.addWidget(self.virtual_keyboard)
 
@@ -1171,7 +1148,6 @@ class RobotUI(QMainWindow):
         chat_input_layout.setContentsMargins(0, 0, 0, 0)
         chat_input_layout.setSpacing(8)
 
-        self.chat_input = QLineEdit()
         self.chat_input.setObjectName("chat-input")
         self.chat_input.setPlaceholderText("Nhập tin nhắn...")
         self.chat_input.setFixedHeight(50)
@@ -1239,74 +1215,6 @@ class RobotUI(QMainWindow):
         self._pulse_state = False
 
         QTimer.singleShot(0, self.update_status)    
-
-    def _render_virtual_keyboard(self):
-        while self._virtual_keyboard_layout.count():
-            item = self._virtual_keyboard_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-
-        if self._keyboard_symbols:
-            rows = [
-                [(digit, digit, 1) for digit in "1234567890"],
-                [(symbol, symbol, 1) for symbol in "@-'?!, ." if symbol != " "],
-                [("letters", "ABC", 1), ("space", "space", 4),
-                 ("backspace", "⌫", 1), ("enter", "Gửi", 1)],
-            ]
-        else:
-            rows = [
-                [(letter, letter.upper() if self._keyboard_shift else letter, 1)
-                 for letter in "qwertyuiop"],
-                [(letter, letter.upper() if self._keyboard_shift else letter, 1)
-                 for letter in "asdfghjkl"],
-                [("shift", "Shift", 2)] +
-                [(letter, letter.upper() if self._keyboard_shift else letter, 1)
-                 for letter in "zxcvbnm"] +
-                [("backspace", "⌫", 2)],
-                [("symbols", "?123", 2), (",", ",", 1),
-                 ("space", "space", 5), (".", ".", 1),
-                 ("enter", "Gửi", 2)],
-            ]
-
-        for row in rows:
-            row_layout = QHBoxLayout()
-            row_layout.setSpacing(4)
-            for key, label, stretch in row:
-                button = QPushButton(label)
-                button.setMinimumWidth(32)
-                button.setSizePolicy(
-                    QSizePolicy.Policy.Expanding,
-                    QSizePolicy.Policy.Fixed,
-                )
-                button.clicked.connect(
-                    lambda checked=False, key=key: self._handle_virtual_key(key)
-                )
-                row_layout.addWidget(button, stretch)
-            self._virtual_keyboard_layout.addLayout(row_layout)
-
-    def _handle_virtual_key(self, key):
-        if key == "symbols":
-            self._keyboard_symbols = True
-            self._render_virtual_keyboard()
-        elif key == "letters":
-            self._keyboard_symbols = False
-            self._render_virtual_keyboard()
-        elif key == "shift":
-            self._keyboard_shift = not self._keyboard_shift
-            self._render_virtual_keyboard()
-        elif key == "backspace":
-            self.chat_input.backspace()
-        elif key == "space":
-            self.chat_input.insert(" ")
-        elif key == "enter":
-            self._send_chat_message()
-        else:
-            value = key.upper() if self._keyboard_shift else key
-            self.chat_input.insert(value)
-            self._keyboard_shift = False
-            if not self._keyboard_symbols:
-                self._render_virtual_keyboard()
 
     def _send_chat_message(self):
         message = self.chat_input.text().strip()

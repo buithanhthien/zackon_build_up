@@ -34,6 +34,8 @@ from load_map_dialog import LoadMapDialog
 from language_dialog import LanguageDialog
 from language_config import (get_language, get_ui_text)
 from chat_panel_widget import ChatPanel
+from motion_commands import parse_motion, validate_motion
+from motion_ros import RosMotionController
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH, shell_source_workspace
 from styles import MAIN_STYLESHEET
@@ -148,7 +150,7 @@ class LocalizationWorker(QObject):
         except Exception:
             pass
         node = Node('localization_worker')
-        cmd_vel_pub        = node.create_publisher(Twist, '/cmd_vel', 10)
+        cmd_vel_pub        = node.create_publisher(Twist, '/cmd_vel_sources/localization', 10)
         _pose_sub          = node.create_subscription(          # noqa: F841
             PoseWithCovarianceStamped, '/amcl_pose',
             self._pose_callback, 10
@@ -246,6 +248,8 @@ class LocalizationWorker(QObject):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class RobotUI(QMainWindow):
+    motion_status = pyqtSignal(str)
+
     def __init__(self, skip_micro_ros=False):
         super().__init__()
         self.process_mgr                 = ProcessManager()
@@ -333,6 +337,9 @@ class RobotUI(QMainWindow):
         self._ros_spin_timer.start(100)
 
         self.init_ui()
+        self.motion_status.connect(self._report_motion_status)
+        self._motion = RosMotionController(self.motion_status.emit)
+        self.chat_panel.motion_command.connect(self.execute_motion)
 
         # ------------------------------------------------------------
         # Voice navigation wiring
@@ -368,7 +375,24 @@ class RobotUI(QMainWindow):
         #    self.start_nav2
         #)
 
+    def _report_motion_status(self, message):
+        self.chat_panel.log_signal.emit(f"[Bé Son] {message}")
+
+    def execute_motion(self, data):
+        try:
+            validated = validate_motion(data)
+            if validated['actions'][0]['type'] == 'stop':
+                self.cancel_voice_navigation()
+                return
+            if self._nav_goal_handle is not None or self._voice_nav_queue:
+                raise ValueError("Hãy dừng hành trình waypoint trước khi chạy chuyển động trực tiếp.")
+            self._motion.start(validated)
+        except Exception as exc:
+            self._report_motion_status(f"Không thể thực hiện: {exc}")
+
     def _ros_spin_once(self):
+        if getattr(self, '_motion', None) is not None:
+            self._motion.heartbeat()
         try:
             if rclpy.ok():
                 rclpy.spin_once(self._ros_node, timeout_sec=0)
@@ -1219,6 +1243,18 @@ class RobotUI(QMainWindow):
     def _send_chat_message(self):
         message = self.chat_input.text().strip()
         if not message:
+            return
+
+        # Motion and stop must not wait for an ongoing chat response.
+        try:
+            motion = parse_motion(message)
+        except ValueError as exc:
+            self._report_motion_status(f"Không thực hiện: {exc}")
+            self.chat_input.clear()
+            return
+        if motion is not None:
+            self.chat_panel._on_voice_transcript(message)
+            self.chat_input.clear()
             return
 
         worker_thread = self.chat_panel._ai_thread
@@ -2254,6 +2290,8 @@ class RobotUI(QMainWindow):
         )
 
     def closeEvent(self, event):
+        if getattr(self, '_motion', None) is not None:
+            self._motion.close()
         self._nav2_started = False
 
         if self.localization_worker:
@@ -2582,6 +2620,10 @@ class RobotUI(QMainWindow):
             pass
 
     def cancel_voice_navigation(self):
+        if getattr(self, '_motion', None) is not None:
+            self._motion.stop()
+        if getattr(self, 'chat_panel', None) is not None:
+            self.chat_panel._intent_generation = getattr(self.chat_panel, '_intent_generation', 0) + 1
         self._navigation_generation += 1
 
         self._voice_nav_queue.clear()

@@ -20,6 +20,7 @@ def generate_launch_description():
         name='docking_server',
         output='screen',
         parameters=[params_file],
+        remappings=[('cmd_vel', '/cmd_vel_sources/docking')],
     )
 
     lifecycle_manager = Node(

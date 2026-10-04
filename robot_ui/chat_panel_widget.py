@@ -14,6 +14,7 @@ from language_config import get_language
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from motion_commands import parse_motion, validate_motion
 from voice_engine import VoiceEngine
 from correction_memory import CorrectionMemory
 from iuh_local_search import IuhLocalSearch
@@ -854,6 +855,7 @@ class _IntentWorker(QObject):
 class ChatPanel(QWidget):
     log_signal       = pyqtSignal(str)
 
+    motion_command = pyqtSignal(dict)
     waypoint_command = pyqtSignal(str)
 
     navigation_stop = pyqtSignal()
@@ -1184,6 +1186,7 @@ class ChatPanel(QWidget):
         self._typing_dots = 0
         self._typing_timer.start(400)
 
+        generation = getattr(self, '_intent_generation', 0)
         self._intent_worker = _IntentWorker(
             text,
             waypoints
@@ -1203,7 +1206,8 @@ class ChatPanel(QWidget):
             lambda data:
             self._on_intent_ready(
                 data,
-                original_text
+                original_text,
+                generation
             )
         )
 
@@ -1211,7 +1215,8 @@ class ChatPanel(QWidget):
             lambda err:
             self._on_intent_error(
                 err,
-                original_text
+                original_text,
+                generation
             )
         )
 
@@ -1221,10 +1226,27 @@ class ChatPanel(QWidget):
 
         self._intent_thread.start()
 
-    def _on_intent_ready(self, data: dict, original_text: str):
+    def _on_intent_ready(self, data: dict, original_text: str, generation=None):
         self._typing_timer.stop()
+        if generation is not None and generation != getattr(self, '_intent_generation', 0):
+            self.voice_status_label.hide()
+            return
         intent    = data.get("intent")
         waypoints = data.get("waypoints") or []
+
+        if intent == "motion":
+            try:
+                validated = validate_motion(data)
+                if validated != parse_motion(original_text):
+                    raise ValueError("Lệnh không khớp câu yêu cầu.")
+                if validated['actions'][0]['type'] == 'stop':
+                    self.navigation_stop.emit()
+                else:
+                    self.motion_command.emit(validated)
+            except ValueError as exc:
+                self.log_signal.emit(f"[Bé Son] Không thực hiện: {exc}")
+            self.voice_status_label.hide()
+            return
 
         if intent == "navigate" and waypoints:
             resolved = []
@@ -1258,9 +1280,11 @@ class ChatPanel(QWidget):
             self.voice_status_label.hide()
             self._ask_ai(original_text)
 
-    def _on_intent_error(self, error: str, original_text: str):
+    def _on_intent_error(self, error: str, original_text: str, generation=None):
         self._typing_timer.stop()
         self.voice_status_label.hide()
+        if generation is not None and generation != getattr(self, '_intent_generation', 0):
+            return
         print(f"[Intent] classification failed, falling back to chat: {error}")
         self._ask_ai(original_text)
 
@@ -1514,22 +1538,21 @@ class ChatPanel(QWidget):
         # Vì đây là lệnh an toàn nên KHÔNG bắt buộc phải nói "Bé Son".
         # ============================================================
 
-        stop_commands = {
-            "vi": [
-            "dung lai",
-            "dung robot",
-            "huy lenh",
-            "huy hanh trinh",
-            ],
-
-            "en": [
-                "stop",
-                "stop robot",
-                "stop moving",
-                "cancel",
-                "cancel navigation",
-            ],
-        }
+        # Parse the original transcript: room normalization can alter numbers.
+        try:
+            motion = parse_motion(text)
+        except ValueError as exc:
+            self.log_signal.emit(f"[Bé Son] Không thực hiện: {exc}")
+            return
+        if motion is not None:
+            self._intent_generation = getattr(self, '_intent_generation', 0) + 1
+            if motion['actions'][0]['type'] == 'stop':
+                self._voice_engine.stop_speaking()
+                self.navigation_stop.emit()
+            else:
+                self.log_signal.emit(f"[Bạn] {text}")
+                self.motion_command.emit(validate_motion(motion))
+            return
 
         location_commands = [
             "toi dang o dau",
@@ -1541,29 +1564,6 @@ class ChatPanel(QWidget):
             "be son toi dang o dau",
             "be son cho toi biet toi dang o dau",
         ]
-
-        active_stop_commands = (
-            stop_commands.get(
-                self._language,
-                stop_commands["vi"]
-            )
-        )
-
-        if any(
-            cmd in normalized
-            for cmd in active_stop_commands
-        ):
-            self.log_signal.emit(
-                "[VOICE] Phát hiện lệnh dừng"
-            )
-
-            # Dừng Bé Son nói
-            self._voice_engine.stop_speaking()
-
-            # Dừng navigation
-            self.navigation_stop.emit()
-
-            return
 
         if any(
             cmd in normalized
@@ -1581,7 +1581,8 @@ class ChatPanel(QWidget):
             "be son",
             "bson",
             "haha",
-            "ha ha" 
+            "ha ha",
+            "khang"
         ]
 
         has_wake_word = any(

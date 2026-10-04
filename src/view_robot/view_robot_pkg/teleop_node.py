@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
 from geometry_msgs.msg import Twist
+from std_msgs.msg import Empty
 
 # === TÙY CHỈNH CÁC CHỈ SỐ NÀY ===
 # Tìm các chỉ số này bằng cách chạy `ros2 topic echo /joy`
@@ -17,8 +18,10 @@ class JoyTeleopNode(Node):
         # Tạo một subscriber lắng nghe chủ đề /joy
         self.subscription = self.create_subscription(Joy, 'joy', self.joy_callback, 10)
         
-        # Tạo một publisher xuất bản lên topic /cmd_vel
-        self.publisher = self.create_publisher(Twist, 'cmd_vel', 10)
+        # Chỉ gửi vào arbiter; không ghi trực tiếp lên đầu ra robot.
+        self.publisher = self.create_publisher(Twist, '/cmd_vel_sources/teleop', 1)
+        self.release_pub = self.create_publisher(Empty, '/velocity_arbiter/release/teleop', 1)
+        self._held = False
 
         # Khai báo các tham số cho tốc độ tối đa (tùy chọn nhưng nên làm)
         self.declare_parameter('scale_linear', 0.3)  # Tốc độ tiến/lùi tối đa (m/s)
@@ -42,14 +45,22 @@ class JoyTeleopNode(Node):
         twist_msg = Twist()
 
         # Kiểm tra xem nút "kích hoạt" có đang được giữ không
-        if msg.buttons[DEADMAN_BUTTON] == 1:
+        held = (len(msg.buttons) > DEADMAN_BUTTON and
+                len(msg.axes) > max(AXIS_LINEAR, AXIS_ANGULAR) and
+                msg.buttons[DEADMAN_BUTTON] == 1)
+        if not held:
+            if self._held:
+                self.release_pub.publish(Empty())
+            self._held = False
+            return
+        self._held = True
+        if held:
             # Ánh xạ giá trị từ trục sang tốc độ
             # msg.axes[] có giá trị từ -1.0 đến 1.0
             twist_msg.linear.x = msg.axes[AXIS_LINEAR] * scale_linear
             twist_msg.angular.z = msg.axes[AXIS_ANGULAR] * scale_angular
         
-        # Nếu nút kích hoạt không được giữ, tin nhắn Twist sẽ là (0,0)
-        # và robot sẽ dừng lại.
+        # Khi nhả deadman, trả quyền ở nhánh phía trên; không spam zero lúc rảnh.
 
         # Xuất bản tin nhắn Twist
         self.publisher.publish(twist_msg)

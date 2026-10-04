@@ -2,6 +2,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
@@ -125,6 +126,10 @@ def generate_launch_description():
     # 6. RETURN
     # ----------------------------------------------------
     return LaunchDescription([
+        DeclareLaunchArgument('start_velocity_arbiter', default_value='true'),
+        Node(package='view_robot_pkg', executable='velocity_arbiter', name='velocity_arbiter',
+             condition=IfCondition(LaunchConfiguration('start_velocity_arbiter')),
+             parameters=[os.path.join(pkg_dir, 'config', 'twist_mux.yaml')]),
         # --- Arguments ---
         # lidar_frame_arg,
         # lidar_port_arg,

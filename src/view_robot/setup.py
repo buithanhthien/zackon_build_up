@@ -42,6 +42,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'velocity_arbiter = view_robot_pkg.velocity_arbiter:main',
             'fake_diff_drive = view_robot_pkg.fake_diff_drive:main',
             'odom_frame_publisher = view_robot_pkg.odom_frame_publisher:main',
             'odom_tf_broadcaster = view_robot_pkg.odom_tf_broadcaster:main',

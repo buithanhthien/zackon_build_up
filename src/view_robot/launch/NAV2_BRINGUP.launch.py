@@ -152,7 +152,8 @@ def generate_launch_description():
         ),
         launch_arguments={
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'params_file': nav2_params_file
+            'params_file': nav2_params_file,
+            'start_velocity_arbiter': LaunchConfiguration('start_velocity_arbiter')
         }.items()
     )
 
@@ -178,6 +179,7 @@ def generate_launch_description():
     # 6. RETURN
     # ----------------------------------------------------
     return LaunchDescription([
+        DeclareLaunchArgument('start_velocity_arbiter', default_value='true'),
         # --- Arguments ---
         map_arg,
         lidar_frame_arg,

@@ -18,6 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml
@@ -55,7 +56,9 @@ def generate_launch_description():
     # TODO(orduno) Substitute with `PushNodeRemapping`
     #              https://github.com/ros2/launch_ros/issues/56
     remappings = [('/tf', 'tf'),
-                  ('/tf_static', 'tf_static')]
+                  ('/tf_static', 'tf_static'),
+                  ('cmd_vel', '/cmd_vel_sources/navigation'),
+                  ('/cmd_vel', '/cmd_vel_sources/navigation')]
 
     # Create our own temporary YAML files that include substitutions
     param_substitutions = {
@@ -72,6 +75,11 @@ def generate_launch_description():
             convert_types=True)
 
     return LaunchDescription([
+        DeclareLaunchArgument('start_velocity_arbiter', default_value='true'),
+        Node(package='view_robot_pkg', executable='velocity_arbiter',
+             name='velocity_arbiter', output='screen',
+             condition=IfCondition(LaunchConfiguration('start_velocity_arbiter')),
+             parameters=[os.path.join(bringup_dir, 'config', 'twist_mux.yaml')]),
         # Set env var to print messages to stdout immediately
         SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1'),
 

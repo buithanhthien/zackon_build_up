@@ -13,6 +13,27 @@ DATABASE = next(path for path in DATABASE_CANDIDATES if path.exists())
 
 
 class IuhLocalSearchTests(unittest.TestCase):
+    def test_faculty_introduction_does_not_select_school_phone(self):
+        for question in (
+            "KHOA CÔNG NGHỆ ĐIỆN CỦA TRƯỜNG ĐẠI HỌC CÔNG NGHIỆP BẠN CÓ BIẾT KHÔNG",
+            "BẠN GIỚI THIỆU VỀ KHOA CÔNG NGHỆ ĐIỆN CỦA TRƯỜNG ĐẠI HỌC CÔNG NGHIỆP ĐI",
+        ):
+            with self.subTest(question=question):
+                result = self.search.search(question)
+                self.assertEqual(result.status, "sufficient")
+                self.assertEqual({e.path for e in result.evidence}, {
+                    "khoa_cong_nghe_dien.ten", "khoa_cong_nghe_dien.chuong_trinh_dao_tao",
+                    "khoa_cong_nghe_dien.chuyen_nganh"})
+
+    def test_school_location_resolves_main_campus(self):
+        result = self.search.search("TRƯỜNG ĐẠI HỌC CÔNG NGHIỆP NẰM Ở ĐÂU")
+        self.assertEqual(result.status, "sufficient")
+        self.assertEqual(result.evidence[0].path, "co_so.tru_so_chinh.dia_chi")
+
+    def test_electronics_head_does_not_return_electrical_head(self):
+        result = self.search.search("Trưởng khoa Công nghệ Điện tử là ai?")
+        self.assertEqual(result.status, "insufficient")
+
     @classmethod
     def setUpClass(cls):
         cls.search = IuhLocalSearch(DATABASE)
@@ -32,6 +53,29 @@ class IuhLocalSearchTests(unittest.TestCase):
         result = self.search.search("IUH có bao nhiêu sinh viên?")
         self.assertEqual(result.status, "insufficient")
         self.assertEqual(result.evidence, ())
+
+    def test_university_counts_do_not_count_achievements_or_faculty_subset(self):
+        for question in (
+            "TRƯỜNG ĐẠI HỌC CÔNG NGHIỆP CÓ BAO NHIÊU KHOA",
+            "Trường Đại học Công nghiệp có bao nhiêu viện?",
+            "Trường Đại học Công nghiệp có bao nhiêu phòng ban?",
+            "Trường Đại học Công nghiệp có bao nhiêu khoa và viện?",
+            "Trường Đại học Công nghiệp có bao nhiêu giảng viên?",
+            "IUH có mấy khoa?",
+            "Tổng số khoa của IUH là bao nhiêu?",
+        ):
+            with self.subTest(question=question):
+                result = self.search.search(question)
+                self.assertEqual(result.status, "insufficient")
+                self.assertEqual(result.evidence, ())
+
+    def test_faculty_department_count_retains_exact_scope(self):
+        result = self.search.search("Khoa Công nghệ Điện có bao nhiêu bộ môn?")
+        self.assertEqual(result.status, "sufficient")
+        self.assertEqual(result.evidence[0].path, "khoa_cong_nghe_dien.bo_mon")
+        self.assertEqual(result.evidence[0].value, 4)
+        other = self.search.search("Khoa Công nghệ Điện tử có bao nhiêu bộ môn?")
+        self.assertEqual(other.status, "insufficient")
 
     def test_bare_address_is_ambiguous(self):
         result = self.search.search("Địa chỉ là gì?")

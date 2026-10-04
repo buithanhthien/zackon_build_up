@@ -274,6 +274,30 @@ class IuhLocalSearch:
     def _is_plural_question(question_norm: str) -> bool:
         return any(phrase in question_norm for phrase in PLURAL_PHRASES)
 
+    def _count_matches(self, record: _Record, question_norm: str) -> bool:
+        """Require the counted field and its scope, not just shared school words."""
+        label = _label_from_key(record.field)
+        label = re.sub(r"^(?:so luong|tong so|so) ", "", label)
+        if not label or record.field.isdigit():
+            return False
+        markers = r"(?:bao nhieu|co may|so luong|tong so)"
+        if not re.search(r"\b" + markers + r"\s+" + re.escape(label) + r"\b",
+                         question_norm):
+            return False
+        # No certified complete university-wide unit list exists in this schema.
+        if record.value_type == "list" and label in {"khoa", "vien", "phong ban"}:
+            return False
+        if record.path.startswith("khoa_cong_nghe_dien."):
+            department = self._mentioned_bo_mon(question_norm)
+            if ".bo_mon." in record.path:
+                if department is None:
+                    return False
+                prefix = f"khoa_cong_nghe_dien.bo_mon.{department['index']}."
+                return record.path.startswith(prefix)
+            if not re.search(r"\bkhoa cong nghe dien\b(?! tu\b)", question_norm):
+                return False
+        return True
+
     @staticmethod
     def _field_matches_attribute(record: _Record, attribute: str) -> bool:
         field = normalize_text(record.field.replace("_", " "))
@@ -468,6 +492,31 @@ class IuhLocalSearch:
         is_count = self._is_count_question(question_norm)
         is_plural = self._is_plural_question(question_norm)
 
+        electrical = bool(re.search(r"\bkhoa cong nghe dien\b(?! tu\b)", question_norm))
+        electronics = "khoa cong nghe dien tu" in question_norm
+        if electrical and attribute is None and not is_count and (
+            re.search(r"(?:gioi thieu|tong quan) (?:ve )?khoa cong nghe dien\b", question_norm)
+            or re.search(r"khoa cong nghe dien.*ban co biet", question_norm)
+        ):
+            # A faculty introduction needs descriptive evidence, not a highly
+            # ranked contact leaf sharing words with the university's name.
+            paths = {"khoa_cong_nghe_dien." + field for field in
+                     ("ten", "chuong_trinh_dao_tao", "chuyen_nganh")}
+            evidence = tuple(Evidence(r.path, r.field, r.value, 20.0,
+                                      ("faculty_overview",))
+                             for r in self.records if r.path in paths)
+            if evidence:
+                return SearchResult("sufficient", evidence, "faculty_overview")
+
+        if attribute == "dia_chi" and (
+            "truong dai hoc cong nghiep" in question_norm or "iuh" in question_norm.split()
+        ) and not re.search(r"\b(?:khoa|phong|co so|phan hieu)\b", question_norm):
+            for record in self.records:
+                if record.path == "co_so.tru_so_chinh.dia_chi":
+                    return SearchResult("sufficient", (Evidence(
+                        record.path, record.field, record.value, 20.0,
+                        ("university_main_address",)),), "university_main_address")
+
         # Human ordinals are 1-based.  Resolve them before generic lexical
         # ranking so JSON index 3 can never be presented as "bộ môn thứ ba".
         ordinal = self._requested_bo_mon_ordinal(question_norm)
@@ -512,6 +561,10 @@ class IuhLocalSearch:
 
         ranked: list[Evidence] = []
         for record in self.records:
+            if electrical and not record.path.startswith("khoa_cong_nghe_dien."):
+                continue
+            if electronics and record.path.startswith("khoa_cong_nghe_dien."):
+                continue
             reasons: list[str] = []
             score = 0.0
 
@@ -553,6 +606,8 @@ class IuhLocalSearch:
 
             evidence_value = record.value
             if is_count:
+                if not self._count_matches(record, question_norm):
+                    continue
                 if record.value_type == "list":
                     # Count only a structurally matched collection. A list item merely
                     # mentioning the query words is not proof that it represents them.

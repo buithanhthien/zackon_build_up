@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from voice_engine import VoiceEngine
 from correction_memory import CorrectionMemory
 from iuh_local_search import IuhLocalSearch
+from web_sources import extract_web_sources, format_answer_sources
 from conversation_policy import (
     ANSWER_POLICY, answer_turn, conversation_messages, plan_turn,
 )
@@ -292,7 +293,7 @@ def _load_env():
 
 _load_env()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL   = "gpt-5.4-mini"
+OPENAI_MODEL   = "gpt-6-luna"
 
 def get_system_prompt(language):
 
@@ -413,6 +414,7 @@ INTENT_SYSTEM_PROMPT_TEMPLATE = (
 
 class _AIChatWorker(QObject):
     response_ready = pyqtSignal(str)
+    sources_ready = pyqtSignal(list)
     language_ready = pyqtSignal(str, str)
     error_occurred = pyqtSignal(str)
     finished       = pyqtSignal()
@@ -566,7 +568,6 @@ class _AIChatWorker(QObject):
             messages=[{"role": "system", "content": ANSWER_POLICY},
                       {"role": "user", "content": prompt}],
             max_completion_tokens=1800,
-            temperature=0,
         )
         answer = (response.choices[0].message.content or "").strip()
         if not answer:
@@ -626,12 +627,23 @@ class _AIChatWorker(QObject):
             - Với câu hỏi có yếu tố thời gian,
             ưu tiên thông tin mới nhất tìm được.
             - Với dữ kiện cần xác minh, phải dựa trên nguồn tìm được trước khi trả lời.
-            - KHÔNG hiển thị URL.
-            - KHÔNG hiển thị markdown link.
-            - KHÔNG hiển thị citation hoặc ký hiệu trích dẫn.
-            - KHÔNG thêm phần "Nguồn", "Tham khảo" hoặc "Link".
+            - Xác định đúng tên đơn vị trước khi dùng nguồn. Khoa Công nghệ Điện
+              và Khoa Công nghệ Điện tử là hai đơn vị khác nhau. Không dùng nhân sự
+              hoặc lịch sử của khoa này để trả lời cho khoa kia.
+            - Khi hỏi số lượng khoa, viện, phòng ban: tìm danh sách cơ cấu tổ chức
+              chính thức đầy đủ; phân loại từng đơn vị, bỏ mục trùng rồi mới đếm.
+              Không coi một danh sách tuyển sinh hoặc cẩm nang là toàn bộ cơ cấu.
+              Kiểm tra tổng số khớp danh sách. Nếu nguồn chỉ liệt kê một phần,
+              nói rõ chưa xác minh được tổng số, không suy ra tổng từ phần đó.
+            - Lời trả lời trước của trợ lý và sự đồng ý của người dùng không phải
+              bằng chứng chính thức. Khi số liệu mới khác câu trả lời trước,
+              nêu rõ đã sửa thông tin nào và căn cứ của sự sửa đổi.
+            - Không gọi thông tin là mới nhất chỉ vì trang vừa được thu thập.
+            - Mặc định không hiển thị URL, markdown link, citation hoặc phần nguồn.
+              Chỉ cung cấp nguồn/link khi người dùng yêu cầu; chọn các nguồn
+              trực tiếp hỗ trợ câu trả lời, không liệt kê toàn bộ kết quả tìm kiếm.
             - Có thể nói ngắn gọn "theo nguồn chính thức của IUH" nếu cần,
-            nhưng không đọc tên miền hoặc đường dẫn cho người dùng.
+            chỉ nêu tên miền hoặc đường dẫn khi người dùng hỏi nguồn/link.
             - Không nói đã xác minh nếu kết quả tìm kiếm không đủ bằng chứng.
             - Ngày truy cập/cập nhật trang không chứng minh ngày đăng bài.
             - Nếu hỏi tin hôm nay, nêu ngày đăng cụ thể; không có thì nói chưa xác minh.
@@ -675,16 +687,19 @@ class _AIChatWorker(QObject):
             tools=[
                 {
                     "type": "web_search",
-                    "search_context_size": "low",
+                    "search_context_size": "medium",
                 }
             ],
 
             tool_choice="required",
+            include=["web_search_call.action.sources"],
 
             instructions=ANSWER_POLICY + "\n" + instructions,
 
             input=web_input,
         )
+
+        self._web_sources = extract_web_sources(response.model_dump().get("output", []))
 
         answer = (
             response.output_text
@@ -732,7 +747,10 @@ class _AIChatWorker(QObject):
             )
             # Save acknowledgements already disclose persistence failures. General
             # tasks must not be prefixed with an unrelated storage outage warning.
+            answer = format_answer_sources(answer, question)
             self.response_ready.emit(answer)
+            if getattr(self, "_web_sources", None):
+                self.sources_ready.emit(self._web_sources)
 
         except Exception as e:
             print(f"[CHAT ERROR] {e}")
@@ -748,7 +766,7 @@ class _IntentWorker(QObject):
         - hoặc hội thoại thông thường.
 
         Bộ phân loại sử dụng một lời gọi OpenAI riêng,
-        không sử dụng streaming và đặt temperature = 0.
+        không sử dụng streaming, dùng tham số lấy mẫu mặc định của model.
 
         Kết quả bắt buộc phải là JSON đúng định dạng:
 
@@ -817,7 +835,6 @@ class _IntentWorker(QObject):
                     {"role": "user", "content": self.text},
                 ],
                 max_completion_tokens=200,
-                temperature=0,
             )
             raw = (resp.choices[0].message.content or "").strip()
             # Defensively strip markdown code fences in case the model adds them
@@ -1079,6 +1096,7 @@ class ChatPanel(QWidget):
             self._on_response
         )
         self._ai_worker.language_ready.connect(self._on_response_language)
+        self._ai_worker.sources_ready.connect(self._on_web_sources)
 
         self._ai_worker.error_occurred.connect(
             self._on_error
@@ -1089,6 +1107,12 @@ class ChatPanel(QWidget):
         )
 
         self._ai_thread.start()
+
+    def _on_web_sources(self, sources):
+        # Keep provenance for follow-up questions without adding a chat bubble.
+        self._last_web_sources = sources
+        if self._chat_history and self._chat_history[-1].get("role") == "assistant":
+            self._chat_history[-1]["web_sources"] = sources
 
     def _on_response_language(self, reply_language, conversation_language):
         self._ai_request_language = reply_language

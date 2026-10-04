@@ -157,7 +157,9 @@ class MemoryTests(unittest.TestCase):
 
 class WorkerIntegrationTests(unittest.TestCase):
     def _run_worker(self, local_status="sufficient", memory_answer=None,
-                    force_web=False, warning="", route=None, language_plan=None):
+                    force_web=False, warning="", route=None, language_plan=None,
+                    question="Where is A?", web_answer="web answer"):
+        from robot_ui.web_sources import format_answer_sources
         # Execute the actual worker method without importing Qt/ROS/audio hardware.
         source = Path("robot_ui/chat_panel_widget.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -174,6 +176,7 @@ class WorkerIntegrationTests(unittest.TestCase):
                 **(language_plan or {}),
             }),
             "answer_turn": answer_turn,
+            "format_answer_sources": format_answer_sources,
         }
         exec(compile(module, "worker-test", "exec"), namespace)
 
@@ -186,16 +189,24 @@ class WorkerIntegrationTests(unittest.TestCase):
         instance = Mock(language="en")
         instance.memory.warning = warning
         instance.memory.respond.return_value = memory_answer
-        instance._get_latest_user_question.return_value = "Where is A?"
+        instance._get_latest_user_question.return_value = question
         instance._get_recent_context.return_value = "context"
         instance._search_local.return_value = local_result
         instance._answer_from_local.return_value = "local answer"
-        instance._search_web.return_value = "web answer"
+        instance._search_web.return_value = web_answer
         instance._clarify_local.return_value = "clarify"
         instance._answer_general.return_value = "general answer"
 
         namespace["run"](instance)
         return instance
+
+    def test_web_citations_are_filtered_before_response_signal(self):
+        answer = "Thầy là giảng viên. ([feet.iuh.edu.vn](https://feet.iuh.edu.vn/))"
+        instance = self._run_worker(force_web=True, question="Giới thiệu thầy", web_answer=answer)
+        instance.response_ready.emit.assert_called_once_with("Thầy là giảng viên.")
+        instance.error_occurred.emit.assert_not_called()
+        requested = self._run_worker(force_web=True, question="Cho tôi nguồn", web_answer=answer)
+        requested.response_ready.emit.assert_called_once_with(answer)
 
     def test_local_evidence_answers_without_web(self):
         instance = self._run_worker(local_status="sufficient")

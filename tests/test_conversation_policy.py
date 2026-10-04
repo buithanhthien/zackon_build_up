@@ -8,6 +8,20 @@ from robot_ui.correction_memory import CorrectionMemory
 
 
 class ConversationPolicyTests(unittest.TestCase):
+    def test_missing_university_total_falls_back_to_web(self):
+        from robot_ui.iuh_local_search import IuhLocalSearch
+        question = "Trường Đại học Công nghiệp có bao nhiêu khoa?"
+        web = Mock(return_value="verified answer")
+        local, memory = Mock(), Mock()
+        answer = answer_turn(
+            {"route": "local", "query": question}, question, "history",
+            search_local=IuhLocalSearch().search, answer_local=local,
+            answer_web=web, answer_general=Mock(), answer_memory=memory)
+        self.assertEqual(answer, "verified answer")
+        web.assert_called_once_with(question, "history")
+        local.assert_not_called()
+        memory.assert_not_called()
+
     def test_valid_plan_preserves_one_turn_language_and_session_default(self):
         client = Mock()
         expected = {"route": "general", "query": "Translate and explain",

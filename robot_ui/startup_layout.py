@@ -2266,7 +2266,7 @@ class RobotUI(QMainWindow):
                 self._voice_nav_queue.clear()
 
                 cancel_future = (
-                    self._nav_goal_handle.cancel_goal_async()
+                self._nav_goal_handle.cancel_goal_async() 
                 )
 
                 rclpy.spin_until_future_complete(

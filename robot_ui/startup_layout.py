@@ -36,6 +36,8 @@ from language_config import (get_language, get_ui_text)
 from chat_panel_widget import ChatPanel
 from motion_commands import parse_motion, validate_motion
 from motion_ros import RosMotionController
+from motion_commands import parse_motion, validate_motion
+from motion_ros import RosMotionController
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH, shell_source_workspace
 from styles import MAIN_STYLESHEET
@@ -151,6 +153,7 @@ class LocalizationWorker(QObject):
             pass
         node = Node('localization_worker')
         cmd_vel_pub        = node.create_publisher(Twist, '/cmd_vel_sources/localization', 10)
+        cmd_vel_pub        = node.create_publisher(Twist, '/cmd_vel_sources/localization', 10)
         _pose_sub          = node.create_subscription(          # noqa: F841
             PoseWithCovarianceStamped, '/amcl_pose',
             self._pose_callback, 10
@@ -250,6 +253,8 @@ class LocalizationWorker(QObject):
 class RobotUI(QMainWindow):
     motion_status = pyqtSignal(str)
 
+    motion_status = pyqtSignal(str)
+
     def __init__(self, skip_micro_ros=False):
         super().__init__()
         self.process_mgr                 = ProcessManager()
@@ -342,6 +347,9 @@ class RobotUI(QMainWindow):
         self.motion_status.connect(self._report_motion_status)
         self._motion = RosMotionController(self.motion_status.emit)
         self.chat_panel.motion_command.connect(self.execute_motion)
+        self.motion_status.connect(self._report_motion_status)
+        self._motion = RosMotionController(self.motion_status.emit)
+        self.chat_panel.motion_command.connect(self.execute_motion)
 
         # ------------------------------------------------------------
         # Voice navigation wiring
@@ -394,6 +402,8 @@ class RobotUI(QMainWindow):
             self._report_motion_status(f"Không thể thực hiện: {exc}")
 
     def _ros_spin_once(self):
+        if getattr(self, '_motion', None) is not None:
+            self._motion.heartbeat()
         if getattr(self, '_motion', None) is not None:
             self._motion.heartbeat()
         try:
@@ -1246,6 +1256,18 @@ class RobotUI(QMainWindow):
     def _send_chat_message(self):
         message = self.chat_input.text().strip()
         if not message:
+            return
+
+        # Motion and stop must not wait for an ongoing chat response.
+        try:
+            motion = parse_motion(message)
+        except ValueError as exc:
+            self._report_motion_status(f"Không thực hiện: {exc}")
+            self.chat_input.clear()
+            return
+        if motion is not None:
+            self.chat_panel._on_voice_transcript(message)
+            self.chat_input.clear()
             return
 
         # Motion and stop must not wait for an ongoing chat response.
@@ -2632,6 +2654,10 @@ class RobotUI(QMainWindow):
             pass
 
     def cancel_voice_navigation(self):
+        if getattr(self, '_motion', None) is not None:
+            self._motion.stop()
+        if getattr(self, 'chat_panel', None) is not None:
+            self.chat_panel._intent_generation = getattr(self.chat_panel, '_intent_generation', 0) + 1
         if getattr(self, '_motion', None) is not None:
             self._motion.stop()
         if getattr(self, 'chat_panel', None) is not None:

@@ -88,8 +88,11 @@ class DispatchTests(unittest.TestCase):
         window = SimpleNamespace(_motion=Mock(), _navigation_generation=0,
                                  _voice_nav_queue=['A1', 'A2'], _nav_goal_handle=goal,
                                  chat_panel=self.panel(), log=Mock(), _waypoint_cancel_response=Mock())
+        window.chat_panel._intent_generation = 7
+        intent_generation = window.chat_panel._intent_generation
         RobotUI.cancel_voice_navigation(window)
         window._motion.stop.assert_called_once()
+        self.assertEqual(window.chat_panel._intent_generation, intent_generation + 1)
         goal.cancel_goal_async.assert_called_once()
         self.assertEqual(window._voice_nav_queue, [])
         self.assertIs(window._nav_goal_handle, goal)  # Retain until terminal result.

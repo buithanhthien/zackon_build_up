@@ -1,34 +1,42 @@
 #!/usr/bin/env python3
-import sys
-import subprocess
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QPushButton, QTextEdit, QLabel, QLineEdit)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
-import sys, os
+import os
+import re
 import shlex
+import sys
+from pathlib import Path
+
+from PyQt6.QtWidgets import (QDialog, QWidget, QVBoxLayout, QHBoxLayout,
+                             QPushButton, QLabel, QLineEdit)
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QFont
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH, shell_source_workspace
-from chat_panel_widget import ChatPanel
 from styles import MAIN_STYLESHEET
-from ui_utils import append_log, setup_clock_timer
-from process_manager import ProcessManager
+from ui_utils import setup_clock_timer
+from mapping_process import MappingProcess
+from virtual_keyboard import VirtualKeyboard
 
 
-class NewMapUI(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.process_mgr = ProcessManager()
+class NewMapUI(QDialog):
+    _active_dialog = None
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setModal(False)
+        self.resize(820, 480)
+        self.save_process = None
+        self._save_path = None
         self.mapping_process = None
         self.init_ui()
+        self.process_timer = QTimer(self)
+        self.process_timer.timeout.connect(self.check_processes)
+        self.process_timer.start(250)
 
     def init_ui(self):
         self.setWindowTitle("New Map - SLAM Mapping")
         self.setStyleSheet(MAIN_STYLESHEET)
 
-        central = QWidget()
-        self.setCentralWidget(central)
-        main_layout = QHBoxLayout(central)
+        main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
@@ -45,18 +53,15 @@ class NewMapUI(QMainWindow):
         left_layout.addWidget(wordmark)
 
         mono = QFont("JetBrains Mono", 18)
-        self.btn_cancel = QPushButton("Hủy")
         self.btn_back   = QPushButton("Quay lại")
 
-        for btn in [self.btn_cancel, self.btn_back]:
-            btn.setObjectName("action-btn")
-            btn.setFont(mono)
-            btn.setMinimumHeight(72)
-            left_layout.addWidget(btn)
+        self.btn_back.setObjectName("action-btn")
+        self.btn_back.setFont(mono)
+        self.btn_back.setMinimumHeight(72)
+        left_layout.addWidget(self.btn_back)
 
         left_layout.addStretch()
 
-        self.btn_cancel.clicked.connect(self.cancel_mapping)
         self.btn_back.clicked.connect(self.go_back)
 
         # ── Right area ────────────────────────────────────────────────────────
@@ -102,7 +107,29 @@ class NewMapUI(QMainWindow):
         self.btn_start.setObjectName("primary-btn")
         self.btn_start.setFont(QFont("JetBrains Mono", 18))
         self.btn_start.clicked.connect(self.start_mapping)
-        content_layout.addWidget(self.btn_start)
+        self.btn_cancel = QPushButton("Hủy")
+        self.btn_cancel.setObjectName("cancel-mapping-btn")
+        self.btn_cancel.setFont(mono)
+        self.btn_cancel.setMinimumHeight(56)
+        self.btn_cancel.setMinimumWidth(120)
+        self.btn_cancel.setStyleSheet("""
+            QPushButton#cancel-mapping-btn {
+                background-color: #dc2626;
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                font-size: 18px;
+                padding: 0px 24px;
+            }
+            QPushButton#cancel-mapping-btn:hover { background-color: #b91c1c; }
+            QPushButton#cancel-mapping-btn:pressed { background-color: #991b1b; }
+        """)
+        self.btn_cancel.clicked.connect(self.cancel_mapping)
+        mapping_row = QHBoxLayout()
+        mapping_row.setSpacing(12)
+        mapping_row.addWidget(self.btn_start, 1)
+        mapping_row.addWidget(self.btn_cancel)
+        content_layout.addLayout(mapping_row)
 
         # Save map row
         save_label = QLabel("LƯU BẢN ĐỒ")
@@ -117,6 +144,25 @@ class NewMapUI(QMainWindow):
         self.map_name_input.setFont(QFont("JetBrains Mono", 16))
         save_row.addWidget(self.map_name_input)
 
+        self.keyboard_toggle = QPushButton("⌨")
+        self.keyboard_toggle.setCheckable(True)
+        self.keyboard_toggle.setAutoDefault(False)
+        self.keyboard_toggle.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.keyboard_toggle.setFixedSize(50, 50)
+        self.keyboard_toggle.setToolTip("Hiện/ẩn bàn phím ảo (chữ không dấu)")
+        self.keyboard_toggle.setAccessibleName("Hiện hoặc ẩn bàn phím ảo cho tên bản đồ")
+        self.keyboard_toggle.setStyleSheet("""
+            QPushButton {
+                background-color: #e0e8f8;
+                color: #1a2a5e;
+                border-radius: 8px;
+                font-size: 24px;
+                padding: 0;
+            }
+            QPushButton:checked { background-color: #c8d4f0; }
+        """)
+        save_row.addWidget(self.keyboard_toggle)
+
         self.btn_apply = QPushButton("Áp dụng")
         self.btn_apply.setObjectName("apply-btn")
         self.btn_apply.setFont(QFont("JetBrains Mono", 16))
@@ -125,119 +171,157 @@ class NewMapUI(QMainWindow):
         save_row.addWidget(self.btn_apply)
         content_layout.addLayout(save_row)
 
+        self.virtual_keyboard = VirtualKeyboard(self.map_name_input, enter_label="Lưu")
+        self.virtual_keyboard.submitted.connect(self.save_map)
+        self.virtual_keyboard.hide()
+        content_layout.addWidget(self.virtual_keyboard)
+        self.keyboard_toggle.toggled.connect(self._toggle_keyboard)
+
         content_layout.addStretch()
         right_layout.addWidget(content, 1)
 
-        # Log panel
-        log_panel = QWidget()
-        log_panel.setObjectName("log-panel")
-        log_layout = QVBoxLayout(log_panel)
-        log_layout.setContentsMargins(16, 12, 16, 12)
-        log_layout.setSpacing(6)
-
-        log_header = QHBoxLayout()
-        log_title = QLabel("SYSTEM LOG")
-        log_title.setObjectName("log-title")
-        log_title.setFont(QFont("DM Sans", 11))
-        live_badge = QLabel("● LIVE")
-        live_badge.setStyleSheet("color: #22c55e; font-size: 11px;")
-        log_header.addWidget(log_title)
-        log_header.addStretch()
-        log_header.addWidget(live_badge)
-        log_layout.addLayout(log_header)
-
-        self.log_text = QTextEdit()
-        self.log_text.setObjectName("log-text")
-        self.log_text.setReadOnly(True)
-        self.log_text.setFont(QFont("Fira Code", 13))
-        log_layout.addWidget(self.log_text)
-
-        self.chat_widget = ChatPanel()
-
-        panels_splitter = QWidget()
-        panels_layout = QHBoxLayout(panels_splitter)
-        panels_layout.setContentsMargins(0, 0, 0, 0)
-        panels_layout.setSpacing(8)
-        panels_layout.addWidget(log_panel, 1)
-        panels_layout.addWidget(self.chat_widget, 1)
-
-        right_layout.addWidget(panels_splitter, 1)
+        self.status_label = QLabel("Sẵn sàng lập bản đồ.")
+        self.status_label.setWordWrap(True)
+        self.status_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.status_label.setContentsMargins(24, 12, 24, 12)
+        right_layout.addWidget(self.status_label)
 
         main_layout.addWidget(left_panel, 22)
         main_layout.addWidget(right_widget, 78)
 
+        for button in (self.btn_cancel, self.btn_back, self.btn_start, self.btn_apply):
+            button.setAutoDefault(False)
+        self.map_name_input.returnPressed.connect(self.save_map)
         self.clock_timer = setup_clock_timer(self.clock_label)
 
-    def log(self, message):
-        append_log(self.log_text, message)
-        
-    def start_mapping(self):
-        try:
-            # Kill any leftover nav2/AMCL/map_server processes
-            for proc in ['nav2', 'amcl', 'map_server', 'lifecycle_manager', 'MAP_NAVIGATION']:
-                self.process_mgr.kill_by_pattern(proc)
-            self.log("Đã dừng các tiến trình điều hướng cũ")
+    def _toggle_keyboard(self, visible):
+        self.virtual_keyboard.setVisible(visible)
+        if visible:
+            self.map_name_input.setFocus()
 
-            self.mapping_process = self.process_mgr.launch_terminal(
-                shell_source_workspace(
-                    'ros2 launch view_robot_pkg MAP_GENERATING.launch.py; exec bash'
-                ),
-                'MAP_GENERATING'
-            )
-            self.log("✓ Đã khởi động MAP_GENERATING.launch.py")
-            self.log("SLAM đang hoạt động")
-            self.log("Điều khiển robot để khám phá môi trường")
-            self.log("Nhập tên bản đồ và nhấn Áp dụng để lưu")
-            self.btn_start.setEnabled(False)
-            self.btn_start.setText("Mapping Active...")
-        except Exception as e:
-            self.log(f"[LỖI] Không thể bắt đầu lập bản đồ: {e}")
-    
+    def log(self, message):
+        self.status_label.setText(message)
+
+    def start_mapping(self):
+        if self.mapping_process is not None:
+            return
+        owner = NewMapUI._active_dialog
+        if owner is not None and owner is not self:
+            self.log("Một phiên lập bản đồ khác đang chạy.")
+            return
+        try:
+            self.mapping_process = MappingProcess(shell_source_workspace(
+                'exec ros2 launch view_robot_pkg MAP_GENERATING.launch.py'
+            ))
+        except Exception as exc:
+            self.log(f"Không thể bắt đầu lập bản đồ: {exc}")
+            return
+        NewMapUI._active_dialog = self
+        self.btn_start.setEnabled(False)
+        self.btn_start.setText("Đã gửi lệnh khởi động")
+        self.log("Đã gửi lệnh khởi động SLAM. Kiểm tra bản đồ trong RViz trước khi lưu.")
+
     def cancel_mapping(self):
-        self.log("Đang hủy quá trình lập bản đồ SLAM...")
-        self.process_mgr.kill_by_pattern('MAP_GENERATING.launch.py')
-        self.process_mgr.kill_by_pattern('rviz2')
-        self.log("Đã dừng MAP_GENERATING và RViz2")
-        self.mapping_process = None
+        try:
+            self._stop_processes()
+        except Exception as exc:
+            self.log(f"Không thể dừng lập bản đồ: {exc}")
+            return
+        self.log("Đã dừng các tiến trình của phiên lập bản đồ.")
+
+    def _stop_processes(self):
+        errors = []
+        for attr in ('save_process', 'mapping_process'):
+            proc = getattr(self, attr)
+            if proc is not None:
+                try:
+                    proc.stop()
+                    setattr(self, attr, None)
+                except Exception as exc:
+                    errors.append(str(exc))
+        if errors:
+            raise RuntimeError('; '.join(errors))
+        if NewMapUI._active_dialog is self:
+            NewMapUI._active_dialog = None
         self.btn_start.setEnabled(True)
         self.btn_start.setText("Bắt đầu lập bản đồ")
-        self.log("Nút Bắt đầu đã được khôi phục")
-    
+        self.btn_apply.setEnabled(True)
+        self.map_name_input.setEnabled(True)
+        self.virtual_keyboard.setEnabled(True)
+
     def save_map(self):
+        if self.save_process is not None:
+            return
         map_name = self.map_name_input.text().strip()
         if not map_name:
-            self.log("Lỗi: Vui lòng nhập tên bản đồ")
+            self.log("Vui lòng nhập tên bản đồ.")
             return
-        
-        map_path = f"{SOURCE_PATH}/src/view_robot/maps/{map_name}"
-        self.log(f"Đang lưu bản đồ '{map_name}' vào thư mục maps...")
+        if map_name in ('.', '..') or not re.fullmatch(r'[\w .-]+', map_name):
+            self.log("Tên bản đồ chỉ được chứa chữ, số, khoảng trắng, dấu gạch và dấu chấm.")
+            return
+        if self.mapping_process is None or self.mapping_process.poll() is not None:
+            self.log("Hãy bắt đầu lập bản đồ trước khi lưu.")
+            return
+        self._save_path = Path(SOURCE_PATH) / 'src/view_robot/maps' / map_name
         try:
-            self.process_mgr.launch_terminal(
-                shell_source_workspace(
-                    f'cd {shlex.quote(os.path.join(SOURCE_PATH, "src/view_robot/maps"))} && '
-                    f'ros2 run nav2_map_server map_saver_cli -f {shlex.quote(map_name)}; exec bash'
-                ),
-                'Map Saver'
-            )
-            self.log(f"Đã lưu bản đồ tại: {map_path}")
-        except Exception as e:
-            self.log(f"Không thể lưu bản đồ: {e}")
-    
+            self._save_path.parent.mkdir(parents=True, exist_ok=True)
+            self.save_process = MappingProcess(shell_source_workspace(
+                f'exec ros2 run nav2_map_server map_saver_cli -f {shlex.quote(str(self._save_path))}'
+            ))
+        except Exception as exc:
+            self.log(f"Không thể lưu bản đồ: {exc}")
+            return
+        self.btn_apply.setEnabled(False)
+        self.map_name_input.setEnabled(False)
+        self.virtual_keyboard.setEnabled(False)
+        self.log(f"Đang lưu bản đồ '{map_name}'…")
+
+    def check_processes(self):
+        if self.mapping_process is not None and self.mapping_process.poll() is not None:
+            code = self.mapping_process.poll()
+            detail = self.mapping_process.error_detail()
+            try:
+                self._stop_processes()
+            except Exception as exc:
+                self.log(f"Không thể dọn tiến trình mapping: {exc}")
+                return
+            self.log(f"Tiến trình mapping đã kết thúc (mã {code}). {detail}")
+            return
+        if self.save_process is not None and self.save_process.poll() is not None:
+            code = self.save_process.poll()
+            detail = self.save_process.error_detail()
+            try:
+                self.save_process.stop()
+            except Exception as exc:
+                self.log(f"Không thể dọn tiến trình lưu: {exc}")
+                return
+            self.save_process = None
+            self.btn_apply.setEnabled(True)
+            self.map_name_input.setEnabled(True)
+            self.virtual_keyboard.setEnabled(True)
+            yaml_file = Path(str(self._save_path) + '.yaml')
+            if code == 0 and yaml_file.is_file():
+                self.log(f"Đã lưu bản đồ tại: {yaml_file}")
+            else:
+                self.log(f"Không thể lưu bản đồ (mã {code}). {detail}")
+
     def go_back(self):
-        self.log("Quay về giao diện chính")
-        self.process_mgr.cleanup_all()
-        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
         self.close()
-    
+
+    def done(self, result):
+        # Escape/reject/accept do not necessarily dispatch closeEvent.
+        try:
+            self._stop_processes()
+        except Exception as exc:
+            self.log(f"Không thể đóng: {exc}")
+            return
+        super().done(result)
+
     def closeEvent(self, event):
-        self.process_mgr.cleanup_all()
-        self.chat_widget.cleanup()
+        try:
+            self._stop_processes()
+        except Exception as exc:
+            self.log(f"Không thể đóng: {exc}")
+            event.ignore()
+            return
         event.accept()
-
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    app.setFont(QFont("Fira Sans", 12))
-    window = NewMapUI()
-    window.showMaximized()
-    sys.exit(app.exec())

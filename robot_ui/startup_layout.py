@@ -31,6 +31,7 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Empty
 from load_map_dialog import LoadMapDialog
+from new_map_layout import NewMapUI
 from language_dialog import LanguageDialog
 from language_config import (get_language, get_ui_text)
 from chat_panel_widget import ChatPanel
@@ -2130,9 +2131,11 @@ class RobotUI(QMainWindow):
         self.localization_worker = None
 
     def start_new_map(self):
-        self.log("Chuyển sang chế độ tạo bản đồ mới")
-        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/new_map_layout.py'])
-        self.close()
+        if getattr(self, '_new_map_dialog', None) is None:
+            self._new_map_dialog = NewMapUI(self)
+        self._new_map_dialog.show()
+        self._new_map_dialog.raise_()
+        self._new_map_dialog.activateWindow()
 
     def start_docking(self):
         self.log("Chuyển sang chế độ docking")
@@ -2328,6 +2331,10 @@ class RobotUI(QMainWindow):
             event.ignore()
             return
         if getattr(self, '_motion', None) is not None and self._motion.close() is False:
+            event.ignore()
+            return
+        dialog = getattr(self, '_new_map_dialog', None)
+        if dialog is not None and not dialog.close():
             event.ignore()
             return
         self._nav2_started = False
@@ -2654,10 +2661,6 @@ class RobotUI(QMainWindow):
             pass
 
     def cancel_voice_navigation(self):
-        if getattr(self, '_motion', None) is not None:
-            self._motion.stop()
-        if getattr(self, 'chat_panel', None) is not None:
-            self.chat_panel._intent_generation = getattr(self.chat_panel, '_intent_generation', 0) + 1
         if getattr(self, '_motion', None) is not None:
             self._motion.stop()
         if getattr(self, 'chat_panel', None) is not None:

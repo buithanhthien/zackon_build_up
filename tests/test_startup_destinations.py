@@ -72,6 +72,35 @@ class StartupDestinationsTests(unittest.TestCase):
             popen.assert_not_called()
             dialog.close()
 
+    def test_new_map_popup_reuses_window_and_preserves_startup_resources(self):
+        w = self.window
+        w.process_mgr = Mock()
+        w.chat_panel = Mock()
+        w._motion = Mock()
+        with patch('startup_layout.subprocess.Popen') as launch, patch.object(w, 'close') as close:
+            w.start_new_map()
+            dialog = w._new_map_dialog
+            self.assertIsInstance(dialog, QDialog)
+            self.assertIs(dialog.parent(), w)
+            self.assertFalse(dialog.isModal())
+            w.start_new_map()
+            self.assertIs(w._new_map_dialog, dialog)
+            mapping = Mock()
+            mapping.poll.return_value = None
+            dialog.mapping_process = mapping
+            dialog.close()
+            mapping.stop.assert_called_once()
+            w.start_new_map()
+            self.assertIs(w._new_map_dialog, dialog)
+            self.assertIsNone(dialog.mapping_process)
+            self.assertTrue(dialog.isVisible())
+            dialog.close()
+            w.process_mgr.cleanup_all.assert_not_called()
+            w.chat_panel.cleanup.assert_not_called()
+            w._motion.close.assert_not_called()
+            launch.assert_not_called()
+            close.assert_not_called()
+
     def test_picker_uses_latest_file_current_map_and_shared_navigation(self):
         w = self.window
         Path(w._waypoints_file).write_text(json.dumps({'fresh': waypoint(), 'other': waypoint('other')}))

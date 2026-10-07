@@ -34,7 +34,7 @@ CustomRangeDock::CustomRangeDock(const rclcpp::NodeOptions & options)
   alignment_tolerance_ = this->get_parameter("alignment_tolerance").as_double();
   
   // Publishers & Subscribers
-  cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+  cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel_sources/docking", 10);
   marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/docking_markers", 10);
   scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
     "/scan_rear_lidar_filter", 10,

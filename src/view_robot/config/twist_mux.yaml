@@ -1,7 +1,15 @@
-twist_mux:
+# Consumed by our lease-aware velocity_arbiter, not the twist_mux executable.
+velocity_arbiter:
   ros__parameters:
-    topics:
-      navigation:
-        topic: cmd_vel
-        timeout: 0.5
-        priority: 
+    navigation.priority: 20
+    navigation.timeout: 0.5
+    following.priority: 40
+    following.timeout: 0.5
+    ui.priority: 60
+    ui.timeout: 0.5
+    docking.priority: 70
+    docking.timeout: 0.5
+    localization.priority: 80
+    localization.timeout: 0.5
+    teleop.priority: 100
+    teleop.timeout: 0.5

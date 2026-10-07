@@ -9,6 +9,7 @@
   <author>Khoa_AIot</author>  
   <!-- Runtime deps for your node -->
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>

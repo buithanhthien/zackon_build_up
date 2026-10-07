@@ -2,6 +2,9 @@ import ast
 import contextlib
 from pathlib import Path
 from types import SimpleNamespace
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from motion_commands import parse_motion, validate_motion
 
 
 ROOT = Path(__file__).resolve().parent
@@ -147,7 +150,8 @@ def test_empty_transcript_is_not_sent_and_nonempty_is_sent_once():
         CHAT_PANEL,
         "ChatPanel",
         "_on_voice_transcript",
-        extra_globals={"_normalize_room_names": lambda text: text.lower()},
+        extra_globals={"_normalize_room_names": lambda text: text.lower(),
+                       "parse_motion": parse_motion, "validate_motion": validate_motion},
     )
 
     asked = []

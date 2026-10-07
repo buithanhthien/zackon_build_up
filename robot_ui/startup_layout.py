@@ -34,6 +34,8 @@ from load_map_dialog import LoadMapDialog
 from language_dialog import LanguageDialog
 from language_config import (get_language, get_ui_text)
 from chat_panel_widget import ChatPanel
+from motion_commands import parse_motion, validate_motion
+from motion_ros import RosMotionController
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH, shell_source_workspace
 from styles import MAIN_STYLESHEET
@@ -148,7 +150,7 @@ class LocalizationWorker(QObject):
         except Exception:
             pass
         node = Node('localization_worker')
-        cmd_vel_pub        = node.create_publisher(Twist, '/cmd_vel', 10)
+        cmd_vel_pub        = node.create_publisher(Twist, '/cmd_vel_sources/localization', 10)
         _pose_sub          = node.create_subscription(          # noqa: F841
             PoseWithCovarianceStamped, '/amcl_pose',
             self._pose_callback, 10
@@ -246,6 +248,8 @@ class LocalizationWorker(QObject):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class RobotUI(QMainWindow):
+    motion_status = pyqtSignal(str)
+
     def __init__(self, skip_micro_ros=False):
         super().__init__()
         self.process_mgr                 = ProcessManager()
@@ -305,6 +309,8 @@ class RobotUI(QMainWindow):
         )
 
         self._nav_goal_handle = None
+        self._nav_pending = False
+        self._nav_cancel_requested = False
         self._navigation_generation = 0
         self._voice_nav_queue = []
 
@@ -333,6 +339,9 @@ class RobotUI(QMainWindow):
         self._ros_spin_timer.start(100)
 
         self.init_ui()
+        self.motion_status.connect(self._report_motion_status)
+        self._motion = RosMotionController(self.motion_status.emit)
+        self.chat_panel.motion_command.connect(self.execute_motion)
 
         # ------------------------------------------------------------
         # Voice navigation wiring
@@ -368,7 +377,25 @@ class RobotUI(QMainWindow):
         #    self.start_nav2
         #)
 
+    def _report_motion_status(self, message):
+        self.chat_panel.log_signal.emit(f"[Bé Son] {message}")
+
+    def execute_motion(self, data):
+        try:
+            validated = validate_motion(data)
+            if validated['actions'][0]['type'] == 'stop':
+                self.cancel_voice_navigation()
+                return
+            if (self._nav_goal_handle is not None or self._voice_nav_queue
+                    or getattr(self, '_nav_pending', False)):
+                raise ValueError("Hãy dừng và chờ kết quả hủy waypoint trước khi gửi chuyển động mới.")
+            self._motion.start(validated)
+        except Exception as exc:
+            self._report_motion_status(f"Không thể thực hiện: {exc}")
+
     def _ros_spin_once(self):
+        if getattr(self, '_motion', None) is not None:
+            self._motion.heartbeat()
         try:
             if rclpy.ok():
                 rclpy.spin_once(self._ros_node, timeout_sec=0)
@@ -1219,6 +1246,18 @@ class RobotUI(QMainWindow):
     def _send_chat_message(self):
         message = self.chat_input.text().strip()
         if not message:
+            return
+
+        # Motion and stop must not wait for an ongoing chat response.
+        try:
+            motion = parse_motion(message)
+        except ValueError as exc:
+            self._report_motion_status(f"Không thực hiện: {exc}")
+            self.chat_input.clear()
+            return
+        if motion is not None:
+            self.chat_panel._on_voice_transcript(message)
+            self.chat_input.clear()
             return
 
         worker_thread = self.chat_panel._ai_thread
@@ -2116,6 +2155,9 @@ class RobotUI(QMainWindow):
             NewPathDialog(self._waypoints, current_map, path, self).exec()
 
     def _run_waypoint_sequence(self, sequence):
+        if self._navigation_busy():
+            self.log('Đang chạy hoặc chờ hủy; hãy dừng và chờ kết quả trước khi chọn waypoint mới.')
+            return
         self._waypoints = self._load_waypoints()
         current_map = get_current_map_name()
         if (not isinstance(sequence, list) or not sequence
@@ -2254,35 +2296,21 @@ class RobotUI(QMainWindow):
         )
 
     def closeEvent(self, event):
+        self.cancel_voice_navigation()
+        # Keep processing a goal response arriving after Stop until its terminal result.
+        deadline = time.monotonic() + 5.0
+        while (self._nav_goal_handle is not None or getattr(self, '_nav_pending', False)) and time.monotonic() < deadline:
+            rclpy.spin_once(self._ros_node, timeout_sec=0.05)
+        if self._nav_goal_handle is not None or getattr(self, '_nav_pending', False):
+            self.log('[Bé Son] Chưa xác nhận waypoint đã dừng; giữ giao diện mở để xử lý hủy.')
+            event.ignore()
+            return
+        if getattr(self, '_motion', None) is not None and self._motion.close() is False:
+            event.ignore()
+            return
         self._nav2_started = False
-
         if self.localization_worker:
             self.localization_worker.stop()
-
-        # Cancel Nav2 goal before destroying ROS node
-        if self._nav_goal_handle is not None:
-
-            try:
-                self._voice_nav_queue.clear()
-
-                cancel_future = (
-                self._nav_goal_handle.cancel_goal_async() 
-                )
-
-                rclpy.spin_until_future_complete(
-                    self._ros_node,
-                    cancel_future,
-                    timeout_sec=1.0
-                )
-
-                self.log(
-                    "[Bé Son] Đã yêu cầu hủy navigation khi đóng UI"
-                )
-
-            except Exception as e:
-                self.log(
-                    f"[Bé Son] Lỗi cancel khi đóng UI: {e}"
-                )
 
         self._ros_spin_timer.stop()
 
@@ -2312,6 +2340,9 @@ class RobotUI(QMainWindow):
         return result
 
     def voice_navigate_to_waypoint(self, command):
+        if self._navigation_busy():
+            self.log('Đang chạy hoặc chờ hủy; hãy dừng và chờ kết quả trước khi chọn waypoint mới.')
+            return
 
         self.log(
             f"[Bé Son] Lệnh điều hướng: {command}"
@@ -2462,16 +2493,25 @@ class RobotUI(QMainWindow):
             f"y={waypoint['y']:.2f}"
         )
 
-        future = self._nav_client.send_goal_async(
-            goal,
-            feedback_callback=self._nav_feedback_callback
-        )
+        self._nav_pending = True
+        self._nav_cancel_requested = False
+        try:
+            future = self._nav_client.send_goal_async(
+                goal,
+                feedback_callback=self._nav_feedback_callback
+            )
+        except Exception as exc:
+            self._nav_pending = False
+            self._voice_nav_queue.clear()
+            self.log(f'Lỗi gửi waypoint: {exc}')
+            return
 
         future.add_done_callback(
             lambda done: self._nav_goal_response_callback(done, generation)
         )
 
     def _nav_goal_response_callback(self, future, generation=None):
+        self._nav_pending = False
         if generation is None:
             generation = self._navigation_generation
 
@@ -2479,6 +2519,9 @@ class RobotUI(QMainWindow):
             goal_handle = future.result()
             if generation != self._navigation_generation:
                 if goal_handle.accepted:
+                    self._nav_goal_handle = goal_handle
+                    goal_handle.get_result_async().add_done_callback(
+                        lambda done: self._nav_result_callback(done, generation))
                     goal_handle.cancel_goal_async()
                 return
 
@@ -2486,6 +2529,7 @@ class RobotUI(QMainWindow):
             self.log(
                 f"Lỗi gửi Nav2 goal: {e}"
             )
+            self._voice_nav_queue.clear()
             return
 
         if not goal_handle.accepted:
@@ -2515,6 +2559,12 @@ class RobotUI(QMainWindow):
         if generation is None:
             generation = self._navigation_generation
         if generation != self._navigation_generation:
+            try:
+                future.result()
+                self._nav_goal_handle = None
+                self.log('[Bé Son] Waypoint đã kết thúc sau yêu cầu hủy.')
+            except Exception as exc:
+                self.log(f'Chưa xác nhận waypoint dừng: {exc}')
             return
 
         try:
@@ -2582,13 +2632,18 @@ class RobotUI(QMainWindow):
             pass
 
     def cancel_voice_navigation(self):
+        if getattr(self, '_motion', None) is not None:
+            self._motion.stop()
+        if getattr(self, 'chat_panel', None) is not None:
+            self.chat_panel._intent_generation = getattr(self.chat_panel, '_intent_generation', 0) + 1
         self._navigation_generation += 1
 
         self._voice_nav_queue.clear()
 
         if self._nav_goal_handle is None:
             self.log(
-                "Không có navigation goal đang chạy"
+                'Đang chờ phản hồi goal để hủy.' if getattr(self, '_nav_pending', False)
+                else 'Không có waypoint goal đang chạy.'
             )
             return
 
@@ -2596,8 +2651,23 @@ class RobotUI(QMainWindow):
             "[Bé Son] Đang hủy navigation"
         )
 
-        self._nav_goal_handle.cancel_goal_async()
-        self._nav_goal_handle = None
+        if not getattr(self, '_nav_cancel_requested', False):
+            self._nav_cancel_requested = True
+            self._nav_goal_handle.cancel_goal_async().add_done_callback(self._waypoint_cancel_response)
+
+    def _waypoint_cancel_response(self, future):
+        try:
+            if not future.result().goals_canceling:
+                self._nav_cancel_requested = False
+                self.log('Nav2 chưa nhận hủy waypoint; chờ kết quả hoặc nhấn Stop để thử lại.')
+        except Exception as exc:
+            self._nav_cancel_requested = False
+            self.log(f'Lỗi hủy waypoint; chưa xác nhận dừng: {exc}')
+
+    def _navigation_busy(self):
+        return (self._nav_goal_handle is not None or getattr(self, '_nav_pending', False)
+                or bool(self._voice_nav_queue)
+                or (getattr(self, '_motion', None) is not None and self._motion.busy))
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

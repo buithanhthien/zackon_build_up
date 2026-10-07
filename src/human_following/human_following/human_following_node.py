@@ -21,7 +21,7 @@ class HumanFollowingNode(Node):
         camera_url = self.get_parameter('camera_url').value
         self.use_nav2 = self.get_parameter('use_nav2').value
         
-        self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.publisher = self.create_publisher(Twist, '/cmd_vel_sources/following', 10)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.lock_publisher = self.create_publisher(String, '/human_lock_status', 10)
         

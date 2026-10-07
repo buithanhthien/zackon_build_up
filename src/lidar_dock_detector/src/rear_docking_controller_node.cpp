@@ -19,7 +19,7 @@ public:
   {
     dock_pose_topic_ = declare_parameter<std::string>("dock_pose_topic", "/debug_dock_pose_lidar");
     odom_topic_ = declare_parameter<std::string>("odom_topic", "/odom");
-    cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
+    cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel_sources/docking");
     scan_topic_ = declare_parameter<std::string>("scan_topic", "/scan_rear_lidar_filter");
     // cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel_test");
 

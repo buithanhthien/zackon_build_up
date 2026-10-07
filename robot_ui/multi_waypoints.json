@@ -14,5 +14,26 @@
       "X5.1",
       "home"
     ]
+  },
+  "vikl": {
+    "map_name": "X5_08042026",
+    "sequence": [
+      "X5.13",
+      "home"
+    ]
+  },
+  "bb": {
+    "map_name": "X5_08042026",
+    "sequence": [
+      "X5.8",
+      "home"
+    ]
+  },
+  "testrandom": {
+    "map_name": "X5_08042026",
+    "sequence": [
+      "X5.7",
+      "home"
+    ]
   }
 }

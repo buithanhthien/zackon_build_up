@@ -150,6 +150,7 @@ class StartupDestinationsTests(unittest.TestCase):
             self.assertEqual(w._voice_nav_queue, ['home', 'home'])
             send.assert_called_once()
         with patch('startup_layout.QMessageBox.warning') as warning, patch.object(w, '_send_next_voice_goal') as send:
+            w._voice_nav_queue.clear()
             w._run_waypoint_sequence(['other'])
             warning.assert_called_once()
             send.assert_not_called()
@@ -222,8 +223,9 @@ class StartupDestinationsTests(unittest.TestCase):
         handle = Mock(accepted=True)
         w._nav_goal_response_callback(Mock(result=Mock(return_value=handle)), 1)
         handle.cancel_goal_async.assert_called_once()
-        self.assertIsNone(w._nav_goal_handle)
+        self.assertIs(w._nav_goal_handle, handle)
         w._nav_result_callback(Mock(result=Mock(return_value=SimpleNamespace(status=GoalStatus.STATUS_CANCELED))), 1)
+        self.assertIsNone(w._nav_goal_handle)
         self.assertEqual(w._voice_nav_queue, ['home'])
 
     def test_success_advances_route_and_cancel_invalidates_delayed_advance(self):

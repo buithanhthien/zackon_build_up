@@ -6,7 +6,7 @@ This package enables the robot to detect and follow humans using YOLOv8 and came
 - Real-time human detection using YOLOv8n
 - Tracks the largest detected person
 - Divides camera view into 3 zones (left, middle, right)
-- Publishes velocity commands to `/cmd_vel` to follow the human
+- Publishes direct-mode velocity commands to `/cmd_vel_sources/following` to follow the human
 
 ## Dependencies
 Install Python dependencies:
@@ -47,10 +47,12 @@ ros2 topic echo /cmd_vel
    - **Middle zone**: Move forward straight  
    - **Right zone**: Move forward + turn right
    - **No detection**: Stop
-5. Publishes to `/cmd_vel` (same topic as joystick)
+5. Publishes to `/cmd_vel_sources/following`; the velocity arbiter owns `/cmd_vel`
 
 ## Notes
-- This node publishes to the same `/cmd_vel` topic as your joystick
-- To use joystick control, stop this node first
+- Run one `velocity_arbiter` (included in navigation/mapping bringup).
+- For standalone use: `ros2 launch view_robot_pkg velocity_arbiter.launch.py`.
+- Teleop has higher priority; after release, only fresh following samples can resume.
+- Nav2 following mode uses the navigation input via the remapped Nav2 controller.
 - Camera source defaults to `/dev/video0` (webcam)
 - Adjust speeds in `controller.py` if needed (default: linear=0.3, angular=0.5)

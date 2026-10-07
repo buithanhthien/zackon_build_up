@@ -5,6 +5,9 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QListWidget, QListWidgetItem, QTextEdit, QLineEdit, QMessageBox, QCheckBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
+from styles import DIALOG_STYLESHEET
+
+DIALOG_STYLE = DIALOG_STYLESHEET
 from waypoint_store import normalize_waypoints, deletion_reason
 from virtual_keyboard import VirtualKeyboard
 
@@ -14,42 +17,36 @@ class NewWaypointDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Tạo địa điểm mới")
         self.setModal(True)
-        self.resize(400, 200)
-        self.setStyleSheet("""
-            QDialog { background-color: #f0f4ff; color: #1a2a5e; }
-            QLabel { color: #5a7abf; font-size: 11px; letter-spacing: 2px; padding-bottom: 8px; }
-            QLineEdit {
-                background-color: #ffffff; color: #1a2a5e;
-                border: 1px solid #c8d4f0; border-radius: 8px;
-                font-size: 15px; padding: 10px 14px;
-            }
-            QLineEdit:focus { border: 1px solid #214196; }
-            QPushButton#ok-btn {
-                background-color: #214196; color: #ffffff;
-                border: none; border-radius: 8px;
-                font-size: 15px; min-height: 44px;
-            }
-            QPushButton#ok-btn:hover { background-color: #1a3278; }
-            QPushButton#cancel-btn {
-                background-color: transparent; color: #5a7abf;
-                border: 1px solid #c8d4f0; border-radius: 8px;
-                font-size: 15px; min-height: 44px;
-            }
-            QPushButton#cancel-btn:hover { background-color: #e8f0ff; color: #214196; border: 1px solid #214196; }
-        """)
+        self.resize(560, 280)
+        self.setStyleSheet(DIALOG_STYLESHEET)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
 
         label = QLabel("TÊN ĐỊA ĐIỂM")
-        label.setFont(QFont("DM Sans", 11))
+        label.setObjectName("title")
         layout.addWidget(label)
 
         self.name_input = QLineEdit()
         self.name_input.setFont(QFont("JetBrains Mono", 15))
         self.name_input.setPlaceholderText("Nhập tên...")
         self.name_input.returnPressed.connect(self.accept)
-        layout.addWidget(self.name_input)
+        name_row = QHBoxLayout()
+        name_row.addWidget(self.name_input, 1)
+        self.keyboard_toggle = QPushButton("⌨")
+        self.keyboard_toggle.setObjectName("keyboard-toggle")
+        self.keyboard_toggle.setCheckable(True)
+        self.keyboard_toggle.setAutoDefault(False)
+        self.keyboard_toggle.setFixedSize(48, 48)
+        self.keyboard_toggle.setAccessibleName("Hiện hoặc ẩn bàn phím cho tên địa điểm")
+        self.keyboard_toggle.setToolTip("Hiện hoặc ẩn bàn phím ảo")
+        name_row.addWidget(self.keyboard_toggle)
+        layout.addLayout(name_row)
+        self.virtual_keyboard = VirtualKeyboard(self.name_input, enter_label="Lưu")
+        self.virtual_keyboard.submitted.connect(self.accept)
+        self.virtual_keyboard.hide()
+        self.keyboard_toggle.toggled.connect(self.virtual_keyboard.setVisible)
+        layout.addWidget(self.virtual_keyboard)
         self.deletable_checkbox = QCheckBox("Cho phép xóa")
         self.deletable_checkbox.setChecked(True)
         layout.addWidget(self.deletable_checkbox)
@@ -84,29 +81,7 @@ class WaypointPickerDialog(QDialog):
         self._selected_key = None
         self._waypoints = normalize_waypoints(waypoints)
         self._delete_callback = delete_callback
-        self.setStyleSheet("""
-            QDialog { background-color: #f0f4ff; color: #1a2a5e; }
-            QLabel#title { color: #5a7abf; font-size: 11px; letter-spacing: 2px; padding-bottom: 8px; }
-            QListWidget {
-                background-color: #ffffff; color: #1a2a5e;
-                border: 1px solid #c8d4f0; border-radius: 8px;
-                font-size: 15px; outline: none;
-            }
-            QListWidget::item { padding: 12px 16px; border-bottom: 1px solid #e8f0ff; }
-            QListWidget::item:hover { background-color: #e8f0ff; color: #214196; }
-            QListWidget::item:selected { background-color: #214196; color: #ffffff; border-left: 3px solid #fcb525; }
-            QPushButton#ok-btn {
-                background-color: #214196; color: #ffffff;
-                border: none; border-radius: 8px; font-size: 15px; min-height: 44px;
-            }
-            QPushButton#ok-btn:hover { background-color: #1a3278; }
-            QPushButton#ok-btn:disabled { color: #a8bce8; background-color: #e0e8f8; }
-            QPushButton#cancel-btn {
-                background-color: transparent; color: #5a7abf;
-                border: 1px solid #c8d4f0; border-radius: 8px; font-size: 15px; min-height: 44px;
-            }
-            QPushButton#cancel-btn:hover { background-color: #e8f0ff; color: #214196; border: 1px solid #214196; }
-        """)
+        self.setStyleSheet(DIALOG_STYLESHEET)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
@@ -135,6 +110,7 @@ class WaypointPickerDialog(QDialog):
         self.btn_ok.setEnabled(False)
         self.btn_ok.clicked.connect(self.accept)
         self.btn_delete = QPushButton("Xóa điểm đến")
+        self.btn_delete.setObjectName("danger-btn")
         self.btn_delete.setEnabled(False)
         self.btn_delete.clicked.connect(self._delete_selected)
         self.delete_hint = QLabel("Chọn một điểm đến để xem quyền xóa.")
@@ -176,35 +152,6 @@ class WaypointPickerDialog(QDialog):
         return self._selected_key
 
 
-DIALOG_STYLE = """
-    QDialog { background-color: #f0f4ff; color: #1a2a5e; }
-    QLabel#title { color: #5a7abf; font-size: 11px; letter-spacing: 2px; padding-bottom: 4px; }
-    QLabel#seq-label { color: #5a7abf; font-size: 11px; letter-spacing: 2px; padding-bottom: 4px; }
-    QListWidget {
-        background-color: #ffffff; color: #1a2a5e;
-        border: 1px solid #c8d4f0; border-radius: 8px; font-size: 15px; outline: none;
-    }
-    QListWidget::item { padding: 10px 16px; border-bottom: 1px solid #e8f0ff; }
-    QListWidget::item:hover { background-color: #e8f0ff; color: #214196; }
-    QListWidget::item:selected { background-color: #214196; color: #ffffff; border-left: 3px solid #fcb525; }
-    QTextEdit { background-color: #ffffff; color: #1a2a5e; border: 1px solid #c8d4f0; border-radius: 8px; font-size: 14px; padding: 8px; }
-    QLineEdit {
-        background-color: #ffffff; color: #1a2a5e;
-        border: 1px solid #c8d4f0; border-radius: 8px; font-size: 15px; padding: 10px 14px;
-    }
-    QLineEdit:focus { border: 1px solid #214196; }
-    QPushButton#primary-btn {
-        background-color: #214196; color: #ffffff;
-        border: none; border-radius: 8px; font-size: 15px; min-height: 44px;
-    }
-    QPushButton#primary-btn:hover { background-color: #1a3278; }
-    QPushButton#primary-btn:disabled { color: #a8bce8; background-color: #e0e8f8; }
-    QPushButton#secondary-btn {
-        background-color: transparent; color: #5a7abf;
-        border: 1px solid #c8d4f0; border-radius: 8px; font-size: 15px; min-height: 44px;
-    }
-    QPushButton#secondary-btn:hover { background-color: #e8f0ff; color: #214196; border: 1px solid #214196; }
-"""
 
 
 class PathManagerDialog(QDialog):
@@ -251,7 +198,7 @@ class PathManagerDialog(QDialog):
         btn_new.clicked.connect(self._on_new)
 
         btn_remove = QPushButton("Xóa lộ trình")
-        btn_remove.setObjectName("secondary-btn")
+        btn_remove.setObjectName("danger-btn")
         btn_remove.setFont(QFont("JetBrains Mono", 15))
         btn_remove.clicked.connect(self._on_remove)
 
@@ -371,6 +318,7 @@ class NewPathDialog(QDialog):
         name_row = QHBoxLayout()
         name_row.addWidget(self.name_input, 1)
         self.keyboard_toggle = QPushButton("⌨")
+        self.keyboard_toggle.setObjectName("keyboard-toggle")
         self.keyboard_toggle.setCheckable(True)
         self.keyboard_toggle.setAutoDefault(False)
         self.keyboard_toggle.setFocusPolicy(Qt.FocusPolicy.NoFocus)

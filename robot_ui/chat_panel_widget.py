@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
 from PyQt6.QtGui import QFont
 from language_config import get_language
+from chat_text import plain_chat_text
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -1123,6 +1124,10 @@ class ChatPanel(QWidget):
     def _on_response(self, reply):
 
         self._typing_timer.stop()
+        reply = plain_chat_text(reply)
+        if not reply:
+            self.voice_status_label.hide()
+            return
 
         self._chat_history.append(
             {

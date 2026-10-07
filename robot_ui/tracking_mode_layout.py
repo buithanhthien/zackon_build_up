@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH, shell_source_workspace
 from chat_panel_widget import ChatPanel
 from styles import MAIN_STYLESHEET
+from startup_style import refresh_voice_button
+from language_config import get_language
 from ui_utils import append_log, setup_clock_timer
 from map_utils import get_current_map_path, load_map_yaml
 from process_manager import ProcessManager
@@ -29,7 +31,7 @@ class MapWidget(QWidget):
         self.resolution = yaml_data['resolution']
         self.origin = yaml_data['origin']
         self.robot_pose = None
-        self.setMinimumSize(400, 400)
+        self.setMinimumSize(320, 260)
         
     def set_robot_pose(self, pose):
         self.robot_pose = pose
@@ -90,22 +92,22 @@ class TrackingModeUI(QMainWindow):
         left_panel = QWidget()
         left_panel.setObjectName("left-panel")
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(0)
+        left_layout.setContentsMargins(16, 12, 16, 12)
+        left_layout.setSpacing(12)
 
         wordmark = QLabel("THEO DÕI")
         wordmark.setFont(QFont("JetBrains Mono", 14, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
+        wordmark.setObjectName("wordmark")
         left_layout.addWidget(wordmark)
 
-        self.btn_back = QPushButton("Back")
+        self.btn_back = QPushButton("Quay lại")
         self.btn_back.setObjectName("action-btn")
         self.btn_back.setFont(QFont("JetBrains Mono", 18))
         self.btn_back.setMinimumHeight(72)
         self.btn_back.clicked.connect(self.go_back)
         left_layout.addWidget(self.btn_back)
 
-        pos_title = QLabel("POSITION")
+        pos_title = QLabel("Vị trí")
         pos_title.setObjectName("section-title")
         pos_title.setFont(QFont("DM Sans", 11))
         left_layout.addWidget(pos_title)
@@ -115,7 +117,7 @@ class TrackingModeUI(QMainWindow):
         self.pos_label.setFont(QFont("JetBrains Mono", 13))
         left_layout.addWidget(self.pos_label)
 
-        orient_title = QLabel("ORIENTATION")
+        orient_title = QLabel("Hướng robot")
         orient_title.setObjectName("section-title")
         orient_title.setFont(QFont("DM Sans", 11))
         left_layout.addWidget(orient_title)
@@ -130,19 +132,19 @@ class TrackingModeUI(QMainWindow):
         # ── Right area ────────────────────────────────────────────────────────
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
+        right_layout.setContentsMargins(16, 12, 16, 12)
+        right_layout.setSpacing(12)
 
         # Header bar
         header = QWidget()
         header.setObjectName("header-bar")
-        header.setFixedHeight(48)
+        header.setMinimumHeight(64)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(20, 0, 20, 0)
 
-        header_title = QLabel("TRACKING MODE")
+        header_title = QLabel("Theo dõi")
         header_title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
-        header_title.setStyleSheet("color: #1a2a5e;")
+        header_title.setObjectName("header-title")
 
         self.clock_label = QLabel()
         self.clock_label.setObjectName("clock")
@@ -155,7 +157,6 @@ class TrackingModeUI(QMainWindow):
 
         # Map
         map_container = QWidget()
-        map_container.setStyleSheet("background-color: #f0f4ff; padding: 12px;")
         map_layout = QVBoxLayout(map_container)
         map_layout.setContentsMargins(12, 12, 12, 12)
 
@@ -176,11 +177,10 @@ class TrackingModeUI(QMainWindow):
         log_layout.setSpacing(6)
 
         log_header = QHBoxLayout()
-        log_title = QLabel("SYSTEM LOG")
+        log_title = QLabel("Nhật ký hệ thống")
         log_title.setObjectName("log-title")
         log_title.setFont(QFont("DM Sans", 11))
         live_badge = QLabel("● LIVE")
-        live_badge.setStyleSheet("color: #22c55e; font-size: 11px;")
         log_header.addWidget(log_title)
         log_header.addStretch()
         log_header.addWidget(live_badge)
@@ -194,15 +194,27 @@ class TrackingModeUI(QMainWindow):
 
         self.chat_widget = ChatPanel()
         self.chat_widget.hide()
+        self.chat_widget.voice_btn.setMinimumSize(220, 112)
+        self.chat_widget.interrupt_btn.setFixedHeight(48)
+        self.chat_widget.voice_btn.setToolTip("Nhấn để thu âm; nhấn lần nữa để kết thúc")
+        # Retain ChatPanel's status source for its logic, but display it only on mic.
+        self._voice_status_source = QWidget(self.chat_widget)
+        self._voice_status_source.hide()
+        self.chat_widget.layout().removeWidget(self.chat_widget.voice_status_label)
+        self.chat_widget.voice_status_label.setParent(self._voice_status_source)
+        self._voice_presentation_timer = QTimer(self)
+        self._voice_presentation_timer.timeout.connect(
+            lambda: refresh_voice_button(self.chat_widget, get_language()))
+        self._voice_presentation_timer.start(150)
+        refresh_voice_button(self.chat_widget, get_language())
 
         tab_bar = QWidget()
-        tab_bar.setFixedHeight(36)
-        tab_bar.setStyleSheet("background-color: #f0f4ff; border-top: 1px solid #c8d4f0;")
+        tab_bar.setMinimumHeight(52)
         tab_layout = QHBoxLayout(tab_bar)
         tab_layout.setContentsMargins(12, 0, 12, 0)
         tab_layout.setSpacing(0)
-        tab_log  = QPushButton("SYSTEM LOG")
-        tab_chat = QPushButton("AI CHAT")
+        tab_log  = QPushButton("Nhật ký hệ thống")
+        tab_chat = QPushButton("Hội thoại")
         for tab in [tab_log, tab_chat]:
             tab.setObjectName("panel-tab")
             tab.setFont(QFont("DM Sans", 11))
@@ -211,11 +223,10 @@ class TrackingModeUI(QMainWindow):
             tab_layout.addWidget(tab)
         tab_layout.addStretch()
         self.tab_live_badge = QLabel("● LIVE")
-        self.tab_live_badge.setStyleSheet("color: #22c55e; font-size: 11px; padding-right: 4px;")
         tab_layout.addWidget(self.tab_live_badge)
         tab_log.setChecked(True)
         tab_log.clicked.connect(lambda: (log_panel.show(), self.chat_widget.hide(), self.tab_live_badge.show()))
-        tab_chat.clicked.connect(lambda: (log_panel.hide(), self.chat_widget.show(), self.tab_live_badge.hide(), self.chat_widget.focus_input()))
+        tab_chat.clicked.connect(lambda: (log_panel.hide(), self.chat_widget.show(), self.tab_live_badge.hide(), self.chat_widget.voice_btn.setFocus()))
 
         right_layout.addWidget(tab_bar)
         right_layout.addWidget(log_panel, 1)

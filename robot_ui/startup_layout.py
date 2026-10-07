@@ -15,7 +15,7 @@ import uuid
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QTextEdit, QLineEdit, QLabel,
                              QSizePolicy, QMessageBox, QDialog)
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread, QSize
 from PyQt6.QtGui import (
     QFont,
     QColor,
@@ -25,7 +25,7 @@ from PyQt6.QtGui import (
 )
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, qos_profile_sensor_data
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
@@ -37,11 +37,10 @@ from language_config import (get_language, get_ui_text)
 from chat_panel_widget import ChatPanel
 from motion_commands import parse_motion, validate_motion
 from motion_ros import RosMotionController
-from motion_commands import parse_motion, validate_motion
-from motion_ros import RosMotionController
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH, shell_source_workspace
-from styles import MAIN_STYLESHEET
+from startup_icons import startup_icon
+from startup_style import STARTUP_STYLESHEET, startup_text, repolish, refresh_voice_button
 from ui_utils import setup_clock_timer
 from map_utils import (update_map_files, get_current_map_name,
                        get_current_map_path, load_map_yaml)
@@ -154,7 +153,6 @@ class LocalizationWorker(QObject):
             pass
         node = Node('localization_worker')
         cmd_vel_pub        = node.create_publisher(Twist, '/cmd_vel_sources/localization', 10)
-        cmd_vel_pub        = node.create_publisher(Twist, '/cmd_vel_sources/localization', 10)
         _pose_sub          = node.create_subscription(          # noqa: F841
             PoseWithCovarianceStamped, '/amcl_pose',
             self._pose_callback, 10
@@ -254,8 +252,6 @@ class LocalizationWorker(QObject):
 class RobotUI(QMainWindow):
     motion_status = pyqtSignal(str)
 
-    motion_status = pyqtSignal(str)
-
     def __init__(self, skip_micro_ros=False):
         super().__init__()
         self.process_mgr                 = ProcessManager()
@@ -332,22 +328,19 @@ class RobotUI(QMainWindow):
             PoseWithCovarianceStamped, '/amcl_pose', self._amcl_callback, _amcl_qos
         )
         self._ros_node.create_subscription(
-            Odometry, '/odomfromSTM32', self._stm32_odom_callback, 10
+            Odometry, '/odomfromSTM32', self._stm32_odom_callback, qos_profile_sensor_data
         )
         self._ros_node.create_subscription(
-            LaserScan, '/front_lidar/scan', lambda msg: self._lidar_callback('front'), 10
+            LaserScan, '/front_lidar/scan', lambda msg: self._lidar_callback('front'), qos_profile_sensor_data
         )
         self._ros_node.create_subscription(
-            LaserScan, '/rear_lidar/scan', lambda msg: self._lidar_callback('rear'), 10
+            LaserScan, '/rear_lidar/scan', lambda msg: self._lidar_callback('rear'), qos_profile_sensor_data
         )
         self._ros_spin_timer = QTimer()
         self._ros_spin_timer.timeout.connect(self._ros_spin_once)
         self._ros_spin_timer.start(100)
 
         self.init_ui()
-        self.motion_status.connect(self._report_motion_status)
-        self._motion = RosMotionController(self.motion_status.emit)
-        self.chat_panel.motion_command.connect(self.execute_motion)
         self.motion_status.connect(self._report_motion_status)
         self._motion = RosMotionController(self.motion_status.emit)
         self.chat_panel.motion_command.connect(self.execute_motion)
@@ -403,8 +396,6 @@ class RobotUI(QMainWindow):
             self._report_motion_status(f"Không thể thực hiện: {exc}")
 
     def _ros_spin_once(self):
-        if getattr(self, '_motion', None) is not None:
-            self._motion.heartbeat()
         if getattr(self, '_motion', None) is not None:
             self._motion.heartbeat()
         try:
@@ -794,481 +785,207 @@ class RobotUI(QMainWindow):
     # ══════════════════════════════════════════════════════════════════════════
 
     def init_ui(self):
-        self.setWindowTitle("IUH Robot – Giao diện điều khiển")
-
-        self.setStyleSheet(MAIN_STYLESHEET)
-
+        self.setWindowTitle("IUH Robot · Startup")
+        self.setStyleSheet(DIALOG_STYLE + STARTUP_STYLESHEET)
+        self.resize(1280, 720)
         central = QWidget()
+        central.setObjectName("startup-root")
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # ── Left panel ────────────────────────────────────────────────────────
-        left_panel = QWidget()
-        left_panel.setObjectName("left-panel")
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(0)
-
-        wordmark = QLabel("IUH ROBOT")
-        wordmark.setFont(QFont("JetBrains Mono", 16, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
-        left_layout.addWidget(wordmark)
-
-        UI_TEXT = {
-            "vi": {
-                "waypoints": "Điểm đến",
-                "docking": "Về trạm sạc",
-                "load_map": "Tải bản đồ",
-                "new_map": "Bản đồ mới",
-                "tracking": "Theo dõi",
-                "reestimate": "Định vị lại",
-                "nav2": "Nav2",
-                "language": "Ngôn Ngữ",
-                "developer": "⚙ Developer",
-
-                "select_language": "CHỌN NGÔN NGỮ",
-                "select": "Chọn",
-                "cancel": "Hủy",
-            },
-
-            "en": {
-                "waypoints": "Destinations",
-                "docking": "Docking",
-                "load_map": "Load Map",
-                "new_map": "New Map",
-                "tracking": "Tracking",
-                "reestimate": "Relocalize",
-                "nav2": "Nav2",
-                "language": "Language",
-                "developer": "⚙ Developer",
-
-                "select_language": "SELECT LANGUAGE",
-                "select": "Select",
-                "cancel": "Cancel",
-            },
-        }
-
-        def update_language_ui(self):
-
-            lang = get_language()
-            text = UI_TEXT[lang]
-
-            self.btn_waypoints.setText(
-                text["waypoints"]
-            )
-
-            self.btn_docking.setText(
-                text["docking"]
-            )
-
-            self.btn_load_map.setText(
-                text["load_map"]
-            )
-
-            self.btn_new_map.setText(
-                text["new_map"]
-            )
-
-            self.btn_tracking.setText(
-                text["tracking"]
-            )
-
-            self.btn_reestimate.setText(
-                text["reestimate"]
-            )
-
-            self.btn_nav2.setText(
-                text["nav2"]
-            )
-
-            self.btn_language.setText(
-                text["language"]
-            )
-
-            self.btn_dev.setText(
-                text["developer"]
-            )
-
-        self.btn_waypoints  = QPushButton("Điểm đến")
-        self.btn_docking    = QPushButton("Về trạm sạc")
-        self.btn_load_map   = QPushButton("Tải bản đồ")
-        self.btn_new_map    = QPushButton("Bản đồ mới")
-        self.btn_tracking   = QPushButton("Theo dõi")
-        self.btn_reestimate = QPushButton("Định vị lại")
-        self.btn_nav2       = QPushButton("Nav2")
-        self.btn_language   = QPushButton("Ngôn Ngữ")
-
-        mono = QFont("JetBrains Mono", 22)
-        for btn in [
-            self.btn_waypoints, 
-            self.btn_docking, 
-            self.btn_load_map,
-            self.btn_new_map, 
-            self.btn_tracking, 
-            self.btn_reestimate, 
-            self.btn_nav2, 
-            self.btn_language
-        ]:
-            btn.setObjectName("mode-btn")
-            btn.setFont(mono)
-            btn.setMinimumHeight(72)
-            btn.setCheckable(False)
-            left_layout.addWidget(btn)
-
-        left_layout.addStretch()
-
-        self.btn_dev = QPushButton("⚙ Developer")
+        sidebar = QWidget()
+        sidebar.setObjectName("left-panel")
+        sidebar.setFixedWidth(224)
+        menu = QVBoxLayout(sidebar)
+        menu.setContentsMargins(16, 20, 16, 16)
+        menu.setSpacing(4)
+        brand = QLabel("IUH ROBOT")
+        brand.setObjectName("wordmark")
+        menu.addWidget(brand)
+        self.overview_label = QLabel()
+        self.overview_label.setObjectName("overview-label")
+        self.overview_label.setMinimumHeight(44)
+        menu.addWidget(self.overview_label)
+        self.menu_heading = QLabel()
+        self.menu_heading.setObjectName("section-label")
+        menu.addWidget(self.menu_heading)
+        actions = [
+            ("waypoints", self.open_destination_dialog),
+            ("docking", self.start_docking),
+            ("load_map", self.load_map),
+            ("new_map", self.start_new_map),
+            ("tracking", lambda: self.mode_changed("Tracking")),
+            ("reestimate", self.start_reestimate),
+            ("nav2", lambda: self.mode_changed("Nav2")),
+            ("language", self.open_language_dialog),
+        ]
+        for key, callback in actions:
+            button = QPushButton()
+            button.setObjectName("mode-btn")
+            button.setMinimumHeight(48)
+            button.setIcon(startup_icon(key))
+            button.setIconSize(QSize(22, 22))
+            button.clicked.connect(callback)
+            setattr(self, "btn_" + key, button)
+            menu.addWidget(button)
+        menu.addStretch()
+        self.developer_heading = QLabel()
+        self.developer_heading.setObjectName("section-label")
+        menu.addWidget(self.developer_heading)
+        self.btn_dev = QPushButton()
         self.btn_dev.setObjectName("mode-btn")
-        self.btn_dev.setFont(QFont("JetBrains Mono", 15))
-        self.btn_dev.setMinimumHeight(56)
-        self.btn_dev.setCheckable(False)
-        self.btn_dev.setStyleSheet(
-            "QPushButton#mode-btn { color: #fcb525; border-left: 4px solid #fcb52544; }"
-            "QPushButton#mode-btn:hover { background-color: #1a3278; border-left: 4px solid #fcb525; }"
-        )
-        left_layout.addWidget(self.btn_dev)
-
-        self.btn_tracking.clicked.connect(lambda: self.mode_changed("Tracking"))
-        self.btn_waypoints.clicked.connect(self.open_destination_dialog)
-        self.btn_reestimate.clicked.connect(self.start_reestimate)
-        self.btn_new_map.clicked.connect(self.start_new_map)
-        self.btn_load_map.clicked.connect(self.load_map)
-        self.btn_docking.clicked.connect(self.start_docking)
-        self.btn_nav2.clicked.connect(lambda: self.mode_changed("Nav2"))
-        self.btn_language.clicked.connect(self.open_language_dialog)
+        self.btn_dev.setMinimumHeight(48)
+        self.btn_dev.setIcon(startup_icon("developer"))
+        self.btn_dev.setIconSize(QSize(22, 22))
         self.btn_dev.clicked.connect(self.open_developer_mode)
-        # Áp dụng ngôn ngữ đã lưu khi mở chương trình
-        self.update_language_ui()
+        menu.addWidget(self.btn_dev)
+        main_layout.addWidget(sidebar)
 
-        # ── Right area ────────────────────────────────────────────────────────
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
-
-        # Header bar
-        header = QWidget()
-        header.setObjectName("header-bar")
-        header.setFixedHeight(48)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(20, 0, 20, 0)
-
-        self.mode_label = QLabel("STARTUP")
-        self.mode_label.setObjectName("mode-title")
-        self.mode_label.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
-
+        right = QWidget()
+        right.setObjectName("content-panel")
+        body = QVBoxLayout(right)
+        body.setContentsMargins(24, 20, 24, 20)
+        body.setSpacing(16)
+        header = QHBoxLayout()
+        titles = QVBoxLayout()
+        self.mode_label = QLabel()
+        self.mode_label.setObjectName("header-title")
+        self.subtitle_label = QLabel()
+        self.subtitle_label.setObjectName("muted")
+        titles.addWidget(self.mode_label)
+        titles.addWidget(self.subtitle_label)
+        header.addLayout(titles, 1)
+        self.btn_map = QPushButton()
+        self.btn_map.setObjectName("map-toggle")
+        self.btn_map.setMinimumSize(112, 48)
+        self.btn_map.setIcon(startup_icon("load_map"))
+        self.btn_map.clicked.connect(self.toggle_map_window)
+        header.addWidget(self.btn_map)
         self.clock_label = QLabel()
         self.clock_label.setObjectName("clock")
-        self.clock_label.setFont(QFont("JetBrains Mono", 15))
+        header.addWidget(self.clock_label)
+        body.addLayout(header)
 
-        header_layout.addWidget(self.mode_label)
-        header_layout.addStretch()
-        self.btn_map = QPushButton("🗺")
-        self.btn_map.setObjectName("map-toggle")
-        self.btn_map.setFixedSize(36, 36)
-        self.btn_map.setToolTip("Mở bản đồ")
-        self.btn_map.setAccessibleName("Mở bản đồ")
-        self.btn_map.clicked.connect(self.toggle_map_window)
-        header_layout.addWidget(self.btn_map)
-        header_layout.addWidget(self.clock_label)
-        right_layout.addWidget(header)
+        cards = QHBoxLayout()
+        cards.setSpacing(12)
+        self.stm32_card = self._make_status_card("STM32")
+        self.front_lidar_card = self._make_status_card("front")
+        self.rear_lidar_card = self._make_status_card("rear")
+        for card in (self.stm32_card, self.front_lidar_card, self.rear_lidar_card):
+            cards.addWidget(card["widget"], 1)
+        body.addLayout(cards)
 
-        # Status cards row
-        cards_widget = QWidget()
-        cards_widget.setStyleSheet("background-color: #f0f4ff; padding: 12px;")
-        cards_layout = QHBoxLayout(cards_widget)
-        cards_layout.setContentsMargins(12, 12, 12, 12)
-        cards_layout.setSpacing(12)
-
-        self.stm32_card       = self._make_status_card("STM32")
-        self.front_lidar_card = self._make_status_card("LiDAR Front")
-        self.rear_lidar_card  = self._make_status_card("LiDAR Rear")
-        cards_layout.addWidget(self.stm32_card["widget"])
-        cards_layout.addWidget(self.front_lidar_card["widget"])
-        cards_layout.addWidget(self.rear_lidar_card["widget"])
-        right_layout.addWidget(cards_widget)
-
-        # ── Voice panel fills the right content area ──────────────────────
-        # ================================================================
-        # ChatPanel
-        # ================================================================
-
-        self.chat_panel = ChatPanel()
-
-        # ChatPanel không tự hiển thị UI.
-        # Chúng ta chỉ lấy VoiceEngine, button và signal từ nó.
+        # Reuse ChatPanel's controls and signals; all robot callbacks remain owned
+        # by ChatPanel and RobotUI.__init__, including Stop/navigation cancellation.
+        self.chat_panel = ChatPanel(self)
         self.chat_panel.hide()
+        self.voice_panel = QWidget()
+        self.voice_panel.setObjectName("voice-panel")
+        self.voice_panel.setMinimumWidth(250)
+        self.voice_panel.setMaximumWidth(340)
+        voice = QVBoxLayout(self.voice_panel)
+        voice.setContentsMargins(20, 20, 20, 20)
+        voice.setSpacing(12)
+        self.voice_title = QLabel()
+        self.voice_title.setObjectName("panel-title")
+        voice.addWidget(self.voice_title)
+        self.voice_hint = QLabel()
+        self.voice_hint.setObjectName("muted")
+        self.voice_hint.setWordWrap(True)
+        voice.addWidget(self.voice_hint)
+        voice.addStretch()
+        mic = self.chat_panel.voice_btn
+        mic.setIcon(startup_icon("mic", size=28))
+        mic.setIconSize(QSize(28, 28))
+        mic.setMinimumSize(0, 112)
+        mic.setMaximumSize(16777215, 16777215)
+        mic.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        voice.addWidget(mic)
+        voice.addStretch()
+        stop = self.chat_panel.interrupt_btn
+        stop.setMinimumSize(0, 80)
+        stop.setMaximumSize(16777215, 16777215)
+        stop.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        voice.addWidget(stop)
+        self.stop_hint = QLabel()
+        self.stop_hint.setObjectName("muted")
+        self.stop_hint.setWordWrap(True)
+        voice.addWidget(self.stop_hint)
 
-
-        # ================================================================
-        # KHU VỰC BÊN TRÁI: VOICE CONTROL
-        # ================================================================
-
-        voice_panel = QWidget()
-
-        voice_panel.setObjectName("voice-panel")
-        voice_layout = QVBoxLayout(voice_panel)
-
-        voice_layout.setContentsMargins(30, 20, 30, 20)
-
-        voice_layout.setSpacing(14)
-
-        voice_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-
-        # ------------------------------------------------
-        # Nút CLICK TO SPEAK
-        # ------------------------------------------------
-
-        mic_btn = (self.chat_panel.voice_btn)
-
-        mic_btn.setFixedSize(390, 390)
-
-        mic_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-
-        mic_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #214196;
-                color: #ffffff;
-
-                border: 3px solid #a8bce8;
-
-                border-radius: 195px;
-
-                font-size: 46px;
-                font-weight: bold;
-            }
-
-            QPushButton:hover {
-                background-color: #1a3278;
-
-                border: 3px solid #fcb525;
-            }
-
-            QPushButton:checked {
-                background-color: #ef4444;
-
-                border: 3px solid #fca5a5;
-            }
-        """)
-
-
-        # ------------------------------------------------
-        # Trạng thái LISTENING / THINKING / SPEAKING
-        # ------------------------------------------------
-
-        voice_status = (self.chat_panel.voice_status_label)
-
-        voice_status.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-
-        voice_status.show()
-
-
-        # ------------------------------------------------
-        # Nút Dừng
-        # ------------------------------------------------
-
-        interrupt_btn = (self.chat_panel.interrupt_btn)
-
-        interrupt_btn.setFixedSize(180,90)
-
-
-        voice_layout.addStretch()
-
-        voice_layout.addWidget(mic_btn, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        voice_layout.addWidget(voice_status, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        voice_layout.addSpacing(10)
-
-        voice_layout.addWidget(interrupt_btn, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        voice_layout.addStretch()
-
-
-        # ================================================================
-        # KHU VỰC BÊN PHẢI: HỘI THOẠI USER <-> AI
-        # ================================================================
-
-        chat_widget = QWidget()
-
-        chat_widget.setObjectName(
-            "conversation-panel"
-        )
-
-        chat_layout = QVBoxLayout(
-            chat_widget
-        )
-
-        chat_layout.setContentsMargins(
-            18,
-            18,
-            18,
-            18
-        )
-
-        chat_layout.setSpacing(
-            12
-        )
-
-
-        # ------------------------------------------------
-        # Tiêu đề
-        # ------------------------------------------------
-
-        chat_title = QLabel(
-            "HỘI THOẠI"
-        )
-
-        chat_title.setFont(
-            QFont(
-                "JetBrains Mono",
-                17,
-                QFont.Weight.Bold
-            )
-        )
-
-        chat_title.setStyleSheet("""
-            color: #17306f;
-            padding-bottom: 4px;
-        """)
-
-        chat_layout.addWidget(
-            chat_title
-        )
-
-
-        # ------------------------------------------------
-        # Khung lịch sử hội thoại
-        # ------------------------------------------------
-
+        chat = QWidget()
+        chat.setObjectName("conversation-panel")
+        conversation = QVBoxLayout(chat)
+        conversation.setContentsMargins(20, 20, 20, 20)
+        conversation.setSpacing(12)
+        self.chat_title = QLabel()
+        self.chat_title.setObjectName("panel-title")
+        conversation.addWidget(self.chat_title)
         self.chat_history_box = QTextEdit()
-
-        self.chat_history_box.setReadOnly(
-            True
-        )
-
-        self.chat_history_box.setObjectName(
-            "chat-history"
-        )
-
-        self.chat_history_box.setStyleSheet("""
-            QTextEdit {
-                background-color: #ffffff;
-
-                color: #172554;
-
-                border: 2px solid #c7d5f3;
-
-                border-radius: 18px;
-
-                padding: 16px;
-
-                font-family: "DM Sans";
-
-                font-size: 18px;
-            }
-        """)
-
-        self.chat_history_box.setPlaceholderText("Cuộc hội thoại với Bé Son sẽ xuất hiện ở đây...")
-        chat_layout.addWidget(self.chat_history_box, 1)
-
+        self.chat_history_box.setReadOnly(True)
+        self.chat_history_box.setObjectName("chat-history")
+        self.chat_history_box.setMinimumSize(0, 80)
+        self.chat_history_box.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        self.chat_history_box.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        conversation.addWidget(self.chat_history_box, 1)
         self.chat_input = QLineEdit()
+        self.chat_input.setObjectName("chat-input")
+        self.chat_input.setMinimumSize(0, 48)
+        self.chat_input.returnPressed.connect(self._send_chat_message)
         self.virtual_keyboard = VirtualKeyboard(self.chat_input)
         self.virtual_keyboard.submitted.connect(self._send_chat_message)
         self.virtual_keyboard.hide()
-        chat_layout.addWidget(self.virtual_keyboard)
-
-        chat_input_row = QWidget()
-        chat_input_layout = QHBoxLayout(chat_input_row)
-        chat_input_layout.setContentsMargins(0, 0, 0, 0)
-        chat_input_layout.setSpacing(8)
-
-        self.chat_input.setObjectName("chat-input")
-        self.chat_input.setPlaceholderText("Nhập tin nhắn...")
-        self.chat_input.setFixedHeight(50)
-        self.chat_input.returnPressed.connect(self._send_chat_message)
-        chat_input_layout.addWidget(self.chat_input, 1)
-
+        conversation.addWidget(self.virtual_keyboard)
+        input_row = QHBoxLayout()
+        input_row.setSpacing(8)
+        input_row.addWidget(self.chat_input, 1)
         self.keyboard_toggle = QPushButton("⌨")
+        self.keyboard_toggle.setObjectName("keyboard-toggle")
         self.keyboard_toggle.setCheckable(True)
-        self.keyboard_toggle.setFixedSize(50, 50)
-        self.keyboard_toggle.setToolTip("Hiện/ẩn bàn phím ảo")
-        self.keyboard_toggle.setAccessibleName("Hiện hoặc ẩn bàn phím ảo")
+        self.keyboard_toggle.setFixedSize(48, 48)
         self.keyboard_toggle.toggled.connect(self.virtual_keyboard.setVisible)
-        chat_input_layout.addWidget(self.keyboard_toggle)
-
-        send_chat_button = QPushButton("Gửi")
-        send_chat_button.setFixedSize(72, 50)
-        send_chat_button.clicked.connect(self._send_chat_message)
-        chat_input_layout.addWidget(send_chat_button)
-        chat_layout.addWidget(chat_input_row)
-
-
-        # ================================================================
-        # Kết nối nội dung ChatPanel -> hộp hội thoại
-        # ================================================================
-
+        input_row.addWidget(self.keyboard_toggle)
+        self.send_chat_button = QPushButton()
+        self.send_chat_button.setObjectName("send-btn")
+        self.send_chat_button.setMinimumSize(72, 48)
+        self.send_chat_button.clicked.connect(self._send_chat_message)
+        input_row.addWidget(self.send_chat_button)
+        conversation.addLayout(input_row)
         self.chat_panel.log_signal.connect(self._append_chat_message)
+        content = QHBoxLayout()
+        content.setSpacing(16)
+        content.addWidget(self.voice_panel, 1)
+        content.addWidget(chat, 2)
+        body.addLayout(content, 1)
+        main_layout.addWidget(right, 1)
+        self.update_language_ui()
 
-
-        # ================================================================
-        # Main content row
-        # ================================================================
-
-        content_row = QWidget()
-        content_layout = QHBoxLayout(content_row)
-        content_layout.setContentsMargins(24, 20, 24, 20)
-        content_layout.setSpacing(26)
-
-
-        # Voice bên trái
-        content_layout.addWidget(voice_panel, 45)
-
-        # Hội thoại bên phải
-        content_layout.addWidget(chat_widget, 55)
-
-
-        right_layout.addWidget(
-            content_row,
-            1
-        )
-
-        right_layout.addWidget(content_row, 1)
-
-        main_layout.addWidget(left_panel, 22)
-        main_layout.addWidget(right_widget, 78)
-
-        # Timers
-        self.status_timer = QTimer()
+        self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self.update_status)
         self.status_timer.start(5000)
-
         self.clock_timer = setup_clock_timer(self.clock_label)
-
-        self._reestimate_pulse_timer = QTimer()
+        self._reestimate_pulse_timer = QTimer(self)
         self._reestimate_pulse_timer.timeout.connect(self._pulse_reestimate)
         self._pulse_state = False
+        # Presentation only: observe existing state without issuing commands.
+        self._presentation_timer = QTimer(self)
+        self._presentation_timer.timeout.connect(self._refresh_control_presentation)
+        self._presentation_timer.start(150)
+        QTimer.singleShot(0, self.update_status)
 
-        QTimer.singleShot(0, self.update_status)    
+    def _refresh_control_presentation(self):
+        panel = self.chat_panel
+        t = startup_text(get_language())
+        pending = (getattr(self, "_nav_goal_handle", None) is not None and
+                   getattr(self, "_nav_cancel_requested", False))
+        panel.interrupt_btn.setText(t["stop"])
+        self.stop_hint.setText(t["stop_pending"] if pending else t["stop_hint"])
+        refresh_voice_button(panel, get_language())
 
     def _send_chat_message(self):
         message = self.chat_input.text().strip()
         if not message:
-            return
-
-        # Motion and stop must not wait for an ongoing chat response.
-        try:
-            motion = parse_motion(message)
-        except ValueError as exc:
-            self._report_motion_status(f"Không thực hiện: {exc}")
-            self.chat_input.clear()
-            return
-        if motion is not None:
-            self.chat_panel._on_voice_transcript(message)
-            self.chat_input.clear()
             return
 
         # Motion and stop must not wait for an ongoing chat response.
@@ -1451,159 +1168,49 @@ class RobotUI(QMainWindow):
     def _make_status_card(self, device_name):
         card = QWidget()
         card.setObjectName("status-card")
-        card.setMinimumHeight(100)
-        card.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed
-        )
-
+        card.setProperty("state", "checking")
+        card.setMinimumHeight(104)
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(16, 12, 20, 12)
-
-        dot = QLabel("●")
-        dot.setStyleSheet(
-            "color: #8fa3cc; font-size: 12px;"
-        )
-        dot.setFixedWidth(20)
-
+        layout.setContentsMargins(16, 12, 16, 12)
+        dot = QLabel()
+        dot.setObjectName("device-icon")
+        dot.setFixedSize(44, 44)
+        dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        dot.setPixmap(startup_icon(device_name, size=24).pixmap(QSize(24, 24)))
         info = QVBoxLayout()
-
-        name_lbl = QLabel(device_name.upper())
-        name_lbl.setObjectName("device-name")
-        name_lbl.setFont(
-            QFont("DM Sans", 11)
-        )
-
-        state_lbl = QLabel("Checking...")
-        state_lbl.setObjectName(
-            "status-checking"
-        )
-        state_lbl.setFont(
-            QFont(
-                "DM Sans",
-                14,
-                QFont.Weight.Medium
-            )
-        )
-
-        info.addWidget(name_lbl)
-        info.addWidget(state_lbl)
-
+        name = QLabel(device_name)
+        name.setObjectName("device-name")
+        state = QLabel()
+        state.setObjectName("device-state")
+        info.addWidget(name)
+        info.addWidget(state)
         layout.addWidget(dot)
-        layout.addLayout(info)
-        layout.addStretch()
-
-        # Mặc định LiDAR không có nút
-        detail_btn = None
-
-        # Chỉ STM32 có nút chẩn đoán
-        if device_name.upper() == "STM32":
-            detail_btn = QPushButton("i")
-
-            detail_btn.setFixedSize(
-                34,
-                34
-            )
-
-            detail_btn.setToolTip(
-                "Kiểm tra kết nối STM32"
-            )
-
-            detail_btn.setCursor(
-                Qt.CursorShape.PointingHandCursor
-            )
-
-            detail_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #eef2ff;
-                    color: #214196;
-                    border: 1px solid #c8d4f0;
-                    border-radius: 17px;
-                    font-size: 16px;
-                    font-weight: bold;
-                }
-
-                QPushButton:hover {
-                    background-color: #dbeafe;
-                    border: 1px solid #214196;
-                }
-            """)
-
-            detail_btn.clicked.connect(
-                self.show_stm32_diagnostics
-            )
-
-            layout.addWidget(
-                detail_btn,
-                0,
-                Qt.AlignmentFlag.AlignVCenter
-            )
-
-        # QUAN TRỌNG:
-        # return này nằm ngoài if STM32
-        return {
-            "widget": card,
-            "dot": dot,
-            "state": state_lbl,
-            "detail_btn": detail_btn
-        }
+        layout.addLayout(info, 1)
+        detail = None
+        if device_name == "STM32":
+            detail = QPushButton("i")
+            detail.setObjectName("diagnostics-btn")
+            detail.setFixedSize(48, 48)
+            detail.clicked.connect(self.show_stm32_diagnostics)
+            layout.addWidget(detail)
+        result = dict(widget=card, dot=dot, state=state, name=name,
+                      device=device_name, available=None, detail_btn=detail)
+        self._set_card_status(result, None)
+        return result
 
     def _set_card_status(self, card, available):
-        color  = "#22c55e" if available else "#ef4444"
-        text   = "Hoạt động" if available else "Mất kết nối"
-        obj    = "status-ok" if available else "status-error"
-        card["dot"].setStyleSheet(f"color: {color}; font-size: 12px;")
-        card["state"].setText(text)
-        card["state"].setObjectName(obj)
-        card["state"].setStyleSheet(f"color: {color}; font-size: 14px;")
-        border_side = f"border-left: 4px solid {color};"
-        card["widget"].setStyleSheet(
-            f"QWidget#status-card {{ background-color: #ffffff; border: 1px solid #c8d4f0; "
-            f"border-radius: 4px; {border_side} }}"
-        )
-
-        detail_btn = card.get(
-            "detail_btn"
-        )
-
-        if detail_btn is not None:
-
-            if available:
-                detail_btn.setText("i")
-
-                detail_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #eef2ff;
-                        color: #214196;
-                        border: 1px solid #c8d4f0;
-                        border-radius: 17px;
-                        font-size: 16px;
-                        font-weight: bold;
-                    }
-
-                    QPushButton:hover {
-                        background-color: #dbeafe;
-                        border: 1px solid #214196;
-                    }
-                """)
-
-            else:
-                detail_btn.setText("!")
-
-                detail_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #fee2e2;
-                        color: #ef4444;
-                        border: 1px solid #ef4444;
-                        border-radius: 17px;
-                        font-size: 17px;
-                        font-weight: bold;
-                    }
-
-                    QPushButton:hover {
-                        background-color: #fecaca;
-                    }
-                """)
+        card["available"] = available
+        state = "checking" if available is None else "online" if available else "offline"
+        t = startup_text(get_language())
+        card["state"].setText(t[state])
+        card["name"].setText(t.get(card["device"], card["device"]))
+        card["widget"].setAccessibleName(card["name"].text() + ": " + t[state])
+        if card["widget"].property("state") != state:
+            card["widget"].setProperty("state", state)
+            repolish(card["widget"])
+        if card["detail_btn"] is not None:
+            card["detail_btn"].setToolTip(t["diagnostics"])
+            card["detail_btn"].setAccessibleName(t["diagnostics"])
 
     def _update_clock(self):
         from datetime import datetime
@@ -2000,59 +1607,45 @@ class RobotUI(QMainWindow):
             return {}
 
     def update_language_ui(self):
-
         language = get_language()
-
-        text = get_ui_text(
-            language
-        )
-
-        print(
-            f"[LANGUAGE UI] Cập nhật giao diện: "
-            f"{language}"
-        )
-
-        self.btn_waypoints.setText(
-            text["waypoints"]
-        )
-
-        self.btn_docking.setText(
-            text["docking"]
-        )
-
-        self.btn_load_map.setText(
-            text["load_map"]
-        )
-
-        self.btn_new_map.setText(
-            text["new_map"]
-        )
-
-        self.btn_tracking.setText(
-            text["tracking"]
-        )
-
-        self.btn_reestimate.setText(
-            text["reestimate"]
-        )
-
-        self.btn_nav2.setText(
-            text["nav2"]
-        )
-
-        self.btn_language.setText(
-            text["language"]
-        )
-
-        self.btn_dev.setText(
-            text["developer"]
-        )
+        text = get_ui_text(language)
+        for key in ("waypoints", "docking", "load_map", "new_map", "tracking",
+                    "reestimate", "nav2", "language"):
+            getattr(self, "btn_" + key).setText("Ngôn ngữ" if key == "language" and language == "vi" else text[key])
+        self.btn_dev.setText("Developer")
+        if not hasattr(self, "chat_title"):
+            return
+        t = startup_text(language)
+        for label, key in ((self.overview_label, "overview"),
+                           (self.menu_heading, "operations"),
+                           (self.developer_heading, "tools"),
+                           (self.mode_label, "title"), (self.subtitle_label, "subtitle"),
+                           (self.voice_title, "voice_title"), (self.voice_hint, "voice_hint"),
+                           (self.chat_title, "chat_title"), (self.btn_map, "map"),
+                           (self.send_chat_button, "send")):
+            label.setText(t[key])
+        self.btn_map.setToolTip(t["map"])
+        self.btn_map.setAccessibleName(t["map"])
+        self.chat_input.setPlaceholderText(t["input"])
+        self.chat_input.setAccessibleName(t["input"])
+        self.chat_history_box.setPlaceholderText(t["history"])
+        self.keyboard_toggle.setToolTip(t["keyboard"])
+        self.keyboard_toggle.setAccessibleName(t["keyboard"])
+        self.chat_panel.voice_btn.setToolTip(t["voice_hint"])
+        self.chat_panel.voice_btn.setAccessibleName(t["voice_title"])
+        self.chat_panel.interrupt_btn.setToolTip(t["stop_hint"])
+        self.chat_panel.interrupt_btn.setAccessibleName(t["stop_hint"])
+        self.virtual_keyboard.enter_label = t["send"]
+        self.virtual_keyboard._render_virtual_keyboard()
+        for card in (self.stm32_card, self.front_lidar_card, self.rear_lidar_card):
+            self._set_card_status(card, card["available"])
+        self._refresh_control_presentation()
 
     def mode_changed(self, mode):
         self.log(f"Đã chuyển sang chế độ {mode}")
         if mode == "Tracking":
-            subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
-            self.close()
+            if self.close():
+                subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
         elif mode == "Waypoints":
             self.open_destination_dialog()
         elif mode == "Nav2":
@@ -2139,8 +1732,8 @@ class RobotUI(QMainWindow):
 
     def start_docking(self):
         self.log("Chuyển sang chế độ docking")
-        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/docking_layout.py'])
-        self.close()
+        if self.close():
+            subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/docking_layout.py'])
 
     def load_map(self):
         dialog = LoadMapDialog(self)
@@ -2330,11 +1923,18 @@ class RobotUI(QMainWindow):
             self.log('[Bé Son] Chưa xác nhận waypoint đã dừng; giữ giao diện mở để xử lý hủy.')
             event.ignore()
             return
-        if getattr(self, '_motion', None) is not None and self._motion.close() is False:
-            event.ignore()
-            return
+        localization_thread = getattr(self, 'localization_thread', None)
+        if localization_thread is not None:
+            localization_thread.join(timeout=1.0)
+            if localization_thread.is_alive():
+                self.log('Đang chờ luồng định vị dừng; hãy đóng lại sau khi hoàn tất.')
+                event.ignore()
+                return
         dialog = getattr(self, '_new_map_dialog', None)
         if dialog is not None and not dialog.close():
+            event.ignore()
+            return
+        if getattr(self, '_motion', None) is not None and self._motion.close() is False:
             event.ignore()
             return
         self._nav2_started = False
@@ -2661,6 +2261,8 @@ class RobotUI(QMainWindow):
             pass
 
     def cancel_voice_navigation(self):
+        if getattr(self, 'localization_worker', None) is not None:
+            self.localization_worker.stop()
         if getattr(self, '_motion', None) is not None:
             self._motion.stop()
         if getattr(self, 'chat_panel', None) is not None:

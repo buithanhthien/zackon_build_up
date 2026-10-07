@@ -3,6 +3,7 @@
 Supports basic Latin, digits and punctuation (no Vietnamese composition).
 Each instance owns its Shift/symbol state and never redirects to another field.
 """
+from startup_style import PALETTE
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSizePolicy
 
@@ -17,23 +18,30 @@ class VirtualKeyboard(QWidget):
         self.setObjectName("virtual-keyboard")
         self.setStyleSheet("""
             QWidget#virtual-keyboard {
-                background-color: #e8edf7;
-                border: 1px solid #c7d5f3;
+                background-color: %(blue_tint)s;
+                border: 1px solid %(line)s;
                 border-radius: 10px;
             }
             QWidget#virtual-keyboard QPushButton {
-                min-height: 42px;
+                min-height: 44px;
+                padding: 0;
                 background-color: #ffffff;
-                color: #172554;
-                border: 1px solid #c7d5f3;
+                color: %(blue)s;
+                border: 1px solid %(line)s;
                 border-radius: 6px;
                 font-size: 16px;
                 font-weight: 600;
             }
             QWidget#virtual-keyboard QPushButton:hover {
-                background-color: #dbeafe;
+                background-color: %(yellow_tint)s;
             }
-        """)
+            QWidget#virtual-keyboard QPushButton:pressed {
+                background-color: %(yellow)s;
+            }
+            QWidget#virtual-keyboard QPushButton:focus {
+                border: 2px solid %(blue)s;
+            }
+        """ % PALETTE)
         self._virtual_keyboard_layout = QVBoxLayout(self)
         self._virtual_keyboard_layout.setContentsMargins(8, 8, 8, 8)
         self._virtual_keyboard_layout.setSpacing(4)

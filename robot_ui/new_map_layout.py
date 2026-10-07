@@ -11,7 +11,7 @@ from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QFont
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH, shell_source_workspace
-from styles import MAIN_STYLESHEET
+from styles import MAIN_STYLESHEET, DIALOG_STYLESHEET
 from ui_utils import setup_clock_timer
 from mapping_process import MappingProcess
 from virtual_keyboard import VirtualKeyboard
@@ -33,7 +33,7 @@ class NewMapUI(QDialog):
         self.process_timer.start(250)
 
     def init_ui(self):
-        self.setWindowTitle("New Map - SLAM Mapping")
+        self.setWindowTitle("Tạo bản đồ mới")
         self.setStyleSheet(MAIN_STYLESHEET)
 
         main_layout = QHBoxLayout(self)
@@ -44,12 +44,12 @@ class NewMapUI(QDialog):
         left_panel = QWidget()
         left_panel.setObjectName("left-panel")
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(0)
+        left_layout.setContentsMargins(16, 12, 16, 12)
+        left_layout.setSpacing(12)
 
         wordmark = QLabel("BẢN ĐỒ MỚI")
         wordmark.setFont(QFont("JetBrains Mono", 14, QFont.Weight.Bold))
-        wordmark.setStyleSheet("color: #fcb525; padding: 24px 24px 16px 24px;")
+        wordmark.setObjectName("wordmark")
         left_layout.addWidget(wordmark)
 
         mono = QFont("JetBrains Mono", 18)
@@ -67,19 +67,19 @@ class NewMapUI(QDialog):
         # ── Right area ────────────────────────────────────────────────────────
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
+        right_layout.setContentsMargins(16, 12, 16, 12)
+        right_layout.setSpacing(12)
 
         # Header bar
         header = QWidget()
         header.setObjectName("header-bar")
-        header.setFixedHeight(48)
+        header.setMinimumHeight(64)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(20, 0, 20, 0)
 
-        header_title = QLabel("SLAM MAPPING")
+        header_title = QLabel("Tạo bản đồ mới")
         header_title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
-        header_title.setStyleSheet("color: #1a2a5e;")
+        header_title.setObjectName("header-title")
 
         self.clock_label = QLabel()
         self.clock_label.setObjectName("clock")
@@ -112,18 +112,6 @@ class NewMapUI(QDialog):
         self.btn_cancel.setFont(mono)
         self.btn_cancel.setMinimumHeight(56)
         self.btn_cancel.setMinimumWidth(120)
-        self.btn_cancel.setStyleSheet("""
-            QPushButton#cancel-mapping-btn {
-                background-color: #dc2626;
-                color: #ffffff;
-                border: none;
-                border-radius: 8px;
-                font-size: 18px;
-                padding: 0px 24px;
-            }
-            QPushButton#cancel-mapping-btn:hover { background-color: #b91c1c; }
-            QPushButton#cancel-mapping-btn:pressed { background-color: #991b1b; }
-        """)
         self.btn_cancel.clicked.connect(self.cancel_mapping)
         mapping_row = QHBoxLayout()
         mapping_row.setSpacing(12)
@@ -151,19 +139,10 @@ class NewMapUI(QDialog):
         self.keyboard_toggle.setFixedSize(50, 50)
         self.keyboard_toggle.setToolTip("Hiện/ẩn bàn phím ảo (chữ không dấu)")
         self.keyboard_toggle.setAccessibleName("Hiện hoặc ẩn bàn phím ảo cho tên bản đồ")
-        self.keyboard_toggle.setStyleSheet("""
-            QPushButton {
-                background-color: #e0e8f8;
-                color: #1a2a5e;
-                border-radius: 8px;
-                font-size: 24px;
-                padding: 0;
-            }
-            QPushButton:checked { background-color: #c8d4f0; }
-        """)
+        self.keyboard_toggle.setObjectName("keyboard-toggle")
         save_row.addWidget(self.keyboard_toggle)
 
-        self.btn_apply = QPushButton("Áp dụng")
+        self.btn_apply = QPushButton("Lưu bản đồ")
         self.btn_apply.setObjectName("apply-btn")
         self.btn_apply.setFont(QFont("JetBrains Mono", 16))
         self.btn_apply.setFixedWidth(120)

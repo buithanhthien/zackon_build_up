@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QProgressBar)
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QFont
+from styles import DIALOG_STYLESHEET
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int32, Bool, Float32
@@ -86,62 +87,11 @@ class DockingUI(QMainWindow):
         """Update battery level"""
         self.battery_level = int(msg.data)
         self.battery_bar.setValue(self.battery_level)
-        self.battery_label.setText(f"Battery: {self.battery_level}%")
+        self.battery_label.setText(f"Pin: {self.battery_level}%")
     
     def init_ui(self):
-        self.setWindowTitle("Docking Control")
-        self.setStyleSheet("""
-            QMainWindow, QWidget {
-                background-color: #f0f4ff;
-                color: #1a2a5e;
-            }
-            QPushButton#dock-btn {
-                background-color: #214196;
-                color: #ffffff;
-                border: none;
-                border-radius: 8px;
-                padding: 20px;
-                font-size: 18px;
-                min-height: 60px;
-            }
-            QPushButton#dock-btn:hover {
-                background-color: #1a3278;
-            }
-            QPushButton#dock-btn:disabled {
-                background-color: #c8d4f0;
-                color: #8fa3cc;
-            }
-            QPushButton#back-btn {
-                background-color: #ef4444;
-                color: #ffffff;
-                border: none;
-                border-radius: 8px;
-                padding: 15px 30px;
-                font-size: 16px;
-            }
-            QPushButton#back-btn:hover {
-                background-color: #dc2626;
-            }
-            QLabel#status-light {
-                font-size: 48px;
-                padding: 10px;
-            }
-            QLabel#status-text {
-                font-size: 16px;
-                color: #5a7abf;
-            }
-            QProgressBar {
-                border: 2px solid #c8d4f0;
-                border-radius: 8px;
-                text-align: center;
-                height: 30px;
-                background-color: #ffffff;
-            }
-            QProgressBar::chunk {
-                background-color: #22c55e;
-                border-radius: 6px;
-            }
-        """)
+        self.setWindowTitle("Trạm sạc")
+        self.setStyleSheet(DIALOG_STYLESHEET)
         
         central = QWidget()
         self.setCentralWidget(central)
@@ -151,10 +101,11 @@ class DockingUI(QMainWindow):
         
         # Left panel - Back button and battery
         left_panel = QWidget()
+        left_panel.setObjectName("left-panel")
         left_layout = QVBoxLayout(left_panel)
         left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
-        back_btn = QPushButton("← Back")
+        back_btn = QPushButton("Quay lại")
         back_btn.setObjectName("back-btn")
         back_btn.clicked.connect(self.go_back)
         left_layout.addWidget(back_btn)
@@ -164,8 +115,7 @@ class DockingUI(QMainWindow):
         battery_layout = QVBoxLayout(battery_section)
         battery_layout.setSpacing(10)
         
-        self.battery_label = QLabel("Battery: 0%")
-        self.battery_label.setStyleSheet("color: #214196; font-size: 16px; font-weight: bold;")
+        self.battery_label = QLabel("Pin: 0%")
         battery_layout.addWidget(self.battery_label)
         
         self.battery_bar = QProgressBar()
@@ -177,20 +127,12 @@ class DockingUI(QMainWindow):
         
         # Instructions - moved to left panel
         instructions = QLabel(
-            "📋 <b>Instructions:</b><br><br>"
-            "<b>Buttons:</b><br>"
-            "• <b>Start Dock:</b> Begin docking<br>"
-            "• <b>Undock:</b> Prepare to leave<br>"
-            "• <b>Charge:</b> Start charging<br><br>"
-            "<b>Status Lights:</b><br>"
-            "• <b>Docking:</b> Moving to dock<br>"
-            "• <b>Docked:</b> Successfully docked<br>"
-            "• <b>Charging:</b> Receiving power<br>"
-            "• <b>Ready:</b> Ready to operate"
+            "Chọn Về trạm sạc để bắt đầu docking.\n\n"
+            "Chọn Rời trạm để chuẩn bị di chuyển.\n\n"
+            "Chọn Bắt đầu sạc khi robot đã vào trạm.\n\n"
+            "Theo dõi trạng thái kết nối và sạc ở bảng bên cạnh."
         )
-        instructions.setStyleSheet("color: #5a7abf; font-size: 14px; padding: 15px; "
-                                   "background-color: #ffffff; border: 1px solid #c8d4f0; "
-                                   "border-radius: 8px; margin-top: 20px;")
+        instructions.setObjectName("muted")
         instructions.setWordWrap(True)
         left_layout.addWidget(instructions)
         
@@ -199,12 +141,12 @@ class DockingUI(QMainWindow):
         # Right panel - Status and controls
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
-        right_layout.setSpacing(30)
+        right_layout.setSpacing(16)
         
         # Title
-        title = QLabel("Docking Control")
+        title = QLabel("Trạm sạc")
         title.setFont(QFont("JetBrains Mono", 24, QFont.Weight.Bold))
-        title.setStyleSheet("color: #214196;")
+        title.setObjectName("header-title")
         right_layout.addWidget(title)
         
         # Status indicators (4 lights in 2 rows)
@@ -219,13 +161,14 @@ class DockingUI(QMainWindow):
         
         # Docking status
         docking_widget = QWidget()
+        docking_widget.setObjectName("status-card")
         docking_layout = QVBoxLayout(docking_widget)
         docking_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.docking_light = QLabel("●")
         self.docking_light.setObjectName("status-light")
         self.docking_light.setStyleSheet("color: #c8d4f0;")
         self.docking_light.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        docking_text = QLabel("Docking")
+        docking_text = QLabel("Đang về trạm")
         docking_text.setObjectName("status-text")
         docking_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         docking_layout.addWidget(self.docking_light)
@@ -233,13 +176,14 @@ class DockingUI(QMainWindow):
         
         # Docked status
         docked_widget = QWidget()
+        docked_widget.setObjectName("status-card")
         docked_layout = QVBoxLayout(docked_widget)
         docked_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.docked_light = QLabel("●")
         self.docked_light.setObjectName("status-light")
         self.docked_light.setStyleSheet("color: #c8d4f0;")
         self.docked_light.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        docked_text = QLabel("Docked")
+        docked_text = QLabel("Đã vào trạm")
         docked_text.setObjectName("status-text")
         docked_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         docked_layout.addWidget(self.docked_light)
@@ -255,13 +199,14 @@ class DockingUI(QMainWindow):
         
         # Charging status
         charging_widget = QWidget()
+        charging_widget.setObjectName("status-card")
         charging_layout = QVBoxLayout(charging_widget)
         charging_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.charging_light = QLabel("●")
         self.charging_light.setObjectName("status-light")
         self.charging_light.setStyleSheet("color: #c8d4f0;")
         self.charging_light.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        charging_text = QLabel("Charging")
+        charging_text = QLabel("Đang sạc")
         charging_text.setObjectName("status-text")
         charging_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         charging_layout.addWidget(self.charging_light)
@@ -269,13 +214,14 @@ class DockingUI(QMainWindow):
         
         # Undock status
         undock_widget = QWidget()
+        undock_widget.setObjectName("status-card")
         undock_layout = QVBoxLayout(undock_widget)
         undock_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.undock_light = QLabel("●")
         self.undock_light.setObjectName("status-light")
         self.undock_light.setStyleSheet("color: #c8d4f0;")  # Default: off
         self.undock_light.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        undock_text = QLabel("Ready")
+        undock_text = QLabel("Sẵn sàng")
         undock_text.setObjectName("status-text")
         undock_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         undock_layout.addWidget(self.undock_light)
@@ -289,17 +235,17 @@ class DockingUI(QMainWindow):
         right_layout.addWidget(status_container)
         
         # Buttons
-        dock_btn = QPushButton("Start Dock")
+        dock_btn = QPushButton("Về trạm sạc")
         dock_btn.setObjectName("dock-btn")
         dock_btn.clicked.connect(self.execute_docking)
         right_layout.addWidget(dock_btn)
         
-        undock_btn = QPushButton("Undock")
+        undock_btn = QPushButton("Rời trạm")
         undock_btn.setObjectName("dock-btn")
         undock_btn.clicked.connect(self.execute_undock)
         right_layout.addWidget(undock_btn)
         
-        charge_btn = QPushButton("Charge")
+        charge_btn = QPushButton("Bắt đầu sạc")
         charge_btn.setObjectName("dock-btn")
         charge_btn.clicked.connect(self.send_charge_command)
         right_layout.addWidget(charge_btn)

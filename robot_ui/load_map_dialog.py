@@ -4,71 +4,11 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QListWidget, QLabel, QListWidgetItem)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+from styles import DIALOG_STYLESHEET
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SOURCE_PATH
 
-STYLESHEET = """
-    QDialog {
-        background-color: #f0f4ff;
-        color: #1a2a5e;
-    }
-    QLabel#title {
-        color: #5a7abf;
-        font-size: 11px;
-        letter-spacing: 2px;
-        padding-bottom: 8px;
-    }
-    QListWidget {
-        background-color: #ffffff;
-        color: #1a2a5e;
-        border: 1px solid #c8d4f0;
-        border-radius: 8px;
-        font-size: 15px;
-        outline: none;
-    }
-    QListWidget::item {
-        padding: 12px 16px;
-        border-bottom: 1px solid #e8f0ff;
-    }
-    QListWidget::item:hover {
-        background-color: #e8f0ff;
-        color: #214196;
-    }
-    QListWidget::item:selected {
-        background-color: #214196;
-        color: #ffffff;
-        border-left: 3px solid #fcb525;
-    }
-    QPushButton#ok-btn {
-        background-color: #214196;
-        color: #ffffff;
-        border: none;
-        border-radius: 8px;
-        font-size: 15px;
-        min-height: 44px;
-    }
-    QPushButton#ok-btn:hover {
-        background-color: #1a3278;
-    }
-    QPushButton#ok-btn:disabled {
-        color: #a8bce8;
-        background-color: #e0e8f8;
-    }
-    QPushButton#cancel-btn {
-        background-color: transparent;
-        color: #5a7abf;
-        border: 1px solid #c8d4f0;
-        border-radius: 8px;
-        font-size: 15px;
-        min-height: 44px;
-    }
-    QPushButton#cancel-btn:hover {
-        background-color: #e8f0ff;
-        color: #214196;
-        border: 1px solid #214196;
-    }
-"""
 
 
 class LoadMapDialog(QDialog):
@@ -79,23 +19,23 @@ class LoadMapDialog(QDialog):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("Load Map")
+        self.setWindowTitle("Tải bản đồ")
         self.setModal(True)
         self.resize(480, 560)
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(DIALOG_STYLESHEET)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
 
-        title = QLabel("SELECT MAP")
+        title = QLabel("Chọn bản đồ")
         title.setObjectName("title")
         title.setFont(QFont("DM Sans", 11))
         layout.addWidget(title)
 
         self.map_list = QListWidget()
         self.map_list.setFont(QFont("JetBrains Mono", 15))
-        self.map_list.itemClicked.connect(self.on_item_clicked)
+        self.map_list.currentItemChanged.connect(self.on_item_clicked)
         layout.addWidget(self.map_list)
 
         self.load_maps()
@@ -103,13 +43,13 @@ class LoadMapDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
 
-        self.btn_ok = QPushButton("Load")
+        self.btn_ok = QPushButton("Tải bản đồ")
         self.btn_ok.setObjectName("ok-btn")
         self.btn_ok.setFont(QFont("JetBrains Mono", 15))
         self.btn_ok.clicked.connect(self.accept)
         self.btn_ok.setEnabled(False)
 
-        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel = QPushButton("Hủy")
         self.btn_cancel.setObjectName("cancel-btn")
         self.btn_cancel.setFont(QFont("JetBrains Mono", 15))
         self.btn_cancel.clicked.connect(self.reject)
@@ -124,9 +64,9 @@ class LoadMapDialog(QDialog):
         for map_name in sorted(f[:-5] for f in os.listdir(self.maps_dir) if f.endswith('.yaml')):
             self.map_list.addItem(QListWidgetItem(map_name))
 
-    def on_item_clicked(self, item):
-        self.selected_map = item.text()
-        self.btn_ok.setEnabled(True)
+    def on_item_clicked(self, item, previous=None):
+        self.selected_map = item.text() if item else None
+        self.btn_ok.setEnabled(item is not None)
 
     def get_selected_map(self):
         return self.selected_map

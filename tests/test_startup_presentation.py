@@ -5,6 +5,7 @@ from pathlib import Path
 import unittest
 
 from PyQt6.QtWidgets import QApplication, QPushButton
+from PyQt6.QtTest import QTest, QSignalSpy
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("startup_preview", ROOT / "tool" / "preview_startup_ui.py")
@@ -38,6 +39,12 @@ class StartupPresentationTests(unittest.TestCase):
                         self.app.processEvents()
                         self.assertEqual((w.width(), w.height()), (width, height))
                         self.assertGreaterEqual(w.chat_history_box.height(), 80)
+                        mango = w.mango_companion
+                        self.assertGreaterEqual(mango.height(), 110)
+                        self.assertTrue(mango.rect().contains(mango.character_rect().toAlignedRect()))
+                        mango_right = mango.mapTo(w, mango.rect().topRight()).x()
+                        chat_left = w.chat_history_box.mapTo(w, w.chat_history_box.rect().topLeft()).x()
+                        self.assertLess(mango_right, chat_left)
                         for button in w.findChildren(QPushButton):
                             if button.isVisible():
                                 point = button.mapTo(w, button.rect().topLeft())
@@ -47,6 +54,22 @@ class StartupPresentationTests(unittest.TestCase):
                                 self.assertLessEqual(point.y() + button.height(), height)
                                 self.assertGreaterEqual(button.height(), 44)
                     w.hide()
+
+    def test_mango_interaction_does_not_trigger_chat_or_voice(self):
+        w = self.make_window()
+        w.show()
+        self.app.processEvents()
+        spies = [QSignalSpy(button.clicked) for button in
+                 (w.chat_panel.voice_btn, w.chat_panel.interrupt_btn, w.send_chat_button)]
+        w.chat_input.setText("Giữ nội dung đang nhập")
+        history = w.chat_history_box.toPlainText()
+        mango = w.mango_companion
+        QTest.mouseClick(mango, preview.QtCore.Qt.MouseButton.LeftButton,
+                         pos=mango.character_rect().center().toPoint())
+        self.assertEqual(mango.state, "happy")
+        self.assertTrue(all(len(spy) == 0 for spy in spies))
+        self.assertEqual(w.chat_input.text(), "Giữ nội dung đang nhập")
+        self.assertEqual(w.chat_history_box.toPlainText(), history)
 
     def test_device_states_have_labels_and_diagnostics_remains_available(self):
         w = self.make_window()

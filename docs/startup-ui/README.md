@@ -1,5 +1,10 @@
 # Startup dashboard — thiết kế và nghiệm thu
 
+MVP nhân vật xoài đã bổ sung vào vùng trái; chat thu gọn sang phải. Xem
+[hành vi, hướng dẫn chạy và kiểm thử](../virtual-mango-companion.md) và
+[ảnh mới](mango-1280x720.png). Các thông số/ảnh bên dưới ghi lại phiên bản
+dashboard trước khi thêm nhân vật.
+
 Đã triển khai giao diện Startup theo hướng robot operations dashboard: trạng thái thiết bị ở trên, điều khiển giọng nói và Dừng ở bên trái nội dung, hội thoại chiếm vùng rộng bên phải. Menu vận hành tách khỏi Developer.
 
 ## Wireframe

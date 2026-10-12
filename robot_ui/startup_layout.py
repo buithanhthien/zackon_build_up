@@ -48,6 +48,7 @@ from waypoint_store import load_waypoint_file, resolve_waypoint, save_waypoint_f
 from waypoint_dialogs import (DestinationDialog, WaypointPickerDialog, NewWaypointDialog,
                               PathManagerDialog, NewPathDialog, DIALOG_STYLE)
 from virtual_keyboard import VirtualKeyboard
+from mango_companion import MangoCompanion
 from waypoint_map_widget import MapWidget
 from process_manager import ProcessManager
 from rclpy.action import ActionClient
@@ -884,10 +885,17 @@ class RobotUI(QMainWindow):
         self.voice_panel = QWidget()
         self.voice_panel.setObjectName("voice-panel")
         self.voice_panel.setMinimumWidth(250)
-        self.voice_panel.setMaximumWidth(340)
+        self.voice_panel.setMaximumWidth(480)
         voice = QVBoxLayout(self.voice_panel)
         voice.setContentsMargins(20, 20, 20, 20)
-        voice.setSpacing(12)
+        voice.setSpacing(8)
+        self.mango_companion = MangoCompanion()
+        voice.addWidget(self.mango_companion, 1)
+        self.mango_hint = QLabel()
+        self.mango_hint.setObjectName("muted")
+        self.mango_hint.setWordWrap(True)
+        self.mango_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        voice.addWidget(self.mango_hint)
         self.voice_title = QLabel()
         self.voice_title.setObjectName("panel-title")
         voice.addWidget(self.voice_title)
@@ -895,17 +903,15 @@ class RobotUI(QMainWindow):
         self.voice_hint.setObjectName("muted")
         self.voice_hint.setWordWrap(True)
         voice.addWidget(self.voice_hint)
-        voice.addStretch()
         mic = self.chat_panel.voice_btn
         mic.setIcon(startup_icon("mic", size=28))
         mic.setIconSize(QSize(28, 28))
-        mic.setMinimumSize(0, 112)
+        mic.setMinimumSize(0, 56)
         mic.setMaximumSize(16777215, 16777215)
         mic.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         voice.addWidget(mic)
-        voice.addStretch()
         stop = self.chat_panel.interrupt_btn
-        stop.setMinimumSize(0, 80)
+        stop.setMinimumSize(0, 48)
         stop.setMaximumSize(16777215, 16777215)
         stop.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         voice.addWidget(stop)
@@ -956,7 +962,7 @@ class RobotUI(QMainWindow):
         content = QHBoxLayout()
         content.setSpacing(16)
         content.addWidget(self.voice_panel, 1)
-        content.addWidget(chat, 2)
+        content.addWidget(chat, 1)
         body.addLayout(content, 1)
         main_layout.addWidget(right, 1)
         self.update_language_ui()
@@ -1616,6 +1622,9 @@ class RobotUI(QMainWindow):
         if not hasattr(self, "chat_title"):
             return
         t = startup_text(language)
+        self.mango_companion.set_language(language)
+        self.mango_hint.setText("Click to play · Drag to move" if language == "en"
+                                else "Chạm để chơi · Kéo để di chuyển")
         for label, key in ((self.overview_label, "overview"),
                            (self.menu_heading, "operations"),
                            (self.developer_heading, "tools"),

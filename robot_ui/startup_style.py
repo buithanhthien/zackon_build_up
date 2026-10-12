@@ -39,11 +39,11 @@ QWidget#startup-root QWidget#status-card[state="online"] QLabel#device-state,
 QWidget#startup-root QWidget#status-card[state="online"] QLabel#status-dot { color: %(blue)s; }
 QWidget#startup-root QWidget#status-card[state="offline"] QLabel#device-state,
 QWidget#startup-root QWidget#status-card[state="offline"] QLabel#status-dot { color: %(red)s; }
-QWidget#startup-root QPushButton#voice-btn { background: %(yellow)s; color: %(blue)s; min-height: 112px; font-size: 20px; font-weight: 700; border: 2px solid %(yellow)s; border-radius: 12px; }
+QWidget#startup-root QPushButton#voice-btn { background: %(yellow)s; color: %(blue)s; min-height: 56px; font-size: 20px; font-weight: 700; border: 2px solid %(yellow)s; border-radius: 12px; }
 QWidget#startup-root QPushButton#voice-btn:hover { background: #ffe293; }
 QWidget#startup-root QPushButton#voice-btn:checked { background: %(blue)s; color: white; border-color: %(blue)s; }
 QWidget#startup-root QPushButton#voice-btn:disabled { background: %(yellow)s; color: %(blue)s; border-color: %(yellow)s; }
-QWidget#startup-root QPushButton#interrupt-btn { background: %(red)s; color: white; border: 2px solid %(red)s; min-height: 80px; font-size: 23px; font-weight: 700; border-radius: 12px; }
+QWidget#startup-root QPushButton#interrupt-btn { background: %(red)s; color: white; border: 2px solid %(red)s; min-height: 48px; font-size: 23px; font-weight: 700; border-radius: 12px; }
 QWidget#startup-root QPushButton#interrupt-btn:hover { background: #941a28; }
 QWidget#startup-root QPushButton#interrupt-btn:pressed { background: #711320; border-color: #ffb8c0; }
 QWidget#startup-root QPushButton#interrupt-btn:focus, QWidget#startup-root QPushButton#voice-btn:focus { border-color: %(yellow)s; }

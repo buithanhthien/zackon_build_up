@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from motion_commands import parse_motion, validate_motion
+from voice_controls import microphone_state, refresh_microphone_enabled
 
 
 ROOT = Path(__file__).resolve().parent
@@ -26,7 +27,8 @@ def _extract_method(path, class_name, method_name, extra_globals=None):
     method.decorator_list = []
     module = ast.Module(body=[method], type_ignores=[])
     ast.fix_missing_locations(module)
-    namespace = {}
+    namespace = {"microphone_state": microphone_state,
+                 "refresh_microphone_enabled": refresh_microphone_enabled}
     if extra_globals:
         namespace.update(extra_globals)
     exec(compile(module, str(path), "exec"), namespace)
@@ -367,6 +369,57 @@ def test_ui_end_state_resets_recording_button():
     assert label.visible is False
 
 
+
+def make_voice_panel():
+    panel = SimpleNamespace(
+        _voice_state="", _pending_reply=None, _did_speak=False,
+        _recording_active=False, _voice_enabled=False,
+        _voice_engine=DummyVoiceEngine(), voice_btn=DummyButton(),
+        voice_status_label=DummyLabel(), _ai_thread=None, _intent_thread=None,
+        _typing_timer=SimpleNamespace(stop=lambda: None, isActive=lambda: False),
+        _finish_turn=lambda: None,
+    )
+    for name in ("_on_voice_state_changed", "_on_listen_btn_clicked",
+                 "_reset_recording_controls", "_refresh_microphone_enabled"):
+        method = _extract_method(CHAT_PANEL, "ChatPanel", name)
+        setattr(panel, name, lambda *args, method=method: method(panel, *args))
+    return panel
+
+
+def test_speaking_blocks_direct_capture_and_reset_but_stop_still_works():
+    panel = make_voice_panel()
+    panel._on_voice_state_changed("[<<] SPEAKING")
+    assert panel.voice_btn.enabled is False
+    panel._on_listen_btn_clicked()
+    assert panel._voice_engine.listen_calls == 0
+    panel._reset_recording_controls()
+    assert panel.voice_btn.enabled is False
+    panel._voice_engine.stop_speaking()
+    assert panel._voice_engine.stop_speaking_calls == 1
+    panel._on_voice_state_changed("")
+    assert panel.voice_btn.enabled is True
+    panel._on_listen_btn_clicked()
+    assert panel._voice_engine.listen_calls == 1
+
+
+def test_end_state_keeps_mic_locked_until_other_work_finishes():
+    for resource in ("_ai_thread", "_intent_thread", "_typing_timer", "capture"):
+        panel = make_voice_panel()
+        busy = [True]
+        if resource == "capture":
+            panel._voice_engine._listen_lock = SimpleNamespace(locked=lambda: busy[0])
+        elif resource == "_typing_timer":
+            panel._typing_timer = SimpleNamespace(stop=lambda: None, isActive=lambda: busy[0])
+        else:
+            setattr(panel, resource, SimpleNamespace(isRunning=lambda: busy[0]))
+        panel._on_voice_state_changed("")
+        assert panel.voice_btn.enabled is False, resource
+        panel._on_listen_btn_clicked()
+        assert panel._voice_engine.listen_calls == 0
+        busy[0] = False
+        panel._refresh_microphone_enabled()
+        assert panel.voice_btn.enabled is True
+
 def test_tts_playback_signal_ends_on_completion_stop_and_error():
     import os
     import tempfile
@@ -398,6 +451,7 @@ def test_tts_playback_signal_ends_on_completion_stop_and_error():
     })
     for outcome in ('complete', 'stop', 'error', 'synthesis_error'):
         events = []
+        panel = make_voice_panel()
         stop = threading.Event()
 
         def synthesize(**kwargs):
@@ -408,6 +462,9 @@ def test_tts_playback_signal_ends_on_completion_stop_and_error():
 
         def play(path):
             assert events == [True]
+            assert panel.voice_btn.enabled is False
+            panel._on_listen_btn_clicked()
+            assert panel._voice_engine.listen_calls == 0
             if outcome == 'stop':
                 stop.set()
             if outcome == 'error':
@@ -416,7 +473,7 @@ def test_tts_playback_signal_ends_on_completion_stop_and_error():
         engine = SimpleNamespace(
             _tts_queue=OneItemQueue(), _stop_flag=stop,
             _supertonic_tts=SimpleNamespace(synthesize=synthesize, save_audio=lambda *args: None),
-            _supertonic_voice_style=object(), _set_state=lambda state: None,
+            _supertonic_voice_style=object(), _set_state=panel._on_voice_state_changed,
             _play_audio=play, playback_changed=SimpleNamespace(emit=events.append),
         )
         try:
@@ -424,3 +481,6 @@ def test_tts_playback_signal_ends_on_completion_stop_and_error():
         except Done:
             pass
         assert events == ([] if outcome == 'synthesis_error' else [True, False])
+        assert panel.voice_btn.enabled is True
+        panel._on_listen_btn_clicked()
+        assert panel._voice_engine.listen_calls == 1

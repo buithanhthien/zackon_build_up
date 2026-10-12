@@ -975,7 +975,7 @@ class RobotUI(QMainWindow):
         self._reestimate_pulse_timer = QTimer(self)
         self._reestimate_pulse_timer.timeout.connect(self._pulse_reestimate)
         self._pulse_state = False
-        # Presentation only: observe existing state without issuing commands.
+        # Refresh labels and mic availability from the shared voice state.
         self._presentation_timer = QTimer(self)
         self._presentation_timer.timeout.connect(self._refresh_control_presentation)
         self._presentation_timer.start(150)

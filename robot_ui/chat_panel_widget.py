@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from motion_commands import parse_motion, validate_motion
 from voice_engine import VoiceEngine
+from voice_controls import microphone_state, refresh_microphone_enabled
 from correction_memory import CorrectionMemory
 from iuh_local_search import IuhLocalSearch
 from web_sources import extract_web_sources, format_answer_sources
@@ -885,6 +886,7 @@ class ChatPanel(QWidget):
         self._intent_thread = None
         self._voice_enabled   = False
         self._recording_active = False
+        self._voice_state = ""
         self._pending_reply   = None
         self._did_speak       = False
 
@@ -1064,6 +1066,7 @@ class ChatPanel(QWidget):
 
         self._typing_dots = 0
         self._typing_timer.start(400)
+        refresh_microphone_enabled(self)
 
         # ============================================================
         # Khóa ngôn ngữ tại thời điểm gửi request
@@ -1109,6 +1112,7 @@ class ChatPanel(QWidget):
             self._ai_thread.quit
         )
 
+        self._ai_thread.finished.connect(self._refresh_microphone_enabled)
         self._ai_thread.start()
 
     def _on_web_sources(self, sources):
@@ -1190,6 +1194,7 @@ class ChatPanel(QWidget):
         self.voice_status_label.show()
         self._typing_dots = 0
         self._typing_timer.start(400)
+        refresh_microphone_enabled(self)
 
         generation = getattr(self, '_intent_generation', 0)
         self._intent_worker = _IntentWorker(
@@ -1229,6 +1234,7 @@ class ChatPanel(QWidget):
             self._intent_thread.quit
         )
 
+        self._intent_thread.finished.connect(self._refresh_microphone_enabled)
         self._intent_thread.start()
 
     def _on_intent_ready(self, data: dict, original_text: str, generation=None):
@@ -1294,17 +1300,30 @@ class ChatPanel(QWidget):
         self._ask_ai(original_text)
 
     # ----------------------------------------------------------- voice -----
+    def _refresh_microphone_enabled(self):
+        refresh_microphone_enabled(self)
+
     def _reset_recording_controls(self):
         self._recording_active = False
         self._voice_enabled = False
-        self.voice_btn.setEnabled(True)
+        refresh_microphone_enabled(self)
         self.voice_btn.setChecked(False)
-        self.voice_btn.setText("CLICK\n TO SPEAK")
+        state = microphone_state(self)
+        self.voice_btn.setText(
+            "CLICK\n TO SPEAK" if state == "idle" else
+            "ĐANG NÓI…" if state == "speaking" else "ĐANG\n XỬ LÝ"
+        )
 
     def _on_listen_btn_clicked(self):
+        if microphone_state(self) not in ("idle", "listening"):
+            self.voice_btn.setChecked(False)
+            refresh_microphone_enabled(self)
+            return
+
         # Second click: finish the current recording only.  Do not route this
         # through stop_speaking(); the dedicated Stop button owns TTS aborts.
         if self._recording_active:
+            self._voice_state = "[..] THINKING"
             self._recording_active = False
             self.voice_btn.setChecked(False)
             self.voice_btn.setEnabled(False)
@@ -1337,6 +1356,7 @@ class ChatPanel(QWidget):
         )
 
     def _on_voice_state_changed(self, state):
+        self._voice_state = state
         if "SPEAKING" in state and self._pending_reply:
             self._pending_reply = None
             self._did_speak = True
@@ -1388,6 +1408,9 @@ class ChatPanel(QWidget):
 
         elif "SPEAKING" in state:
             self._typing_timer.stop()
+            self.voice_btn.setChecked(False)
+            refresh_microphone_enabled(self)
+            self.voice_btn.setText("ĐANG NÓI…")
             self.voice_status_label.setText(state)
             self.voice_status_label.setStyleSheet(
                 "color:#22c55e; background-color:transparent;"

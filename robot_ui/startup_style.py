@@ -1,5 +1,6 @@
 """Startup-only visual language; shared screens/dialog styles stay independent."""
 from PyQt6.QtWidgets import QWidget
+from voice_controls import microphone_state, refresh_microphone_enabled
 
 # IUH brand handbook, colour specification (page 5):
 # https://www.senviet.art/wp-content/uploads/2025/11/So-tay-thuong-hieu-IUH-moi-chinh-thuc.pdf
@@ -72,6 +73,7 @@ TEXT = {
                overview="Tổng quan", operations="VẬN HÀNH", tools="CÔNG CỤ", front="LiDAR trước", rear="LiDAR sau",
                checking="Đang kiểm tra", online="Hoạt động", offline="Mất kết nối",
                diagnostics="Chẩn đoán STM32", voice_title="Điều khiển giọng nói",
+               mic_locked="Mic tạm khóa. Nhấn Dừng để ngắt Bé Son.",
                voice_hint="Nhấn để bắt đầu nghe. Nhấn lần nữa để kết thúc thu âm.",
                listen_button="Bắt đầu nghe", listening_button="Đang nghe…\nKết thúc thu âm",
                thinking_button="Đang suy nghĩ", speaking_button="Đang nói…",
@@ -85,6 +87,7 @@ TEXT = {
                overview="Overview", operations="OPERATIONS", tools="TOOLS", front="Front LiDAR", rear="Rear LiDAR",
                checking="Checking", online="Connected", offline="Disconnected",
                diagnostics="STM32 diagnostics", voice_title="Voice control",
+               mic_locked="Microphone unavailable. Press Stop to interrupt Bé Son.",
                voice_hint="Press to listen. Press again to finish recording.",
                listen_button="Start listening", listening_button="Listening…\nFinish recording",
                thinking_button="Thinking", speaking_button="Speaking…",
@@ -109,27 +112,20 @@ def repolish(widget):
 
 
 def refresh_voice_button(panel, language):
-    """Mirror recording/AI/TTS state on the mic without changing its behavior."""
+    """Present the same state that guards microphone capture."""
     t = startup_text(language)
-    recording = getattr(panel, "_recording_active", False)
-    busy = not panel.voice_btn.isEnabled()
-    source = panel.voice_status_label
-    status = source.text()
-    typing_timer = getattr(panel, "_typing_timer", None)
-    # Keep the source label inside the hidden ChatPanel; present its state
-    # and animation only on the microphone button.
-    thinking = typing_timer is not None and typing_timer.isActive()
-    visible_status = not source.isHidden()
-    if recording:
-        display = t["listening_button"]
-    elif thinking:
+    state = microphone_state(panel)
+    refresh_microphone_enabled(panel)
+    if state == "thinking":
         dots = "." * ((max(1, getattr(panel, "_typing_dots", 0)) - 1) % 4)
         display = t["thinking_button"] + dots
-    elif visible_status and "SPEAKING" in status:
-        display = t["speaking_button"]
-    elif busy or (visible_status and "THINKING" in status):
-        display = t["processing_button"]
     else:
-        display = t["listen_button"]
+        key = "listen_button" if state == "idle" else state + "_button"
+        display = t[key]
+    hint = t["voice_hint"] if state in ("idle", "listening") else t["mic_locked"]
+    if state == "speaking":
+        hint = t["speaking"] + " " + hint
     panel.voice_btn.setText(display)
+    panel.voice_btn.setToolTip(hint)
     panel.voice_btn.setAccessibleName(display.replace("\n", " "))
+    panel.voice_btn.setAccessibleDescription(hint)

@@ -81,6 +81,41 @@ class StartupPresentationTests(unittest.TestCase):
         w.show()
         self.assertFalse(w.mango_companion.speaking)
 
+    def test_speaking_locks_mic_across_playback_gaps_and_keeps_stop_available(self):
+        from test_voice_recording_flow import _extract_method, CHAT_PANEL
+        for language in ("vi", "en"):
+            w = self.make_window(language)
+            p = w.chat_panel
+            p._pending_reply = None
+            p._typing_timer = preview.QtCore.QTimer(p)
+            p._voice_enabled = False
+            p._reset_recording_controls = lambda: _extract_method(
+                CHAT_PANEL, "ChatPanel", "_reset_recording_controls")(p)
+            state_changed = _extract_method(CHAT_PANEL, "ChatPanel", "_on_voice_state_changed")
+            stop_calls = []
+            p.interrupt_btn.clicked.connect(lambda: stop_calls.append(True))
+            state_changed(p, "[<<] SPEAKING")
+            self.assertFalse(p.voice_btn.isEnabled())
+            for playing in (True, False, True, False):
+                p._voice_engine.playback_changed.emit(playing)
+                w._refresh_control_presentation()
+                self.assertFalse(p.voice_btn.isEnabled())
+                self.assertEqual(p.voice_btn.text(), preview.startup_text(language)["speaking_button"])
+                self.assertEqual(p.voice_btn.accessibleName(), p.voice_btn.text())
+                self.assertIn(preview.startup_text(language)["mic_locked"], p.voice_btn.toolTip())
+                self.assertEqual(p.voice_btn.accessibleDescription(), p.voice_btn.toolTip())
+            mic_clicks = QSignalSpy(p.voice_btn.clicked)
+            p.voice_btn.click()
+            self.assertEqual(len(mic_clicks), 0)
+            self.assertTrue(p.interrupt_btn.isEnabled())
+            p.interrupt_btn.click()
+            self.assertEqual(stop_calls, [True])
+            state_changed(p, "")
+            w._refresh_control_presentation()
+            self.assertTrue(p.voice_btn.isEnabled())
+            self.assertEqual(p.voice_btn.text(), preview.startup_text(language)["listen_button"])
+            self.assertEqual(p.voice_btn.toolTip(), preview.startup_text(language)["voice_hint"])
+
     def test_device_states_have_labels_and_diagnostics_remains_available(self):
         w = self.make_window()
         card = w.stm32_card
@@ -108,7 +143,7 @@ class StartupPresentationTests(unittest.TestCase):
         self.assertFalse(hasattr(w, "voice_status_display"))
         p._recording_active = False
         p.voice_btn.setChecked(False)
-        p.voice_btn.setEnabled(False)
+        p._voice_state = "[..] THINKING"
         w._refresh_control_presentation()
         self.assertEqual(p.voice_btn.text(), "Processing…")
         self.assertFalse(p.voice_btn.isEnabled())
@@ -134,6 +169,7 @@ class StartupPresentationTests(unittest.TestCase):
             p._typing_dots = 0
             p._typing_timer = preview.QtCore.QTimer(p)
             p.voice_status_label.show()
+            p._voice_state = "[..] THINKING"
             p.voice_status_label.setText("[..] THINKING")
             w._refresh_control_presentation()
             self.assertEqual(p.voice_btn.text(), speech)
@@ -150,10 +186,12 @@ class StartupPresentationTests(unittest.TestCase):
                     self.assertEqual(p.voice_status_label.text(), source_text)
                     self.assertEqual(p.voice_btn.text(), thinking + "." * (tick % 4))
             p._typing_timer.stop()
+            p._voice_state = ""
             p.voice_status_label.hide()
             w._refresh_control_presentation()
             self.assertEqual(p.voice_btn.text(), preview.startup_text(language)["listen_button"])
-            p.voice_status_label.setText("[>>] SPEAKING")
+            p._voice_state = "[<<] SPEAKING"
+            p.voice_status_label.setText("[<<] SPEAKING")
             p.voice_status_label.show()
             w._refresh_control_presentation()
             self.assertEqual(p.voice_btn.text(), preview.startup_text(language)["speaking_button"])

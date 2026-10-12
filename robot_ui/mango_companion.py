@@ -2,7 +2,7 @@
 import math
 import time
 
-from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer
+from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QApplication, QSizePolicy, QWidget
 
@@ -17,6 +17,8 @@ class MangoCompanion(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self.state = "idle"
+        self.speaking = False
+        self._speech_started = time.monotonic()
         self._position = QPointF(.5, .5)
         self._press = None
         self._offset = QPointF()
@@ -26,6 +28,16 @@ class MangoCompanion(QWidget):
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._tick)
         self.set_language("vi")
+
+    @pyqtSlot(bool)
+    def set_speaking(self, speaking):
+        """Observe playback on the GUI thread without changing interaction state."""
+        if self.speaking == speaking:
+            return
+        self.speaking = speaking
+        if speaking:
+            self._speech_started = time.monotonic()
+        self.update()
 
     def set_language(self, language):
         hint = ("Mango: click or press Space to play; drag to move."
@@ -184,7 +196,19 @@ class MangoCompanion(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor("#f49a68"))
             painter.drawEllipse(QRectF(x - 15, 137, 24, 11))
-        if self.state == "dragging":
+        if self.speaking:
+            # Stylized syllables; playback gates the animation, not phoneme data.
+            speech_age = time.monotonic() - self._speech_started
+            opening = (0.5 + 0.5 * math.sin(speech_age * 25)) ** 2
+            height = 3 + 21 * opening
+            painter.setPen(QPen(QColor(outline), 3))
+            painter.setBrush(QColor("#63362e"))
+            painter.drawEllipse(QRectF(105, 150 - height / 2, 30, height))
+            if opening > .4:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor("#f49a8b"))
+                painter.drawEllipse(QRectF(113, 150 + height / 2 - 7, 15, 5))
+        elif self.state == "dragging":
             painter.setBrush(QColor(outline))
             painter.drawEllipse(QRectF(112, 143, 14, 19))
         else:

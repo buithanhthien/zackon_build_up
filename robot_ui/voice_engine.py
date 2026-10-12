@@ -249,6 +249,7 @@ def _find_microphone_index_from_alsa_card(
 
 class VoiceEngine(QObject):
     state_changed    = pyqtSignal(str)
+    playback_changed = pyqtSignal(bool)
     transcript_ready = pyqtSignal(str)
     ui_command       = pyqtSignal(str)
 
@@ -1047,7 +1048,12 @@ class VoiceEngine(QObject):
                     
                     if not self._stop_flag.is_set():
                         self._set_state(VoiceState.SPEAKING)
-                        self._play_audio(tmp_path)
+                        self.playback_changed.emit(True)
+                        try:
+                            self._play_audio(tmp_path)
+                        finally:
+                            # End each utterance, including cancellation or playback failure.
+                            self.playback_changed.emit(False)
                 else:
                     print("[TTS] Supertonic not available, skipping synthesis")
             except Exception as e:

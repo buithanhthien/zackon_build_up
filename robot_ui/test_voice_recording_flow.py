@@ -365,3 +365,62 @@ def test_ui_end_state_resets_recording_button():
     assert button.checked is False
     assert button.text == "CLICK\n TO SPEAK"
     assert label.visible is False
+
+
+def test_tts_playback_signal_ends_on_completion_stop_and_error():
+    import os
+    import tempfile
+    import threading
+
+    class Done(Exception):
+        pass
+
+    class OneItemQueue:
+        def __init__(self):
+            self.used = False
+
+        def get(self):
+            if self.used:
+                raise Done()
+            self.used = True
+            return ('Hello', 'en')
+
+        def task_done(self):
+            pass
+
+        def empty(self):
+            return True
+
+    worker = _extract_method(VOICE_ENGINE, 'VoiceEngine', '_tts_worker', {
+        'tempfile': tempfile, 'os': os,
+        'VoiceState': SimpleNamespace(SPEAKING='[<<] SPEAKING'),
+        'SUPERTONIC_STEPS': 1, 'SUPERTONIC_SPEED': 1,
+    })
+    for outcome in ('complete', 'stop', 'error', 'synthesis_error'):
+        events = []
+        stop = threading.Event()
+
+        def synthesize(**kwargs):
+            assert events == []
+            if outcome == 'synthesis_error':
+                raise RuntimeError('Synthesis failed')
+            return [], 1
+
+        def play(path):
+            assert events == [True]
+            if outcome == 'stop':
+                stop.set()
+            if outcome == 'error':
+                raise RuntimeError('Playback failed')
+
+        engine = SimpleNamespace(
+            _tts_queue=OneItemQueue(), _stop_flag=stop,
+            _supertonic_tts=SimpleNamespace(synthesize=synthesize, save_audio=lambda *args: None),
+            _supertonic_voice_style=object(), _set_state=lambda state: None,
+            _play_audio=play, playback_changed=SimpleNamespace(emit=events.append),
+        )
+        try:
+            worker(engine)
+        except Done:
+            pass
+        assert events == ([] if outcome == 'synthesis_error' else [True, False])

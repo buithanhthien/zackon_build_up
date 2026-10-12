@@ -3,6 +3,7 @@ import sys
 import time
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "robot_ui"))
 from PyQt6.QtCore import QPoint, Qt
@@ -34,6 +35,7 @@ class MangoCompanionTests(unittest.TestCase):
         w._state_started = time.monotonic() - 2
         w._tick()
         self.assertEqual(w.state, "idle")
+
         QTest.keyClick(w, Qt.Key.Key_Space)
         self.assertEqual(w.state, "happy")
         w._set_state("idle")
@@ -41,6 +43,23 @@ class MangoCompanionTests(unittest.TestCase):
         self.assertEqual(w.state, "idle")
         QTest.mouseClick(w, Qt.MouseButton.RightButton, pos=point)
         self.assertEqual(w.state, "idle")
+
+    def test_speaking_animates_mouth_and_restores_expression(self):
+        w = self.widget
+        with patch("mango_companion.time.monotonic", return_value=100.):
+            normal = w.grab().toImage()
+            w.set_speaking(True)
+            first = w.grab().toImage()
+            w._speech_started -= .06
+            second = w.grab().toImage()
+            self.assertNotEqual(first, second)
+            self.assertNotEqual(normal, first)
+            QTest.keyClick(w, Qt.Key.Key_Space)
+            self.assertTrue(w.speaking)
+            self.assertEqual(w.state, "happy")
+            w.set_speaking(False)
+            w._set_state("idle")
+            self.assertEqual(normal, w.grab().toImage())
 
     def test_drag_outside_is_bounded_and_survives_resize(self):
         w = self.widget

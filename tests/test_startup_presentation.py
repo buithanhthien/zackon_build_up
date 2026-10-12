@@ -71,6 +71,16 @@ class StartupPresentationTests(unittest.TestCase):
         self.assertEqual(w.chat_input.text(), "Giữ nội dung đang nhập")
         self.assertEqual(w.chat_history_box.toPlainText(), history)
 
+    def test_playback_signal_controls_mango_even_while_hidden(self):
+        w = self.make_window()
+        w.show()
+        w.chat_panel._voice_engine.playback_changed.emit(True)
+        self.assertTrue(w.mango_companion.speaking)
+        w.hide()
+        w.chat_panel._voice_engine.playback_changed.emit(False)
+        w.show()
+        self.assertFalse(w.mango_companion.speaking)
+
     def test_device_states_have_labels_and_diagnostics_remains_available(self):
         w = self.make_window()
         card = w.stm32_card

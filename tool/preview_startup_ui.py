@@ -22,11 +22,16 @@ from ui_utils import setup_clock_timer
 from language_config import get_ui_text
 
 
+class PreviewVoiceEngine(QtCore.QObject):
+    playback_changed = QtCore.pyqtSignal(bool)
+
+
 class PreviewChatPanel(QtWidgets.QWidget):
     log_signal = QtCore.pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._voice_engine = PreviewVoiceEngine(self)
         self.voice_btn = QtWidgets.QPushButton("CLICK\n TO SPEAK", self)
         self.voice_btn.setObjectName("voice-btn")
         self.voice_btn.setCheckable(True)

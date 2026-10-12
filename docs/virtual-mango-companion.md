@@ -28,7 +28,8 @@ Các bộ phận dùng lại ở mọi trạng thái, không có bitmap, font ic
 hay nội dung tải từ mạng. Không cần thư viện mới. Timer GUI 33 ms, tính
 chuyển động theo đồng hồ monotonic, không có worker hoặc sleep.
 
-Nhân vật chỉ tương tác cục bộ, không nối với AI, TTS, robot hoặc ROS.
+Nhân vật tương tác cục bộ và quan sát trạng thái phát TTS để mấp máy miệng;
+không gửi lệnh đến AI, robot hoặc ROS.
 Chạm màn hình dùng sự kiện chuột tổng hợp của Qt; cần nghiệm thu cảm ứng
 trên thiết bị thật. Không có âm thanh hoặc trạng thái đói/ngủ trong MVP.
 
@@ -86,3 +87,21 @@ với chat khi đủ chỗ, chat nhận phần dư khi vùng trái đạt trần
 Chưa nghiệm thu âm thanh, AI trực tuyến, ROS/DDS, robot và màn hình cảm ứng
 thật. Kiểm thử offscreen không đánh giá tốc độ khung hình trên máy robot;
 cần thử kéo/thả, thu/phát giọng nói và đóng/mở trên thiết bị đích.
+
+
+## Mấp máy miệng khi nói — 12/10/2026
+
+`VoiceEngine.playback_changed(bool)` bật ngay trước khi phát từng câu và
+luôn tắt khi phát kết thúc, bị dừng hoặc gặp lỗi. Không bật trong lúc tổng
+hợp giọng nói; khoảng chờ giữa các câu cũng không làm miệng tiếp tục chạy.
+Startup nối signal tới slot Qt của Xoài trên GUI thread. Dùng chung timer
+33 ms hiện có, giữ các thao tác chạm/kéo và không vẽ lại khung focus nét đứt.
+
+Miệng mở/khép theo nhịp mô phỏng khi có playback, chưa phân tích biên độ
+âm thanh hoặc đồng bộ từng âm vị. Khi kết thúc, trở về biểu cảm hiện tại.
+Không thay đổi cách tạo/phát âm thanh hoặc xử lý Dừng.
+
+Kiểm thử liên quan: **20 passed** (mango, startup presentation, voice flow),
+bao gồm thay đổi hình miệng, phục hồi biểu cảm, signal khi ẩn/hiện,
+phát xong/dừng/lỗi và không mở miệng khi tổng hợp thất bại. Chưa kiểm tra
+độ trễ loa và cảm nhận chuyển động trên máy robot thật.

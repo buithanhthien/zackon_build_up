@@ -222,7 +222,7 @@ class MemoryTests(unittest.TestCase):
             self.respond(client_for("fallback"))
         recall.assert_called_once_with("Where is A?")
 
-    def test_v049_metadata_restores_scoped_memory_in_new_session(self):
+    def test_legacy_response_metadata_restores_scoped_memory_in_new_session(self):
         metadata = {"source": "user_correction", "json_path": "room",
                     "base_json_value": '"X5.4"', "provenance": "user"}
         for params in ({"metadata": metadata}, json.dumps({"metadata": metadata})):
@@ -244,6 +244,15 @@ class MemoryTests(unittest.TestCase):
                 payload = json.loads(client.chat.completions.create.call_args.kwargs["messages"][1]["content"])
                 self.assertEqual(len(payload["corrections"]), 2)
                 self.assertEqual(payload["corrections"][0]["metadata"], metadata)
+
+    def test_recall_uses_metadata_returned_by_current_api(self):
+        metadata = {"source": "user_correction", "json_path": "room"}
+        with patch.object(self.memory, "_request", side_effect=[
+            {}, {"results": [{"document_id": "a-room", "metadata": metadata}]}
+        ]) as request:
+            results = self.memory.recall("Where is A?")
+        self.assertEqual(results[0]["metadata"], metadata)
+        self.assertEqual(request.call_count, 2)
 
     def test_metadata_lookup_requires_exact_document_and_handles_pagination(self):
         with patch.object(self.memory, "_request", side_effect=[

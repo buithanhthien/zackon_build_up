@@ -69,7 +69,10 @@ QWidget#startup-root QLabel#clock { background: white; border: 1px solid %(line)
 """ % PALETTE
 
 TEXT = {
-    "vi": dict(title="Bảng điều khiển robot", subtitle="Startup · Giám sát kết nối và vận hành",
+    "vi": dict(learning="Chế độ học", learning_checking="Đang kiểm tra",
+               learning_on="ON", learning_off="OFF", learning_starting="Đang bật…",
+               learning_stopping="Đang tắt…", learning_error="Lỗi / chưa xác định",
+               learning_enable="Bật", learning_disable="Tắt", title="Bảng điều khiển robot", subtitle="Startup · Giám sát kết nối và vận hành",
                overview="Tổng quan", operations="VẬN HÀNH", tools="CÔNG CỤ", front="LiDAR trước", rear="LiDAR sau",
                checking="Đang kiểm tra", online="Hoạt động", offline="Mất kết nối",
                diagnostics="Chẩn đoán STM32", voice_title="Điều khiển giọng nói",
@@ -83,7 +86,10 @@ TEXT = {
                chat_title="Hội thoại với Bé Son", input="Nhập tin nhắn…", send="Gửi",
                history="Tin nhắn và phản hồi của Bé Son sẽ xuất hiện ở đây.", map="Bản đồ",
                keyboard="Hiện hoặc ẩn bàn phím ảo"),
-    "en": dict(title="Robot dashboard", subtitle="Startup · Connection monitoring and operations",
+    "en": dict(learning="Learning mode", learning_checking="Checking",
+               learning_on="ON", learning_off="OFF", learning_starting="Starting…",
+               learning_stopping="Stopping…", learning_error="Error / unknown",
+               learning_enable="Enable", learning_disable="Disable", title="Robot dashboard", subtitle="Startup · Connection monitoring and operations",
                overview="Overview", operations="OPERATIONS", tools="TOOLS", front="Front LiDAR", rear="Rear LiDAR",
                checking="Checking", online="Connected", offline="Disconnected",
                diagnostics="STM32 diagnostics", voice_title="Voice control",

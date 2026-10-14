@@ -46,7 +46,8 @@ def make_window(source, language="vi"):
     tree = ast.parse(source)
     robot = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "RobotUI")
     names = {"init_ui", "_make_status_card", "_set_card_status", "update_language_ui",
-             "_refresh_control_presentation", "_append_chat_message"}
+             "_refresh_control_presentation", "_append_chat_message",
+             "_toggle_learning", "_update_learning_status", "_render_learning_status"}
     selected = [n for n in robot.body if isinstance(n, ast.FunctionDef) and n.name in names]
     view = ast.ClassDef(name="PreviewWindow", bases=[ast.Name(id="QMainWindow", ctx=ast.Load())],
                         keywords=[], body=selected, decorator_list=[])

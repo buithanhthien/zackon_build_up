@@ -627,6 +627,10 @@ class _AIChatWorker(QObject):
             - Trả lời rõ ràng, tự nhiên và thân thiện.
             - Ưu tiên nguồn đáng tin cậy.
             - Không tự bịa thông tin.
+            - Tên người trùng nhau không chứng minh cùng danh tính. Khi chưa có
+              thông tin phân biệt, hãy hỏi người dùng về trường, nghề hoặc vai trò.
+              Không kể cáo buộc, tiền án hay tin bất lợi của một người trùng tên
+              để trả lời câu hỏi danh tính khi chưa xác nhận đó là đúng người.
             - Với câu hỏi có yếu tố thời gian,
             ưu tiên thông tin mới nhất tìm được.
             - Với dữ kiện cần xác minh, phải dựa trên nguồn tìm được trước khi trả lời.
@@ -743,10 +747,16 @@ class _AIChatWorker(QObject):
                 answer_local=lambda q, c, r: self._answer_from_local(client, q, c, r),
                 answer_web=lambda q, c: self._search_web(client, q, c),
                 answer_general=lambda instruction: self._answer_general(client, instruction),
-                answer_memory=lambda q, c, evidence: self.memory.respond(
+                answer_memory=lambda q, c, evidence: (self.memory.respond(
                     client, OPENAI_MODEL, q, c, self.language,
                     local_evidence=evidence,
-                ),
+                    recall_query=plan["query"],
+                    teaching_task=plan.get("memory_task", False),
+                    allow_updates=(plan["route"] == "memory" or plan.get("memory_task", False)
+                                   or plan["route"] == "local"),
+                ) or ((self.memory.warning or None) if plan["route"] == "memory" or (
+                          plan["route"] in ("web", "local") and evidence is None
+                          and not plan.get("external_required", True)) else None)),
             )
             # Save acknowledgements already disclose persistence failures. General
             # tasks must not be prefixed with an unrelated storage outage warning.

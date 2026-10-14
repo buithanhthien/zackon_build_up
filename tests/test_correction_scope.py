@@ -30,7 +30,7 @@ class CorrectionScopeTests(unittest.TestCase):
         env = patch.dict(os.environ, {}, clear=True)
         env.start()
         self.addCleanup(env.stop)
-        self.memory = CorrectionMemory()
+        self.memory = CorrectionMemory(storage_path=False)
 
     def test_scoped_correction_stores_json_path_and_base_value(self):
         local = evidence("lien_he.phong_dao_tao", "old@iuh.edu.vn")

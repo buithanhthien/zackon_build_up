@@ -25,6 +25,24 @@ class StartupPresentationTests(unittest.TestCase):
         self.addCleanup(window.hide)
         return window
 
+    def test_learning_card_states_and_accessibility(self):
+        from unittest.mock import Mock
+        for language, title in (("vi", "Chế độ học"), ("en", "Learning mode")):
+            w = self.make_window(language)
+            w.hindsight = Mock()
+            for state, enabled in (("checking", False), ("starting", False),
+                                   ("stopping", False), ("on", True),
+                                   ("off", True), ("error", True)):
+                w._update_learning_status(state, '')
+                self.assertEqual(w.learning_toggle.isEnabled(), enabled)
+                self.assertIn(title, w.learning_card['widget'].accessibleName())
+            w._update_learning_status('on', '')
+            w.learning_toggle.click()
+            w.hindsight.set_enabled.assert_called_once_with(False)
+            w._update_learning_status('off', 'command-timeout')
+            self.assertIn('OFF', w.learning_card['state'].text())
+            self.assertIn('command-timeout', w.learning_card['state'].toolTip())
+
     def test_resolutions_languages_and_touch_keyboard_fit(self):
         for language in ("vi", "en"):
             for width, height in ((1024, 720), (1280, 720), (1920, 1080)):

@@ -12,7 +12,7 @@ class ConversationPolicyTests(unittest.TestCase):
         from robot_ui.iuh_local_search import IuhLocalSearch
         question = "Trường Đại học Công nghiệp có bao nhiêu khoa?"
         web = Mock(return_value="verified answer")
-        local, memory = Mock(), Mock()
+        local, memory = Mock(), Mock(return_value=None)
         answer = answer_turn(
             {"route": "local", "query": question}, question, "history",
             search_local=IuhLocalSearch().search, answer_local=local,
@@ -20,7 +20,7 @@ class ConversationPolicyTests(unittest.TestCase):
         self.assertEqual(answer, "verified answer")
         web.assert_called_once_with(question, "history")
         local.assert_not_called()
-        memory.assert_not_called()
+        memory.assert_called_once_with(question, "history", None)
 
     def test_valid_plan_preserves_one_turn_language_and_session_default(self):
         client = Mock()
@@ -113,14 +113,14 @@ class ConversationPolicyTests(unittest.TestCase):
         web.assert_not_called()
 
     def test_test_fact_cannot_override_repository_evidence(self):
-        memory = CorrectionMemory()
+        memory = CorrectionMemory(storage_path=False)
         local = [{"path": "room", "value": "B-100"}]
         recalled = [{"metadata": {"json_path": "room", "base_json_value": '"B-100"',
                                    "provenance": "test"}, "text": "B-732"}]
         self.assertEqual(memory._filter_for_local_scope(recalled, local), [])
 
     def test_test_correction_retains_provenance_without_repository_scope(self):
-        memory, client = CorrectionMemory(), Mock()
+        memory, client = CorrectionMemory(storage_path=False), Mock()
         memory.enabled = True
         client.chat.completions.create.return_value = SimpleNamespace(choices=[
             SimpleNamespace(message=SimpleNamespace(content=json.dumps({
@@ -137,7 +137,7 @@ class ConversationPolicyTests(unittest.TestCase):
         self.assertEqual(retain.call_args.args[2]["provenance"], "test")
 
     def test_calculated_update_keeps_previous_snapshot_and_other_subject(self):
-        memory = CorrectionMemory()
+        memory = CorrectionMemory(storage_path=False)
         memory.enabled = False
         def update(fact, document_id="", derivation="stated"):
             client = Mock()
@@ -158,7 +158,7 @@ class ConversationPolicyTests(unittest.TestCase):
         self.assertIn("A=70%", memory.session_context())
 
     def test_revisions_survive_persisted_record_and_failed_next_save(self):
-        memory, client = CorrectionMemory(), Mock()
+        memory, client = CorrectionMemory(storage_path=False), Mock()
         memory.enabled = True
         prior = {"document_id": "code", "text": "K-481", "metadata": {
             "provenance": "test", "revisions_json": json.dumps([{"text": "K-418"}])}}
@@ -179,7 +179,7 @@ class ConversationPolicyTests(unittest.TestCase):
         self.assertIn("chưa xác nhận", answer)
 
     def test_unknown_relative_update_does_not_write(self):
-        memory, client = CorrectionMemory(), Mock()
+        memory, client = CorrectionMemory(storage_path=False), Mock()
         memory.enabled = False
         client.chat.completions.create.return_value = SimpleNamespace(choices=[
             SimpleNamespace(message=SimpleNamespace(content=json.dumps({

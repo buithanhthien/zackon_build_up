@@ -122,7 +122,7 @@ gọn, không gây xao nhãng và không ảnh hưởng điều khiển robot.
 - Không tích hợp Petdex CLI, API, catalog, agent hooks hoặc định dạng
   spritesheet của họ.
 - Không biến Mango thành cửa sổ desktop overlay độc lập, không cho kéo ra
-  ngoài khu vực widget.
+  ngoài vùng client Startup.
 - Không thêm đói/ngủ/thân mật, chỉ số tâm trạng, âm thanh/hiệu ứng gây xao
   nhãng, hay suy luận cảm xúc người dùng.
 - Không gửi lệnh robot/ROS khi chạm Mango; companion chỉ phản ánh UI.
@@ -140,3 +140,30 @@ gọn, không gây xao nhãng và không ảnh hưởng điều khiển robot.
 > ánh xạ trạng thái, ưu tiên tương tác, cancel/error/empty reply, hide/show và
 > playback; cập nhật tài liệu MVP. Chạy các test liên quan và báo rõ file đổi,
 > test đã chạy và phần nào chưa thể nghiệm thu trên robot thật.
+
+## Roaming trong Startup — quyết định và triển khai 15/10/2026
+
+Phạm vi mới theo `PLAN_VIRTUAL_MANGO_ROAMING.txt` thay giới hạn sân riêng:
+Mango là child overlay của central widget, không phải cửa sổ desktop. Giữ
+sân trống bên trái làm vị trí xuất phát và mốc kích thước. Scale bằng 65%
+renderer cũ tại kích thước sân tương ứng; art-space vẫn 240×260.
+
+- `QRegion` giới hạn lớp vẽ/input quanh nhân vật, trừ sidebar, lịch sử chat,
+  ô nhập, bàn phím và mọi nút Startup (kể cả nút đang disabled). Qt tự định
+  tuyến chuột qua vùng ngoài mask; không gửi lại mouse event bằng tay.
+  Khi đi ngang vùng bảo vệ, hình bị che để ưu tiên đọc/bấm UI. Điểm đến
+  được chọn ngoài các vùng này; đường đi có thể cắt qua chúng.
+- Tọa độ chuẩn hóa, đồng hồ monotonic/random có thể thay trong test; dùng
+  timer 33 ms cũ. Tốc độ danh nghĩa 85 px/s (nội suy smoothstep), nghỉ
+  2–4,5 giây, quay 0,2 giây, xác suất nhảy 40%, hạ cánh 0,25 giây.
+  Nhảy có cung cao tối đa 16 đơn vị art-space để giữ cả hình trong biên.
+- Tương tác > activity/playback > roaming. Khi ngắt roaming, giữ vị trí,
+  bỏ chuyến đi cũ; sau tương tác/hoạt động nghỉ 1,5 giây trước chuyến mới.
+  Hide dừng timer, hủy drag; show giữ vị trí và reset mốc thời gian.
+- Prototype và test Qt dùng `childAt` xác nhận nút Dừng nhận chuột ngay cả
+  khi vị trí Mango trùng nút, kể cả trường hợp mask rỗng. Resize/keyboard
+  cập nhật hình học và mask bằng event filter và timer hiện có.
+
+Không thay đổi chat/voice engine/ROS/navigation, không thêm dependency,
+engine hoặc asset ngoài. Các repo tham khảo không được nhập/sao chép code.
+Tùy chọn giảm chuyển động, skin và desktop pet vẫn ngoài phạm vi.

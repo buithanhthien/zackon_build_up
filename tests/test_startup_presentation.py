@@ -60,9 +60,19 @@ class StartupPresentationTests(unittest.TestCase):
                         mango = w.mango_companion
                         self.assertGreaterEqual(mango.height(), 110)
                         self.assertTrue(mango.rect().contains(mango.character_rect().toAlignedRect()))
-                        mango_right = mango.mapTo(w, mango.rect().topRight()).x()
-                        chat_left = w.chat_history_box.mapTo(w, w.chat_history_box.rect().topLeft()).x()
-                        self.assertLess(mango_right, chat_left)
+                        self.assertEqual(mango.geometry(), w.centralWidget().rect())
+                        for control in (w.chat_input, w.chat_panel.voice_btn,
+                                        w.chat_panel.interrupt_btn, w.keyboard_toggle,
+                                        w.btn_map, w.learning_toggle,
+                                        w.stm32_card["detail_btn"],
+                                        w.stm32_card["widget"], w.chat_history_box):
+                            if control is None:
+                                continue
+                            point = control.mapTo(w.centralWidget(), control.rect().center())
+                            mango._place(preview.QtCore.QPointF(point))
+                            mango._sync_mask()
+                            self.assertTrue(mango.mask().contains(point))
+                            self.assertIs(w.centralWidget().childAt(point), mango)
                         for button in w.findChildren(QPushButton):
                             if button.isVisible():
                                 point = button.mapTo(w, button.rect().topLeft())
@@ -72,6 +82,22 @@ class StartupPresentationTests(unittest.TestCase):
                                 self.assertLessEqual(point.y() + button.height(), height)
                                 self.assertGreaterEqual(button.height(), 44)
                     w.hide()
+
+    def test_keyboard_rebuild_does_not_leave_deleted_overlay_zones(self):
+        w = self.make_window()
+        w.show()
+        w.keyboard_toggle.setChecked(True)
+        self.app.processEvents()
+        for key in ('shift', 'symbols', 'letters'):
+            old_keys = w.virtual_keyboard.findChildren(QPushButton)
+            w.virtual_keyboard._handle_virtual_key(key)
+            for button in old_keys:
+                preview.QtCore.QCoreApplication.sendPostedEvents(
+                    button, preview.QtCore.QEvent.Type.DeferredDelete)
+            w.mango_companion._tick()
+            self.assertIn(w.virtual_keyboard, w.mango_companion._protected)
+            self.assertFalse(any(zone is not w.virtual_keyboard and w.virtual_keyboard.isAncestorOf(zone)
+                                 for zone in w.mango_companion._protected))
 
     def test_mango_interaction_does_not_trigger_chat_or_voice(self):
         w = self.make_window()
@@ -88,6 +114,37 @@ class StartupPresentationTests(unittest.TestCase):
         self.assertTrue(all(len(spy) == 0 for spy in spies))
         self.assertEqual(w.chat_input.text(), "Giữ nội dung đang nhập")
         self.assertEqual(w.chat_history_box.toPlainText(), history)
+
+    def test_controls_remain_clickable_when_mango_is_over_them(self):
+        w = self.make_window()
+        w.show()
+        self.app.processEvents()
+        mango = w.mango_companion
+        button = w.chat_panel.interrupt_btn
+        point = button.mapTo(w.centralWidget(), button.rect().center())
+        mango._place(preview.QtCore.QPointF(point))
+        mango._sync_mask()
+        self.assertIs(w.centralWidget().childAt(point), mango)
+        spy = QSignalSpy(button.clicked)
+        QTest.mouseClick(mango, preview.QtCore.Qt.MouseButton.LeftButton, pos=point)
+        self.assertEqual(len(spy), 1)
+
+    def test_mango_remains_draggable_over_controls_outside_voice_panel(self):
+        w = self.make_window()
+        w.show()
+        self.app.processEvents()
+        mango = w.mango_companion
+        point = w.btn_map.mapTo(w.centralWidget(), w.btn_map.rect().center())
+        mango._place(preview.QtCore.QPointF(point))
+        mango._sync_mask()
+        self.assertTrue(mango._hit(preview.QtCore.QPointF(point)))
+        start_position = preview.QtCore.QPointF(mango._position)
+        QTest.mousePress(mango, preview.QtCore.Qt.MouseButton.LeftButton, pos=point)
+        QTest.mouseMove(mango, point + preview.QtCore.QPoint(80, 40))
+        self.assertEqual(mango.state, "dragging")
+        self.assertNotEqual(mango._position, start_position)
+        QTest.mouseRelease(mango, preview.QtCore.Qt.MouseButton.LeftButton,
+                           pos=point + preview.QtCore.QPoint(80, 40))
 
     def test_playback_signal_controls_mango_even_while_hidden(self):
         w = self.make_window()

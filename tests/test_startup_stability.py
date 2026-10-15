@@ -48,6 +48,7 @@ class StartupLifecycleTests(unittest.TestCase):
             window.chat_panel = Mock()
         with patch('startup_layout.rclpy.init'), patch('startup_layout.Node'), \
              patch('startup_layout.ActionClient'), patch('startup_layout.QTimer'), \
+             patch('startup_layout.HindsightLifecycle'), \
              patch.object(RobotUI, '_load_waypoints', return_value={}), \
              patch.object(RobotUI, 'init_ui', init_ui), \
              patch.object(RobotUI, '_report_motion_status') as report, \

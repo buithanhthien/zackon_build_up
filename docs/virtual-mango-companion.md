@@ -1,6 +1,9 @@
-# Nhân vật xoài — MVP
+# Nhân vật xoài — MVP và roaming
 
 Branch: `feature/virtual-mango-companion`, tạo từ `feature/test_chat_AI`.
+
+> Phần MVP bên dưới ghi lại thiết kế ban đầu. Mục “Roaming” cuối tài liệu
+> thay thế giới hạn sân riêng và kích thước cũ.
 
 ## Hành vi đã chọn trước khi tạo hình
 
@@ -154,3 +157,41 @@ và playback. Bộ kiểm thử bố cục VI/EN từ 1024×720 vẫn qua.
 
 Chưa nghiệm thu mic/loa, độ trễ và độ mượt trên robot, cảm ứng, AI trực tuyến
 hoặc ROS/DDS thật; 14 test bỏ qua vẫn là các ca ROS/DDS opt-in.
+
+## Roaming — 15/10/2026
+
+Mango nay chạy/đổi hướng, nghỉ và nhảy theo cung rồi nén nhẹ khi hạ cánh
+trong vùng client Startup. Hình còn 65% kích thước trước tại cùng kích
+thước sân bên trái. Sân chỉ giữ chỗ xuất phát; tọa độ chuyển động thuộc
+central widget, luôn chuẩn hóa và clamp theo kích thước hiện tại.
+
+Overlay dùng mask Qt và nhường cả hình lẫn input cho sidebar, chat history,
+chat input, bàn phím và các nút. Mango có thể tạm bị khuất khi đường đi cắt
+qua vùng bảo vệ, nhưng không dừng lại ở đó khi có điểm đến trống hợp lệ.
+Chạm, Space/Enter, kéo/thả, biểu cảm hội thoại và playback giữ API cũ.
+Chỉ IDLE mới roaming; tương tác hoặc TTS/hoạt động dừng chuyến hiện tại.
+Không tự lấy focus khi chạy. Hide/close dừng timer; show không cộng thời
+gian bị ẩn vào chuyển động.
+
+Preview tương tác vẫn dùng `venv/bin/python tool/preview_mango_companion.py`.
+Ảnh mới: `docs/startup-ui/mango-roaming-1280x720.png` và
+`docs/startup-ui/mango-roaming-keyboard-1024x720.png`. Khi review trực tiếp,
+để chạy vài phút, resize, đổi VI/EN, mở bàn phím và thử kéo/click các nút.
+
+Test mới `tests/test_mango_roaming.py` dùng seed và đồng hồ giả, mô phỏng
+ba phút để kiểm tra chạy, nhảy, hạ cánh, nghỉ, hai hướng, cung nhảy, ưu tiên
+hoạt động/playback/kéo, bốn biên, scale 65%, hide/show và Qt định tuyến
+chuột qua mask. Startup presentation kiểm tra mask khi resize và bàn phím
+VI/EN ở 1024×720, 1280×720, 1920×1080.
+
+Chưa xác nhận độ mượt vài phút trên màn hình thật, DPI đa màn hình, cảm ứng,
+mic/loa, AI hoặc ROS/DDS/robot thật. Offscreen chỉ xác nhận rendering, input
+routing Qt và trạng thái; không thay thế nghiệm thu thiết bị.
+
+Kết quả cuối: **326 passed, 14 skipped**, hai cảnh báo deprecation
+`aifc`/`audioop`; `git diff --check` sạch. Dùng lệnh toàn suite đã ghi ở trên.
+Fixture constructor trong `tests/test_startup_stability.py` nay mock thêm
+`HindsightLifecycle`: trước đó test vô tình khởi động thread Docker thật,
+có thể phát signal vào cửa sổ đã xóa và làm suite abort. Chỉ sửa fixture,
+không sửa lifecycle của ứng dụng. Test keyboard mới thực sự xóa phím cũ
+để xác nhận overlay không giữ QObject đã bị xóa.

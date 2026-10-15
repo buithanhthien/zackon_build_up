@@ -1,10 +1,14 @@
+import ssl
 import tempfile
 import unittest
+from email.message import Message
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from robot_ui.web_fact_cache import WebFactCache, collect_web_facts
+import certifi
+from robot_ui.web_fact_cache import WebFactCache, collect_web_facts, fetch_source
 from robot_ui.conversation_policy import answer_turn
 
 
@@ -87,9 +91,92 @@ class WebFactCacheTests(unittest.TestCase):
         client.chat.completions.create.return_value = SimpleNamespace(choices=[
             SimpleNamespace(message=SimpleNamespace(content=json.dumps(
                 {'complete': True, 'facts': [self.fact]})))])
+        fetch = Mock(return_value=self.quote)
         self.assertTrue(collect_web_facts(client, 'test', self.query,
-            [{'url': self.url, 'title': 'IUH'}], self.cache, fetch=lambda url: self.quote))
+            [{'url': self.url, 'title': 'IUH'}], self.cache, fetch=fetch))
+        fetch.assert_called_once_with(self.url)
         self.assertIn(self.quote, client.chat.completions.create.call_args.kwargs['messages'][1]['content'])
+
+    def test_fetch_source_uses_verified_certifi_context(self):
+        headers = Message()
+        headers['Content-Type'] = 'text/plain; charset=utf-8'
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.headers = headers
+        response.read.return_value = b'Official source'
+        opener = Mock()
+        opener.open.return_value = response
+        with patch('robot_ui.web_fact_cache.socket.getaddrinfo', return_value=[
+                (None, None, None, None, ('8.8.8.8', 443))]), \
+             patch('robot_ui.web_fact_cache.ssl.create_default_context',
+                   wraps=ssl.create_default_context) as create_context, \
+             patch('robot_ui.web_fact_cache.build_opener', return_value=opener) as build_opener_mock:
+            self.assertEqual(fetch_source('https://iuh.edu.vn/source'), 'Official source')
+        create_context.assert_called_once()
+        self.assertEqual(create_context.call_args.kwargs['cafile'],
+                         certifi.where())
+        self.assertEqual(len(build_opener_mock.call_args.args), 2)
+        context = build_opener_mock.call_args.args[1]._context
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
+    def test_fetch_source_extracts_text_from_pdf(self):
+        from pypdf import PdfWriter
+
+        pdf = BytesIO()
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        writer.write(pdf)
+        headers = Message()
+        headers['Content-Type'] = 'application/pdf'
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.headers = headers
+        response.read.return_value = pdf.getvalue()
+        opener = Mock()
+        opener.open.return_value = response
+        with patch('robot_ui.web_fact_cache.socket.getaddrinfo', return_value=[
+                (None, None, None, None, ('8.8.8.8', 443))]), \
+             patch('robot_ui.web_fact_cache.build_opener', return_value=opener):
+            with self.assertRaisesRegex(ValueError, 'no extractable text'):
+                fetch_source('https://iuh.edu.vn/source.pdf')
+
+    def test_fetch_source_extracts_pdf_text(self):
+        from pypdf import PdfWriter
+        from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+        pdf = BytesIO()
+        writer = PdfWriter()
+        page = writer.add_blank_page(width=72, height=72)
+        font = DictionaryObject({
+            NameObject('/Type'): NameObject('/Font'),
+            NameObject('/Subtype'): NameObject('/Type1'),
+            NameObject('/BaseFont'): NameObject('/Helvetica'),
+        })
+        font_reference = writer._add_object(font)
+        page[NameObject('/Resources')] = DictionaryObject({
+            NameObject('/Font'): DictionaryObject({NameObject('/F1'): font_reference}),
+        })
+        content = DecodedStreamObject()
+        content.set_data(b'BT /F1 12 Tf 10 10 Td (Official IUH source) Tj ET')
+        page[NameObject('/Contents')] = writer._add_object(content)
+        writer.write(pdf)
+        headers = Message()
+        headers['Content-Type'] = 'application/octet-stream'
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.headers = headers
+        response.read.return_value = pdf.getvalue()
+        opener = Mock()
+        opener.open.return_value = response
+        with patch('robot_ui.web_fact_cache.socket.getaddrinfo', return_value=[
+                (None, None, None, None, ('8.8.8.8', 443))]), \
+             patch('robot_ui.web_fact_cache.build_opener', return_value=opener):
+            self.assertEqual(fetch_source('https://iuh.edu.vn/source.pdf'),
+                             'Official IUH source')
 
     def test_partial_answer_keeps_valid_fact_and_logs_rejections(self):
         bad = {**self.fact, 'value': 'X5.2.5'}

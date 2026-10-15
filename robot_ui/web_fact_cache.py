@@ -1,6 +1,7 @@
 """Source-backed web facts; separate from official JSON and user corrections."""
 from contextlib import closing
 from datetime import datetime, timezone
+from io import BytesIO
 from html.parser import HTMLParser
 import ipaddress
 import json
@@ -10,10 +11,15 @@ import unicodedata
 import os
 from pathlib import Path
 import socket
+import ssl
 import sqlite3
 import time
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+
+import certifi
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 
 SOURCE_POLICY = """
@@ -224,19 +230,33 @@ class _NoRedirect(HTTPRedirectHandler):
 
 
 def fetch_source(url):
-    """Bounded public HTTPS text fetch. Redirects/private destinations are rejected."""
+    """Fetch bounded public HTTPS HTML, text, or extractable PDF content."""
     parsed = urlsplit(url)
     if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.port not in (None, 443):
         raise ValueError('Unsupported source URL')
     addresses = socket.getaddrinfo(parsed.hostname, 443, type=socket.SOCK_STREAM)
     if not addresses or any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
         raise ValueError('Non-public source')
-    with build_opener(_NoRedirect()).open(Request(url, headers={'User-Agent': 'IUH-source-cache/1.0'}), timeout=5) as response:
-        if response.headers.get_content_type() not in ('text/html', 'text/plain'):
-            raise ValueError('Unsupported source format')
+    context = ssl.create_default_context(cafile=certifi.where())
+    opener = build_opener(_NoRedirect(), HTTPSHandler(context=context))
+    with opener.open(Request(url, headers={'User-Agent': 'IUH-source-cache/1.0'}), timeout=5) as response:
         raw = response.read(500001)
         if len(raw) > 500000:
             raise ValueError('Source too large')
+        content_type = response.headers.get_content_type()
+        if content_type == 'application/pdf' or raw[:1024].lstrip().startswith(b'%PDF-'):
+            try:
+                reader = PdfReader(BytesIO(raw), strict=False)
+                if reader.is_encrypted:
+                    raise ValueError('Encrypted PDF source')
+                text = ' '.join((page.extract_text() or '') for page in reader.pages[:50])
+            except PdfReadError as exc:
+                raise ValueError('Invalid PDF source') from exc
+            if not text.strip():
+                raise ValueError('PDF contains no extractable text')
+            return ' '.join(text.split())[:40000]
+        if content_type not in ('text/html', 'text/plain'):
+            raise ValueError('Unsupported source format')
         parser = _Text()
         parser.feed(raw.decode(response.headers.get_content_charset() or 'utf-8', errors='replace'))
         return ' '.join(' '.join(parser.parts).split())[:40000]
@@ -248,8 +268,9 @@ def collect_web_facts(client, model, query, sources, cache, fetch=fetch_source):
     for source in sources[:3]:
         try:
             pages[source['url']] = {'title': source['title'], 'text': fetch(source['url'])}
-        except (OSError, ValueError):
-            logger.warning("web_cache source_fetch_failed url=%s", source.get("url"), exc_info=True)
+        except (OSError, ValueError) as exc:
+            logger.warning("web_cache source_fetch_failed url=%s error=%s",
+                           source.get("url"), exc)
             continue
     if not pages:
         logger.info("web_cache extracted=0 saved=0 reason=no_fetched_pages")

@@ -49,8 +49,9 @@ Closing that panel or restarting the application loses these session-only facts.
 The robot distinguishes session acknowledgement from a confirmed long-term save.
 Unsaved session facts are not automatically synchronized when Hindsight returns;
 explicitly repeat the correction to save it after reconnecting.
-An unavailable bank no longer blocks ordinary questions: the local/web route
-can proceed, with a warning that corrections from earlier sessions are unavailable.
+An unavailable bank does not block ordinary questions: the local/web route
+can proceed. Memory operations report unconfirmed saves; ordinary answers are
+not automatically prefixed with a memory warning.
 A save timeout means the outcome is unknown, not necessarily that nothing was
 written; check the control panel before retrying.
 
@@ -59,8 +60,9 @@ an administrator. Use separate bank IDs for separate deployments/users when
 needed; do not use this as a public, access-controlled knowledge editor.
 Fact extraction, matching an existing document, and retrieval use LLM/semantic
 inference, so they require live evaluation with your actual Vietnamese speech.
-There is one additional model call per chat turn for correction recognition,
-including when persistent storage is disabled.
+Memory and local lookup turns make an additional correction-routing model call,
+including when persistent storage is disabled. General tasks and explicit web
+lookups skip it unless the planner also detects a memory update.
 
 Manual acceptance check (requires running Docker and valid provider access):
 
@@ -71,7 +73,7 @@ Manual acceptance check (requires running Docker and valid provider access):
 5. Restart the UI and container without removing the volume, then ask again.
 6. Stop Hindsight; correct a fact and ask again within the same panel. Verify it
    acknowledges only session storage and uses the corrected fact.
-7. Ask an unrelated question; verify local/web answering continues with a warning.
+7. Ask an unrelated question; verify the usual answer route continues.
 8. Repeat steps 6-7 with `HINDSIGHT_ENABLED=false` after restarting the UI.
    Session corrections should still work, without connection attempts.
 
@@ -83,6 +85,51 @@ python3 -m unittest discover -s tests -v
 
 API contract checked against the pinned version:
 https://github.com/vectorize-io/hindsight/blob/v0.4.9/hindsight-api/hindsight_api/api/http.py
+
+### Troubleshooting a forgotten fact
+
+Record the exact acknowledgement, time, API address and bank for each attempt.
+“Mình chưa xác nhận lưu được vào bộ nhớ lâu dài” means the save is unconfirmed;
+an answer in the same panel only proves session memory works.
+
+The UI reads the project-root `.env`, but existing process environment variables
+take precedence. Check `HINDSIGHT_ENABLED`, `HINDSIGHT_URL`,
+`HINDSIGHT_API_PORT` and `HINDSIGHT_BANK_ID` in the launcher environment too.
+With `HINDSIGHT_ENABLED=false`, there are no Hindsight requests at all.
+After starting a healthy service, set it to `true`, restart the UI and teach the
+fact again. Never print the full environment or expanded Compose configuration:
+they can contain API keys. Review container logs locally before sharing excerpts.
+
+In the control panel, select the same bank and inspect the source document ID,
+original content and creation/update timestamps. Test recall with both the
+original question and a paraphrase. For fictional facts, explicitly ask about
+the fictional scenario; test facts cannot override real IUH JSON evidence.
+Separately test an operator-supplied correction of one known IUH JSON field.
+
+The client sends the planner's resolved retrieval question, without the chat
+history, to recall. Version 0.4.9 rejects queries above 500 tokens. Its recall
+serializer also omits metadata: the client recovers it from the matching
+document listing's `retain_params.metadata` before applying scope/provenance
+filters. That lookup adds HTTP requests per recalled document. If retrieval or
+metadata lookup fails, the correction remains session-only; repeat the explicit
+correction after recovery. Local lookup misses now check memory before web.
+
+For persistence acceptance, use `docker compose -f docker-compose.hindsight.yml
+restart hindsight`, wait for health, reopen the UI, then repeat both questions.
+Inspect the container's mounts and Compose project if a document disappears:
+the project is `hindsight`, the volume key is `hindsight-data`, and the mount is
+`/home/hindsight/.pg0`. Do not remove volumes during diagnosis.
+
+Use this record for each original/paraphrased query before and after restart:
+
+| Time / phase | Exact acknowledgement or answer | Bank | Document ID / created / updated | Recall returned it? | UI used it? |
+| --- | --- | --- | --- | --- | --- |
+| Teach / ask / correct / restart / ask | | | | | |
+
+If there is no document, inspect recognition and synchronous retain. If the
+document exists but recall misses it, inspect query/bank/retrieval. If recall
+finds it but UI ignores it, inspect metadata, scope and answer routing. Mock
+tests do not establish Docker persistence or Vietnamese model quality.
 
 ## Local IUH lookup and correction overlay
 
@@ -125,19 +172,46 @@ python3 -m unittest -v \
 
 ## Start and stop
 
-The container restarts automatically after a Docker/PC restart once it has been
-started the first time. To stop it manually:
+Docker owns the service lifecycle independently of Startup Layout. Enable boot
+startup once on a systemd host:
 
 ```bash
-docker compose -f docker-compose.hindsight.yml down
+sudo systemctl enable --now docker.service containerd.service
+docker compose -f docker-compose.hindsight.yml up -d --wait --wait-timeout 120
 ```
 
-This leaves the named volume and its memories intact. To remove the service and
-all saved Hindsight memories, the volume must be removed separately:
+The Compose policy is `always`: **OFF lasts until the next Docker Engine restart
+or machine reboot**, when Hindsight starts again. Merely reopening the UI does
+not turn it on. No separate boot job should run Compose stop/down. A removed
+container cannot restart; run the setup command again after removing it.
 
-```bash
-docker compose -f docker-compose.hindsight.yml down --volumes
-```
+Startup Layout shows “Chế độ học” / “Learning mode” beside the hardware cards.
+It inspects Docker every five seconds, shows ON only for a healthy running
+container, and provides Enable/Disable buttons. Commands run outside Qt's main
+thread and repeated clicks are blocked while busy. Errors use fixed diagnostic
+messages; raw Docker output and container environment are never logged. Closing
+the UI detaches the monitor and leaves the container and any accepted operation
+alone. The named volume is preserved by Disable (`compose stop`).
+
+`HINDSIGHT_ENABLED=true` remains required for chat to use storage. This card
+controls the local container; a custom remote `HINDSIGHT_URL` is not controlled.
+The existing readiness callback follows the current observed health, including
+recovery after enabling. Session and pending-memory fallback remain available.
+
+Acceptance on the robot PC (do not reboot during robot operation):
+
+1. Reboot without opening Startup Layout; verify the container becomes healthy.
+2. Open the UI: it should show Checking then ON, without sending Compose up.
+3. Disable: wait for OFF; close/reopen the UI and verify it stays OFF.
+4. Enable: wait through Starting to ON. Repeated clicks must not enqueue commands.
+5. Stop the container externally; the card must update within a polling cycle.
+6. With Docker unavailable or an unhealthy container, verify an error/unknown
+   state and no false successful transition; restore Docker and verify recovery.
+7. Disable, reboot, and verify Hindsight returns to ON without opening the UI.
+8. Confirm existing saved memories remain after all these steps.
+
+Policy reference: https://docs.docker.com/engine/containers/start-containers-automatically/
+Boot setup: https://docs.docker.com/engine/install/linux-postinstall/
 
 The API key is passed to the Hindsight container for its memory-processing LLM
 calls. This configuration keeps the memory database on the robot PC, while

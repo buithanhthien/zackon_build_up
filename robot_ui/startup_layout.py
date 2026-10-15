@@ -10,6 +10,7 @@ import threading
 import time
 import shlex
 import uuid
+import signal
 
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
@@ -51,6 +52,7 @@ from virtual_keyboard import VirtualKeyboard
 from mango_companion import MangoCompanion
 from waypoint_map_widget import MapWidget
 from process_manager import ProcessManager
+from hindsight_lifecycle import HindsightLifecycle
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 from action_msgs.msg import GoalStatus
@@ -251,10 +253,14 @@ class LocalizationWorker(QObject):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class RobotUI(QMainWindow):
+    learning_status = pyqtSignal(str, str)
     motion_status = pyqtSignal(str)
 
     def __init__(self, skip_micro_ros=False):
         super().__init__()
+        self.hindsight = HindsightLifecycle(changed=self.learning_status.emit)
+        self.learning_status.connect(self._update_learning_status)
+        QApplication.instance().aboutToQuit.connect(self.hindsight.stop)
         self.process_mgr                 = ProcessManager()
         # Tránh khởi động Nav2 nhiều lần
         self._nav2_started               = False
@@ -342,6 +348,8 @@ class RobotUI(QMainWindow):
         self._ros_spin_timer.start(100)
 
         self.init_ui()
+        self.chat_panel._correction_memory.startup_wait = self.hindsight.wait_until_ready
+        self.hindsight.start()
         self.motion_status.connect(self._report_motion_status)
         self._motion = RosMotionController(self.motion_status.emit)
         self.chat_panel.motion_command.connect(self.execute_motion)
@@ -876,6 +884,14 @@ class RobotUI(QMainWindow):
         self.rear_lidar_card = self._make_status_card("rear")
         for card in (self.stm32_card, self.front_lidar_card, self.rear_lidar_card):
             cards.addWidget(card["widget"], 1)
+        self._learning_state = 'checking'
+        self._learning_error = ''
+        self.learning_card = self._make_status_card("learning")
+        self.learning_toggle = QPushButton()
+        self.learning_toggle.setMinimumSize(64, 48)
+        self.learning_toggle.clicked.connect(self._toggle_learning)
+        self.learning_card["widget"].layout().addWidget(self.learning_toggle)
+        cards.addWidget(self.learning_card["widget"], 1)
         body.addLayout(cards)
 
         # Reuse ChatPanel's controls and signals; all robot callbacks remain owned
@@ -1179,17 +1195,20 @@ class RobotUI(QMainWindow):
         card.setProperty("state", "checking")
         card.setMinimumHeight(104)
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setContentsMargins(8, 12, 8, 12)
+        layout.setSpacing(6)
         dot = QLabel()
         dot.setObjectName("device-icon")
-        dot.setFixedSize(44, 44)
+        dot.setFixedSize(28, 28)
         dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
         dot.setPixmap(startup_icon(device_name, size=24).pixmap(QSize(24, 24)))
         info = QVBoxLayout()
         name = QLabel(device_name)
         name.setObjectName("device-name")
+        name.setWordWrap(True)
         state = QLabel()
         state.setObjectName("device-state")
+        state.setWordWrap(True)
         info.addWidget(name)
         info.addWidget(state)
         layout.addWidget(dot)
@@ -1219,6 +1238,35 @@ class RobotUI(QMainWindow):
         if card["detail_btn"] is not None:
             card["detail_btn"].setToolTip(t["diagnostics"])
             card["detail_btn"].setAccessibleName(t["diagnostics"])
+
+    def _toggle_learning(self):
+        self.hindsight.set_enabled(self._learning_state != 'on')
+
+    def _update_learning_status(self, state, error):
+        self._learning_state, self._learning_error = state, error
+        self._render_learning_status()
+        if error:
+            t = startup_text(get_language())
+            self.learning_card["state"].setToolTip(t['learning_error'] + ': ' + error)
+
+    def _render_learning_status(self):
+        t = startup_text(get_language())
+        state = self._learning_state
+        card = self.learning_card
+        text = t['learning_' + state]
+        if self._learning_error:
+            text += ' · ' + t['learning_error']
+        card['name'].setText(t['learning'])
+        card['state'].setText(text)
+        card['state'].setToolTip(self._learning_error)
+        card['widget'].setAccessibleName(t['learning'] + ': ' + text)
+        style = 'online' if state == 'on' else 'offline' if state in ('off', 'error') else 'checking'
+        card['widget'].setProperty('state', style)
+        repolish(card['widget'])
+        label = t['learning_disable'] if state == 'on' else t['learning_enable']
+        self.learning_toggle.setText(label)
+        self.learning_toggle.setAccessibleName(label + ' ' + t['learning'])
+        self.learning_toggle.setEnabled(state in ('on', 'off', 'error'))
 
     def _update_clock(self):
         from datetime import datetime
@@ -1650,6 +1698,7 @@ class RobotUI(QMainWindow):
         self.virtual_keyboard._render_virtual_keyboard()
         for card in (self.stm32_card, self.front_lidar_card, self.rear_lidar_card):
             self._set_card_status(card, card["available"])
+        self._render_learning_status()
         self._refresh_control_presentation()
 
     def mode_changed(self, mode):
@@ -2314,7 +2363,18 @@ class RobotUI(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setFont(QFont("Fira Sans", 12))
-    skip_micro_ros = '--skip-micro-ros' in sys.argv
-    window = RobotUI(skip_micro_ros)
-    window.showMaximized()
-    sys.exit(app.exec())
+    # Let Python receive terminal/service shutdown signals while Qt is idle.
+    signal_timer = QTimer()
+    signal_timer.timeout.connect(lambda: None)
+    signal_timer.start(250)
+    try:
+        skip_micro_ros = '--skip-micro-ros' in sys.argv
+        window = RobotUI(skip_micro_ros)
+        signal.signal(signal.SIGINT, lambda *_: window.close())
+        signal.signal(signal.SIGTERM, lambda *_: window.close())
+        window.showMaximized()
+        exit_code = app.exec()
+    finally:
+        if 'window' in locals():
+            window.hindsight.stop()
+    sys.exit(exit_code)

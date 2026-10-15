@@ -907,7 +907,10 @@ class RobotUI(QMainWindow):
         voice.setSpacing(8)
         self.mango_companion = MangoCompanion()
         self.chat_panel._voice_engine.playback_changed.connect(self.mango_companion.set_speaking)
-        voice.addWidget(self.mango_companion, 1)
+        self.chat_panel.activity_changed.connect(self.mango_companion.set_activity)
+        mango_home = QWidget()
+        mango_home.setMinimumHeight(110)
+        voice.addWidget(mango_home, 1)
         self.mango_hint = QLabel()
         self.mango_hint.setObjectName("muted")
         self.mango_hint.setWordWrap(True)
@@ -982,6 +985,9 @@ class RobotUI(QMainWindow):
         content.addWidget(chat, 1)
         body.addLayout(content, 1)
         main_layout.addWidget(right, 1)
+        self.mango_companion.attach_to(central,
+            [sidebar, self.chat_history_box, self.chat_input, self.virtual_keyboard,
+             *central.findChildren(QPushButton)], mango_home)
         self.update_language_ui()
 
         self.status_timer = QTimer(self)

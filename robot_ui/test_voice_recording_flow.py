@@ -449,8 +449,9 @@ def test_tts_playback_signal_ends_on_completion_stop_and_error():
         'VoiceState': SimpleNamespace(SPEAKING='[<<] SPEAKING'),
         'SUPERTONIC_STEPS': 1, 'SUPERTONIC_SPEED': 1,
     })
-    for outcome in ('complete', 'stop', 'error', 'synthesis_error'):
+    for outcome in ('complete', 'stop', 'error', 'synthesis_error', 'process_error', 'synthesis_stop', 'unavailable'):
         events = []
+        outcomes = []
         panel = make_voice_panel()
         stop = threading.Event()
 
@@ -458,6 +459,8 @@ def test_tts_playback_signal_ends_on_completion_stop_and_error():
             assert events == []
             if outcome == 'synthesis_error':
                 raise RuntimeError('Synthesis failed')
+            if outcome == 'synthesis_stop':
+                stop.set()
             return [], 1
 
         def play(path):
@@ -469,18 +472,42 @@ def test_tts_playback_signal_ends_on_completion_stop_and_error():
                 stop.set()
             if outcome == 'error':
                 raise RuntimeError('Playback failed')
+            return 1 if outcome == 'process_error' else 0
 
         engine = SimpleNamespace(
             _tts_queue=OneItemQueue(), _stop_flag=stop,
             _supertonic_tts=SimpleNamespace(synthesize=synthesize, save_audio=lambda *args: None),
-            _supertonic_voice_style=object(), _set_state=panel._on_voice_state_changed,
-            _play_audio=play, playback_changed=SimpleNamespace(emit=events.append),
+            _supertonic_voice_style=None if outcome == 'unavailable' else object(), _set_state=panel._on_voice_state_changed,
+            _play_audio=play, utterance_finished=SimpleNamespace(emit=outcomes.append), playback_changed=SimpleNamespace(emit=events.append),
         )
         try:
             worker(engine)
         except Done:
             pass
-        assert events == ([] if outcome == 'synthesis_error' else [True, False])
+        assert outcomes == [{'complete': 'success', 'stop': 'idle', 'error': 'error', 'synthesis_error': 'error', 'process_error': 'error', 'synthesis_stop': 'idle', 'unavailable': 'error'}[outcome]]
+        assert events == ([] if outcome in ('synthesis_error', 'synthesis_stop', 'unavailable') else [True, False])
         assert panel.voice_btn.enabled is True
         panel._on_listen_btn_clicked()
         assert panel._voice_engine.listen_calls == 1
+
+
+def test_tts_empty_after_cleanup_reports_idle_without_queueing():
+    import re
+    speak = _extract_method(VOICE_ENGINE, 'VoiceEngine', 'speak_in_language', {'re': re})
+    outcomes = DummySignal()
+    engine = SimpleNamespace(utterance_finished=outcomes, _language='vi')
+    speak(engine, '""', 'vi')
+    assert outcomes.values == ['idle']
+
+
+def test_audio_process_exit_code_is_observable_without_changing_command():
+    import threading
+    from unittest.mock import Mock
+    proc = Mock(returncode=1)
+    proc.poll.return_value = 1
+    subprocess = SimpleNamespace(Popen=Mock(return_value=proc), DEVNULL=-3)
+    play = _extract_method(VOICE_ENGINE, 'VoiceEngine', '_play_audio', {'subprocess': subprocess})
+    engine = SimpleNamespace(_play_lock=threading.Lock())
+    assert play(engine, '/tmp/test.wav') == 1
+    assert subprocess.Popen.call_args.args[0] == ['aplay', '-q', '/tmp/test.wav']
+    proc.kill.assert_not_called()

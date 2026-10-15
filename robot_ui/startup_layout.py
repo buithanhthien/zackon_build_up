@@ -1029,6 +1029,10 @@ class RobotUI(QMainWindow):
             self.chat_input.clear()
             return
 
+        codex_thread = self.chat_panel._codex_thread
+        if codex_thread and codex_thread.isRunning():
+            return
+
         worker_thread = self.chat_panel._ai_thread
         if worker_thread and worker_thread.isRunning():
             return

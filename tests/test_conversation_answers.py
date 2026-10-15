@@ -109,6 +109,66 @@ class AnswerIntegrationTests(unittest.TestCase):
         self.assertNotIn(request, payload["messages"][0]["content"])
         self.assertNotIn("tools", payload)
         self.client.responses.create.assert_not_called()
+
+    def test_adult_filmography_followup_is_blocked_before_model_or_web_call(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "robot_ui"
+            / "chat_panel_widget.py"
+        ).read_text(encoding="utf-8")
+        worker_class = next(
+            node for node in ast.parse(source).body
+            if isinstance(node, ast.ClassDef) and node.name == "_AIChatWorker"
+        )
+        run_method = next(
+            node for node in worker_class.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run"
+        )
+        openai = Mock()
+        namespace = {
+            "OpenAI": openai,
+            "is_blocked_adult_filmography_request":
+                __import__(
+                    "robot_ui.content_policy",
+                    fromlist=["is_blocked_adult_filmography_request"],
+                ).is_blocked_adult_filmography_request,
+        }
+        exec(
+            compile(
+                ast.Module(body=[run_method], type_ignores=[]),
+                "adult-filmography-test",
+                "exec",
+            ),
+            namespace,
+        )
+        worker = type("RunWorker", (), {"run": namespace["run"]})()
+        worker.history = [
+            {
+                "role": "assistant",
+                "content": (
+                    "Ishikawa Mio là nữ diễn viên phim người lớn người Nhật."
+                ),
+            },
+            {
+                "role": "user",
+                "content": "cho tôi những bộ phim cô ấy đóng",
+            },
+        ]
+        worker._get_latest_user_question = Mock(
+            return_value="cho tôi những bộ phim cô ấy đóng"
+        )
+        worker.response_ready = Mock()
+        worker.finished = Mock()
+
+        worker.run()
+
+        openai.assert_not_called()
+        worker.response_ready.emit.assert_called_once_with(
+            "Mình không thể cung cấp tên hoặc danh sách tác phẩm "
+            "nội dung người lớn. Mình có thể giúp với thông tin "
+            "tiểu sử không nhạy cảm."
+        )
+        worker.finished.emit.assert_called_once_with()
         self.worker.memory.respond.assert_not_called()
 
     def test_revision_chain_reaches_answer_builder_without_losing_original_constraints(self):

@@ -8,7 +8,7 @@ from datetime import datetime
 
 from openai import OpenAI
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread, pyqtSlot
 from PyQt6.QtGui import QFont
 from language_config import get_language
 from chat_text import plain_chat_text
@@ -856,6 +856,7 @@ class _IntentWorker(QObject):
 
 class ChatPanel(QWidget):
     log_signal       = pyqtSignal(str)
+    activity_changed = pyqtSignal(str)
 
     motion_command = pyqtSignal(dict)
     waypoint_command = pyqtSignal(str)
@@ -887,6 +888,8 @@ class ChatPanel(QWidget):
         self._voice_enabled   = False
         self._recording_active = False
         self._voice_state = ""
+        self._companion_activity = "idle"
+        self._companion_waiting = False
         self._pending_reply   = None
         self._did_speak       = False
 
@@ -897,7 +900,24 @@ class ChatPanel(QWidget):
         self._voice_engine.state_changed.connect(self._on_voice_state_changed)
         self._voice_engine.transcript_ready.connect(self._on_voice_transcript)
 
+        self._voice_engine.utterance_finished.connect(self._on_utterance_finished)
         self._build_ui()
+        self.interrupt_btn.clicked.connect(self._cancel_companion)
+
+    def _set_companion_activity(self, activity):
+        self._companion_activity = activity
+        self.activity_changed.emit(activity)
+
+    @pyqtSlot(str)
+    def _on_utterance_finished(self, outcome):
+        # A newer AI/intent request owns its own thinking indicator.
+        if not self._companion_waiting and self._companion_activity != "listening":
+            self._set_companion_activity(outcome)
+
+    @pyqtSlot()
+    def _cancel_companion(self):
+        self._companion_waiting = False
+        self._set_companion_activity("idle")
 
     # ------------------------------------------------------------------ UI --
     def _build_ui(self):
@@ -1066,6 +1086,8 @@ class ChatPanel(QWidget):
 
         self._typing_dots = 0
         self._typing_timer.start(400)
+        self._companion_waiting = True
+        self._set_companion_activity("thinking")
         refresh_microphone_enabled(self)
 
         # ============================================================
@@ -1128,8 +1150,10 @@ class ChatPanel(QWidget):
     def _on_response(self, reply):
 
         self._typing_timer.stop()
+        self._companion_waiting = False
         reply = plain_chat_text(reply)
         if not reply:
+            self._set_companion_activity("idle")
             self.voice_status_label.hide()
             return
 
@@ -1162,6 +1186,8 @@ class ChatPanel(QWidget):
         )
 
     def _on_error(self, error):
+        self._companion_waiting = False
+        self._set_companion_activity("error")
         self._typing_timer.stop()
         self.voice_status_label.hide()
         self.log_signal.emit(f"[LỖI] {error}")
@@ -1194,6 +1220,8 @@ class ChatPanel(QWidget):
         self.voice_status_label.show()
         self._typing_dots = 0
         self._typing_timer.start(400)
+        self._companion_waiting = True
+        self._set_companion_activity("thinking")
         refresh_microphone_enabled(self)
 
         generation = getattr(self, '_intent_generation', 0)
@@ -1242,6 +1270,8 @@ class ChatPanel(QWidget):
         if generation is not None and generation != getattr(self, '_intent_generation', 0):
             self.voice_status_label.hide()
             return
+        self._companion_waiting = False
+        self._set_companion_activity("idle")
         intent    = data.get("intent")
         waypoints = data.get("waypoints") or []
 
@@ -1255,6 +1285,7 @@ class ChatPanel(QWidget):
                 else:
                     self.motion_command.emit(validated)
             except ValueError as exc:
+                self._set_companion_activity("error")
                 self.log_signal.emit(f"[Bé Son] Không thực hiện: {exc}")
             self.voice_status_label.hide()
             return
@@ -1355,7 +1386,15 @@ class ChatPanel(QWidget):
             "color:#214196; background-color:transparent;"
         )
 
+    @pyqtSlot(str)
     def _on_voice_state_changed(self, state):
+        if "LISTENING" in state:
+            self._set_companion_activity("listening")
+        elif "THINKING" in state:
+            self._set_companion_activity("thinking")
+        elif (not state and not getattr(self, "_companion_waiting", False)
+              and getattr(self, "_companion_activity", "idle") in ("listening", "thinking")):
+            self._set_companion_activity("idle")
         self._voice_state = state
         if "SPEAKING" in state and self._pending_reply:
             self._pending_reply = None
@@ -1573,6 +1612,7 @@ class ChatPanel(QWidget):
             self.log_signal.emit(f"[Bé Son] Không thực hiện: {exc}")
             return
         if motion is not None:
+            self._cancel_companion()
             self._intent_generation = getattr(self, '_intent_generation', 0) + 1
             if motion['actions'][0]['type'] == 'stop':
                 self._voice_engine.stop_speaking()
@@ -1659,6 +1699,7 @@ class ChatPanel(QWidget):
     # ----------------------------------------------------------- helpers ---
 
     def cleanup(self):
+        self._cancel_companion()
         # Recording and TTS are independent resources and both must be stopped.
         self._voice_engine.stop_listening()
         self._voice_engine.stop_speaking()

@@ -105,3 +105,52 @@ Kiểm thử liên quan: **20 passed** (mango, startup presentation, voice flow)
 bao gồm thay đổi hình miệng, phục hồi biểu cảm, signal khi ẩn/hiện,
 phát xong/dừng/lỗi và không mở miệng khi tổng hợp thất bại. Chưa kiểm tra
 độ trễ loa và cảm nhận chuyển động trên máy robot thật.
+
+## Trạng thái hội thoại P0 — 14/10/2026
+
+Đã triển khai Đợt 1 của `mango-companion-roadmap.md`. Đợt 2 (idle ngẫu nhiên,
+chuyển pose mượt) và Đợt 3 (giảm chuyển động/skin) chưa triển khai.
+
+- `MangoCompanion.set_activity(str)` kiểm tra tập trạng thái `Activity`:
+  `idle`, `listening`, `thinking`, `success`, `error`. `speaking` chỉ được
+  bật bằng `set_speaking(bool)` từ playback thật. `state` vẫn giữ trạng thái
+  tương tác cũ; `display_state` trả về pose đang hiển thị.
+- `ChatPanel.activity_changed(str)` báo bắt đầu chờ AI/intent, thu âm, kết
+  thúc capture không có transcript, phản hồi rỗng, lỗi AI và hủy. Capture
+  kết thúc không xóa trạng thái chờ AI/intent vừa được transcript kích hoạt.
+  Lỗi phân loại intent vẫn fallback sang chat theo hành vi hiện có.
+- `VoiceEngine.utterance_finished(str)` chỉ bổ sung thông báo kết quả mỗi
+  câu: thành công → `success`, hủy/nội dung rỗng sau làm sạch → `idle`, lỗi
+  tổng hợp/phát hoặc thiếu bộ tổng hợp → `error`. Mã thoát khác 0 của trình
+  phát cũng được ghi nhận. Không đổi hàng đợi, lệnh phát, tổng hợp hay Dừng.
+  Slot Qt nhận kết quả trên GUI thread; yêu cầu AI/intent mới đang chờ hoặc
+  capture mới đang nghe không bị kết quả TTS cũ thay thế.
+- Mắt nhìn trước/nghiêng nhẹ khi nghe; mắt tập trung và miệng phẳng khi chờ;
+  nhún rất nhẹ khi nói; cười/vẫy khi thành công; miệng bối rối khi lỗi.
+  Miệng vẫn chỉ mấp máy trong playback, kể cả khi đang chạm/kéo.
+- Tương tác chạm/kéo/thả có ưu tiên pose. Sự kiện hội thoại không đổi vị trí
+  hoặc hủy thao tác. Hoạt động mới thay hoạt động cũ; `success`/`error` hết
+  hạn sau 1,1 giây. Hide xóa hoạt động và thao tác, dừng timer; show kiểm tra
+  hạn phản hồi đã nhận lúc ẩn trước khi chạy lại timer 33 ms. Playback vẫn
+  được theo dõi khi ẩn để hiện lại đúng tình trạng âm thanh.
+
+Đối với motion/navigation, Mango trở về nghỉ khi phân loại xong và chuyển
+lệnh sang bộ điều khiển; không báo robot đã thực hiện thành công vì chưa có
+nguồn sự kiện kết quả tác vụ tích hợp trong phạm vi này. Không thay callback
+robot/ROS/navigation, không thêm dependency hoặc truy cập mạng.
+
+Các file triển khai: `robot_ui/mango_companion.py`,
+`robot_ui/chat_panel_widget.py`, `robot_ui/voice_engine.py`,
+`robot_ui/startup_layout.py`. Preview cập nhật signal giả lập trong
+`tool/preview_startup_ui.py`.
+
+Kiểm thử offscreen bằng lệnh toàn bộ suite ở trên: **260 passed, 14 skipped**;
+2 cảnh báo deprecation `aifc`/`audioop`. Bổ sung `tests/test_mango_activity.py`
+và mở rộng `robot_ui/test_voice_recording_flow.py`; cập nhật fixture startup
+và motion tương ứng. Bao phủ chat/intent/voice, phản hồi rỗng, ưu tiên kéo,
+hoạt động mới, cancel/error/success, hide/show, ảnh các pose khác nhau,
+queued signal từ thread khác, lỗi tổng hợp, lỗi trình phát, hủy lúc tổng hợp
+và playback. Bộ kiểm thử bố cục VI/EN từ 1024×720 vẫn qua.
+
+Chưa nghiệm thu mic/loa, độ trễ và độ mượt trên robot, cảm ứng, AI trực tuyến
+hoặc ROS/DDS thật; 14 test bỏ qua vẫn là các ca ROS/DDS opt-in.

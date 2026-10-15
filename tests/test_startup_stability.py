@@ -22,7 +22,7 @@ class PlainChatTests(unittest.TestCase):
         self.assertEqual(plain_chat_text(text), text)
 
     def test_display_history_and_tts_receive_same_clean_reply(self):
-        panel = SimpleNamespace(_typing_timer=Mock(), _chat_history=[],
+        panel = SimpleNamespace(_set_companion_activity=Mock(), _typing_timer=Mock(), _chat_history=[],
                                 log_signal=Mock(), _voice_engine=Mock(), _language='vi')
         ChatPanel._on_response(panel, 'Chào bạn! 😊')
         self.assertEqual(panel._chat_history[-1]['content'], 'Chào bạn!')
@@ -30,7 +30,7 @@ class PlainChatTests(unittest.TestCase):
         panel._voice_engine.speak_in_language.assert_called_once_with('Chào bạn!', 'vi')
 
     def test_emoji_only_reply_does_not_start_empty_speech(self):
-        panel = SimpleNamespace(_typing_timer=Mock(), voice_status_label=Mock(),
+        panel = SimpleNamespace(_set_companion_activity=Mock(), _typing_timer=Mock(), voice_status_label=Mock(),
                                 _voice_engine=Mock(), _chat_history=[])
         ChatPanel._on_response(panel, '😊')
         self.assertEqual(panel._chat_history, [])

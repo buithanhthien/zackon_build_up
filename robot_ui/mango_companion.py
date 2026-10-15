@@ -1,10 +1,20 @@
 """Original, offline vector companion. No robot, voice, or network dependencies."""
 import math
 import time
+from enum import Enum
 
 from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QApplication, QSizePolicy, QWidget
+
+
+class Activity(str, Enum):
+    IDLE = "idle"
+    LISTENING = "listening"
+    THINKING = "thinking"
+    SPEAKING = "speaking"
+    SUCCESS = "success"
+    ERROR = "error"
 
 
 class MangoCompanion(QWidget):
@@ -18,6 +28,8 @@ class MangoCompanion(QWidget):
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self.state = "idle"
         self.speaking = False
+        self.activity = Activity.IDLE
+        self._activity_started = time.monotonic()
         self._speech_started = time.monotonic()
         self._position = QPointF(.5, .5)
         self._press = None
@@ -39,6 +51,24 @@ class MangoCompanion(QWidget):
             self._speech_started = time.monotonic()
         self.update()
 
+    @pyqtSlot(str)
+    def set_activity(self, activity):
+        """Latest UI event wins; playback alone owns the speaking overlay."""
+        activity = Activity(activity)
+        if activity == Activity.SPEAKING:
+            raise ValueError("Use set_speaking for actual playback")
+        self.activity = activity
+        self._activity_started = time.monotonic()
+        self.update()
+
+    @property
+    def display_state(self):
+        if self.state != "idle":
+            return self.state
+        if self.speaking:
+            return Activity.SPEAKING.value
+        return self.activity.value
+
     def set_language(self, language):
         hint = ("Mango: click or press Space to play; drag to move."
                 if language == "en" else
@@ -53,16 +83,20 @@ class MangoCompanion(QWidget):
         self.update()
 
     def _tick(self):
+        if self.activity in (Activity.SUCCESS, Activity.ERROR) and time.monotonic() - self._activity_started >= 1.1:
+            self.set_activity("idle")
         if self.state in ("happy", "released") and time.monotonic() - self._state_started >= 1.1:
             self._set_state("idle")
         self.update()
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._tick()
         self._timer.start()
 
     def hideEvent(self, event):
         self._timer.stop()
+        self.set_activity("idle")
         self._press = None
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self._set_state("idle")
@@ -137,15 +171,19 @@ class MangoCompanion(QWidget):
         painter.scale(rect.width() / 240, rect.height() / 260)
         elapsed = time.monotonic() - self._started
         age = time.monotonic() - self._state_started
+        pose = self.display_state
         bob = math.sin(elapsed * 2.5) * 3
         if self.state in ("released", "happy"):
             bob -= abs(math.sin(age * 10)) * 10 * max(0., 1 - age / 1.1)
+
+        if self.speaking:
+            bob += math.sin((time.monotonic() - self._speech_started) * 12) * .8
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(10, 28, 74, 65))
         painter.drawEllipse(QRectF(52, 240, 142, 12))
         painter.translate(120, 135 + bob)
-        painter.rotate(-5 if self.state == "touched" else 5 if self.state == "dragging" else math.sin(elapsed * 2) * 2)
+        painter.rotate(-5 if self.state == "touched" else 5 if self.state == "dragging" else -3 if pose == "listening" else 3 if pose == "error" else math.sin(elapsed * 2) * 2)
         painter.translate(-120, -135)
 
         def curve(points, color, width):
@@ -157,7 +195,7 @@ class MangoCompanion(QWidget):
 
         outline = "#754424"
         wave = math.sin(elapsed * 3) * 5
-        lifted = self.state in ("happy", "dragging", "released")
+        lifted = pose in ("happy", "dragging", "released", "success")
         curve([(62, 142), (30, 150), (25, 165), (18, 157 + wave)], outline, 9)
         curve([(181, 135), (214, 148), (225, 100 if lifted else 155), (222, 88 + wave if lifted else 159 + wave)], outline, 9)
         curve([(93, 205), (90, 227), (93, 240), (77, 240)], outline, 11)
@@ -185,7 +223,7 @@ class MangoCompanion(QWidget):
 
         closed = self.state == "touched" or elapsed % 4.2 < .16
         for x in (91, 149):
-            if closed or self.state == "happy":
+            if closed or pose in ("happy", "success", "thinking"):
                 curve([(x - 8, 120), (x - 3, 113), (x + 3, 113), (x + 8, 120)], outline, 4)
             else:
                 painter.setPen(Qt.PenStyle.NoPen)
@@ -208,6 +246,10 @@ class MangoCompanion(QWidget):
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(QColor("#f49a8b"))
                 painter.drawEllipse(QRectF(113, 150 + height / 2 - 7, 15, 5))
+        elif pose == "error":
+            curve([(103, 155), (114, 144), (127, 144), (138, 155)], outline, 4)
+        elif pose == "thinking":
+            curve([(109, 153), (115, 153), (123, 153), (129, 151)], outline, 4)
         elif self.state == "dragging":
             painter.setBrush(QColor(outline))
             painter.drawEllipse(QRectF(112, 143, 14, 19))

@@ -28,6 +28,7 @@ class PreviewVoiceEngine(QtCore.QObject):
 
 class PreviewChatPanel(QtWidgets.QWidget):
     log_signal = QtCore.pyqtSignal(str)
+    activity_changed = QtCore.pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)

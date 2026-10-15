@@ -891,6 +891,7 @@ class RobotUI(QMainWindow):
         voice.setSpacing(8)
         self.mango_companion = MangoCompanion()
         self.chat_panel._voice_engine.playback_changed.connect(self.mango_companion.set_speaking)
+        self.chat_panel.activity_changed.connect(self.mango_companion.set_activity)
         voice.addWidget(self.mango_companion, 1)
         self.mango_hint = QLabel()
         self.mango_hint.setObjectName("muted")

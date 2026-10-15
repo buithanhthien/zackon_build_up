@@ -132,6 +132,60 @@ class CorrectionScopeTests(unittest.TestCase):
             '"repository-new@iuh.edu.vn"',
         )
 
+    def test_new_session_passes_teacher_addition_separately_from_json_overrides(self):
+        record = {"document_id": "teacher-projects", "text": "Thầy Hoàng Đình Khôi hướng dẫn đồ án robot.",
+                  "metadata": {"source": "user_correction", "provenance": "user"}}
+        local = evidence("khoa.bo_mon.giang_vien", "Tiến Sĩ Hoàng Đình Khôi")
+        client = client_for("answer", answer="Theo bạn cung cấp, thầy hướng dẫn đồ án robot.")
+        with patch.object(self.memory, "recall", return_value=[record]), \
+             patch.object(self.memory, "retain") as retain:
+            answer = self.memory.respond(client, "test", "Giới thiệu thầy Khôi", "", "vi", local)
+        self.assertIn("robot", answer)
+        retain.assert_not_called()
+        payload = json.loads(client.chat.completions.create.call_args.kwargs["messages"][1]["content"])
+        self.assertEqual(payload["corrections"], [])
+        self.assertEqual(payload["supplemental_memories"], [record])
+        self.assertEqual(payload["local_evidence"][0]["value"], "Tiến Sĩ Hoàng Đình Khôi")
+
+    def test_supplements_do_not_reintroduce_test_stale_or_foreign_scoped_records(self):
+        local = evidence("room", "new")
+        metadata = {"source": "user_correction", "provenance": "user"}
+        records = [{"document_id": str(i), "metadata": m} for i, m in enumerate([
+            {**metadata, "provenance": "test"},
+            {**metadata, "json_path": "room", "base_json_value": '"old"'},
+            {**metadata, "json_path": "other", "base_json_value": '"new"'},
+            {"source": "unknown", "provenance": "user"},
+            {**metadata, "base_json_value": '"new"'},
+        ])]
+        self.assertEqual(self.memory._supplemental_memories(records, local), [])
+        self.assertEqual(self.memory._filter_for_local_scope(records, local), [])
+
+    def test_revision_of_addition_keeps_document_and_unscoped_metadata(self):
+        record = {"document_id": "teacher-projects", "text": "Thầy Khôi hướng dẫn robot.",
+                  "metadata": {"source": "user_correction", "provenance": "user"}}
+        client = client_for("correct", fact="Thầy Khôi hướng dẫn robot và AI.", document_id="teacher-projects")
+        with patch.object(self.memory, "recall", return_value=[record]), \
+             patch.object(self.memory, "retain") as retain:
+            self.memory.respond(client, "test", "Thêm AI", "", "vi", evidence("teacher", "Thầy Khôi"))
+        self.assertEqual(retain.call_args.args[1], "teacher-projects")
+        self.assertNotIn("json_path", retain.call_args.args[2])
+        self.assertIn("robot", json.loads(retain.call_args.args[2]["revisions_json"])[0]["text"])
+
+    def test_new_attribute_is_saved_without_overwriting_existing_json_correction(self):
+        record = {"document_id": "teacher-name", "text": "Tên thầy Khôi",
+                  "metadata": {"source": "user_correction", "provenance": "user",
+                               "json_path": "teacher", "base_json_value": '"Thầy Khôi"'}}
+        client = client_for("correct", fact="Thầy Khôi hướng dẫn robot.", document_id="teacher-name")
+        message = client.chat.completions.create.return_value.choices[0].message
+        decision = json.loads(message.content)
+        decision["local_relation"] = "supplement"
+        message.content = json.dumps(decision)
+        with patch.object(self.memory, "recall", return_value=[record]), \
+             patch.object(self.memory, "retain") as retain:
+            self.memory.respond(client, "test", "Thầy hướng dẫn robot", "", "vi", evidence("teacher", "Thầy Khôi"))
+        self.assertNotEqual(retain.call_args.args[1], "teacher-name")
+        self.assertNotIn("json_path", retain.call_args.args[2])
+
 
 if __name__ == "__main__":
     unittest.main()

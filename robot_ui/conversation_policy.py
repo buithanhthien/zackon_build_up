@@ -246,7 +246,11 @@ def answer_turn(plan, question, context, *, search_local, answer_local,
         if route == "memory":
             # A pure memory turn already has its final answer and save status.
             # Mixed tasks use another route and still compose below.
-            return memory_result if memory_result is not None else answer_general(memory_context)
+            if memory_result is not None:
+                return memory_result
+            if result.status == "sufficient" and not plan.get("memory_task", False):
+                return answer_local(question, context, result)
+            return answer_general(memory_context)
     if route == "web":
         if not plan.get("memory_task", False):
             memory_result = answer_memory(question, context, None)

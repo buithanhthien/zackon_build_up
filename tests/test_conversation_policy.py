@@ -112,6 +112,20 @@ class ConversationPolicyTests(unittest.TestCase):
         self.assertEqual(answer, "cannot recall")
         web.assert_not_called()
 
+    def test_memory_question_fallback_uses_available_local_evidence(self):
+        result = SimpleNamespace(status="sufficient", evidence=[{"path": "teacher", "value": "Thầy Khôi"}])
+        local = Mock(return_value="Thông tin thầy Khôi từ JSON")
+        general, web = Mock(), Mock()
+        answer = answer_turn(
+            {"route": "memory", "query": "Thầy Khôi là ai?", "memory_task": False},
+            "Thầy Khôi là ai?", "", search_local=Mock(return_value=result),
+            answer_local=local, answer_web=web, answer_general=general,
+            answer_memory=Mock(return_value=None))
+        self.assertEqual(answer, "Thông tin thầy Khôi từ JSON")
+        self.assertIs(local.call_args.args[2], result)
+        general.assert_not_called()
+        web.assert_not_called()
+
     def test_test_fact_cannot_override_repository_evidence(self):
         memory = CorrectionMemory(storage_path=False)
         local = [{"path": "room", "value": "B-100"}]

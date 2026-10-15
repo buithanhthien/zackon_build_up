@@ -313,6 +313,7 @@ class CorrectionMemory:
         print(f"[CHAT MEMORY] recall={'available' if available else 'unavailable'} "
               f"candidates={recalled_count} scoped_or_unfiltered={len(memories)} "
               f"supplements={len(supplements)} dropped={recalled_count-len(memories)-len(supplements)}")
+        self.last_evidence = memories + supplements
         local_items = self._local_evidence_items(local_evidence)
 
         teaching_task = teaching_task and allow_updates

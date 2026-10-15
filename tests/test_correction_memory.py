@@ -325,6 +325,7 @@ class WorkerIntegrationTests(unittest.TestCase):
             reason="test",
         )
         instance = Mock(language="en")
+        instance._cached_facts.return_value = []
         instance.memory.warning = warning
         instance.memory.respond.return_value = memory_answer
         instance._get_latest_user_question.return_value = question

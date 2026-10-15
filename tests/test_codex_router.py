@@ -164,6 +164,34 @@ class CodexRouterTests(unittest.TestCase):
             "query": "Em của ngày hôm qua",
         })
 
+    def test_peppa_pig_request_is_routed_directly_to_video_search(self):
+        request = "mở phim heo peppa"
+        result = codex_router.classify_codex_task(
+            self.client, "test-model", request
+        )
+        self.assertEqual(result, {
+            "action": "youtube_search",
+            "query": "Peppa Pig",
+        })
+        self.client.chat.completions.create.assert_not_called()
+
+    def test_other_movie_request_is_routed_directly_to_video_search(self):
+        result = codex_router.classify_codex_task(
+            self.client, "test-model", "hãy mở phim hoạt hình doraemon"
+        )
+        self.assertEqual(result, {
+            "action": "youtube_search",
+            "query": "hoat hinh doraemon",
+        })
+        self.client.chat.completions.create.assert_not_called()
+
+    def test_adult_content_movie_request_is_still_blocked(self):
+        result = codex_router.classify_codex_task(
+            self.client, "test-model", "mở phim sex abc"
+        )
+        self.assertEqual(result, {"action": "blocked_adult_content"})
+        self.client.chat.completions.create.assert_not_called()
+
     def test_direct_adult_website_request_is_blocked_without_model(self):
         for request in (
             "Mở MissAV",

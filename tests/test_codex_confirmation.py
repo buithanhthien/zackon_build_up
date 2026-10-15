@@ -78,7 +78,7 @@ class AutomaticChatActionTests(unittest.TestCase):
         self.panel._codex_thread = None
         self.panel._codex_worker = None
 
-    def test_song_request_opens_firefox_search_without_confirmation(self):
+    def test_youtube_request_opens_search_without_confirmation(self):
         self.panel._on_system_action_ready({
             "action": "youtube_search",
             "query": "Em của ngày hôm qua",
@@ -87,7 +87,9 @@ class AutomaticChatActionTests(unittest.TestCase):
         type(self).open_youtube_search.assert_called_once_with(
             "Em của ngày hôm qua"
         )
-        self.panel._on_response.assert_called_once()
+        self.panel._on_response.assert_called_once_with(
+            "Đã mở Firefox tới kết quả YouTube cho “Em của ngày hôm qua”."
+        )
         self.panel._on_error.assert_not_called()
 
     def test_project_path_opens_folder_manager_without_confirmation(self):

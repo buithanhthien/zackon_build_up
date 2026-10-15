@@ -1323,9 +1323,9 @@ class ChatPanel(QWidget):
                 self._on_error(f"Không thể mở YouTube trong Firefox: {exc}")
                 return
             self._on_response(
-                f'Đã mở Firefox tới kết quả YouTube cho bài “{query}”.'
+                f'Đã mở Firefox tới kết quả YouTube cho “{query}”.'
                 if self._language != "en"
-                else f'Opened Firefox search results for “{query}” on YouTube.'
+                else f'Opened Firefox YouTube search results for “{query}”.'
             )
             return
 

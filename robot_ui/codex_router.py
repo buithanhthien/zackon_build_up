@@ -27,14 +27,16 @@ Return exactly one JSON object:
 {"action":"none"}
 {"action":"blocked_adult_content"}
 {"action":"codex_task"}
-{"action":"youtube_search","query":"song title"}
+{"action":"youtube_search","query":"video, movie, or song title"}
 {"action":"open_app","app":"application display name"}
 {"action":"open_folder","target":"folder name or path"}
 {"action":"open_website","query":"official website of the requested organization"}
 
-Use youtube_search for a direct request to play/find a song on YouTube. Copy a
-short exact song title or search phrase into query; do not include the command
-itself. The desktop app opens the YouTube search in Firefox directly.
+Use youtube_search for a direct request to watch/find a movie, cartoon, video,
+or song on YouTube. Copy a concise title or search phrase into query; do not
+include the command itself. For a misspelled or colloquial title, resolve it to
+the recognizable official title when clear (for example, "phim heo Peppa" means
+"Peppa Pig"). The desktop app opens YouTube search results in Firefox directly.
 Never help find, open, search for, or access adult/18+ sexual websites or
 explicit sexual content, including identifying titles, catalog numbers, or
 filmographies of adult productions. Return {"action":"blocked_adult_content"} for such
@@ -64,7 +66,8 @@ _ACTION_CUES = (
     "open", "launch", "start", "play", "listen", "firefox", "terminal",
     "block", "filter", "prevent", "restrict", "chan", "ngan",
     "folder", "directory", "youtube", "website", "web site", "trang web",
-    "trang chu", "truy cap", "mo", "bat", "nghe", "phat",
+    "trang chu", "truy cap", "mo", "bat", "nghe", "phat", "phim",
+    "movie", "film", "cartoon", "animation", "video", "xem",
     "thu muc", "khoi dong", "run", "execute", "command", "cli", "create",
     "edit", "delete", "remove", "install", "build", "compile", "find",
     "search", "copy", "move", "rename", "chay", "thuc hien", "lenh",
@@ -142,6 +145,26 @@ def _direct_terminal_request(text: str):
     return None
 
 
+def _direct_movie_request(text: str):
+    normalized = _plain_text(text).strip()
+    match = re.fullmatch(
+        r"(?:hay\s+)?(?:mo|xem|open|watch|play)\s+"
+        r"(?:(?:bo|the)\s+)?(?:phim|movie|film|cartoon|video)\s+"
+        r"(.+?)[.!?]*",
+        normalized,
+    )
+    if not match:
+        return None
+    title = match.group(1).strip()
+    if not title:
+        return None
+    if title in {"heo peppa", "peppa", "peppa pig", "heo peppa pig"}:
+        title = "Peppa Pig"
+    if contains_adult_content_marker(title):
+        return {"action": "blocked_adult_content"}
+    return {"action": "youtube_search", "query": title}
+
+
 def _decode_response(raw: str) -> dict:
     content = raw.strip()
     if content.startswith("```"):
@@ -160,6 +183,9 @@ def classify_codex_task(client, model: str, text: str):
     terminal_action = _direct_terminal_request(text)
     if terminal_action is not None:
         return terminal_action
+    movie_action = _direct_movie_request(text)
+    if movie_action is not None:
+        return movie_action
     folder_action = _direct_folder_request(text)
     if folder_action is not None:
         return folder_action

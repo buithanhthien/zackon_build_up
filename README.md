@@ -111,7 +111,49 @@ Tài liệu này hướng dẫn **từng bước** để chạy giao diện UI (
 
 ---
 
+## Thực hiện tác vụ qua hội thoại
 
+Các yêu cầu mở/nghe bài hát sẽ mở Firefox trực tiếp tới kết quả tìm kiếm
+YouTube để chọn video; không bật cửa sổ terminal. Yêu cầu mở Terminal hoặc ứng
+dụng desktop đã cài được thực hiện trực tiếp; tên ứng dụng được dò từ các
+launcher `.desktop`, không chạy lệnh model tạo. Các yêu cầu CLI khác chạy Codex
+ở chế độ nền, dùng model `gpt-6-luna`,
+`--ephemeral` và sandbox `workspace-write` chỉ trong thư mục project. Codex
+không được dùng `sudo`, cài phần mềm, commit/push, truy cập file ngoài project
+hoặc vượt sandbox. Tác vụ cần mạng/quyền ngoài sandbox sẽ dừng và báo giới hạn,
+không có terminal tương tác để xin thêm quyền. Các thao tác chat này không hiện
+hộp thoại xác nhận.
 
+Gửi trực tiếp đường dẫn tuyệt đối tới thư mục trong project, home hoặc ổ đĩa
+được mount dưới `/media/<user>` hay `/mnt` (ví dụ
+`/home/khoaiuh/zackon_build_up`) sẽ mở thư mục đó trong Ubuntu File Manager qua
+`xdg-open`. Lệnh kiểu "mở thư mục <tên>" cũng được phân giải
+trong các vị trí này. Ubuntu không có ổ `C:` mặc định; hãy chỉ đường dẫn mount
+thực tế của phân vùng nếu muốn mở nó. Thao tác mở thư mục không chạy Codex.
 
+Yêu cầu mở website của một tổ chức, trường, khoa, bộ môn hoặc dịch vụ bất kỳ sẽ
+mở kết quả tìm kiếm cho website chính thức tương ứng trong Firefox. Ứng dụng
+dùng một địa chỉ tìm kiếm cố định và không tự đoán/mở domain do model trả về;
+người dùng chọn đúng kết quả cần truy cập. Cách này không cần thêm danh sách
+website vào mã nguồn cho từng khoa.
 
+Ứng dụng từ chối các yêu cầu nhận diện được là tìm/mở nội dung tình dục 18+,
+kiểm tra lại cả cụm tìm kiếm do model tạo, thêm SafeSearch cho Google/YouTube,
+và đưa cùng giới hạn vào chính sách hội thoại và tác vụ Codex. Khi người dùng
+hỏi tiếp danh sách/tên tác phẩm của một người đã được xác định là nghệ sĩ nội
+dung người lớn, ứng dụng từ chối trước khi gọi model hoặc tìm web. Đây là lớp bảo vệ
+trong ứng dụng, không phải bộ lọc mạng toàn hệ thống: không thể bảo đảm chặn mọi
+website người lớn mới hoặc URL người dùng tự nhập trong trình duyệt. Muốn chặn
+toàn bộ trên máy cần bật chế độ lọc nội dung ở cấp DNS/router/hệ điều hành và
+trình duyệt.
+
+Codex CLI cần được cài và đăng nhập bằng tài khoản ChatGPT hoặc API key. Firefox
+cần có trên PATH để mở kết quả tìm kiếm bài hát; Ubuntu `xdg-open` được dùng
+để mở thư mục.
+
+### Theo dõi người với D435i
+
+Chế độ **Theo dõi** mặc định lấy luồng màu bằng RealSense SDK (`camera_url:=realsense`),
+không dùng chỉ số camera cố định. Popup hiển thị bản đồ và trạng thái camera/detector;
+**Đóng** hoặc Escape dừng theo dõi và quay lại startup đang mở. Chuyển động mặc định
+tắt, cần bật rõ ràng khi thử robot. Xem [hướng dẫn D435i, tham số và nghiệm thu](src/human_following/README.md).

@@ -18,7 +18,7 @@ from motion_ros import RosMotionController
 class DispatchTests(unittest.TestCase):
     def panel(self):
         return SimpleNamespace(
-            _language='vi', _voice_engine=Mock(), navigation_stop=Mock(),
+            _cancel_companion=Mock(), _set_companion_activity=Mock(), _language='vi', _voice_engine=Mock(), navigation_stop=Mock(),
             motion_command=Mock(), waypoint_command=Mock(), log_signal=Mock(),
             _waypoints_provider=lambda: [], _classify_intent=Mock(), _ask_ai=Mock(),
             _answer_current_location=Mock(), _typing_timer=Mock(), voice_status_label=Mock())

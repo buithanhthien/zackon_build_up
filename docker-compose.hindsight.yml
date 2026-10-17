@@ -2,9 +2,10 @@ name: hindsight
 
 services:
   hindsight:
-    image: ghcr.io/vectorize-io/hindsight:0.4.9
+    image: ghcr.io/vectorize-io/hindsight:1.0.0
     container_name: hindsight
-    restart: unless-stopped
+    # Manual OFF lasts until Docker Engine (or the host) restarts.
+    restart: always
     shm_size: 1gb
     ports:
       # Keep both services local to the robot PC; the UI runs on the same host.
@@ -12,9 +13,21 @@ services:
       - "127.0.0.1:${HINDSIGHT_CONTROL_PLANE_PORT:-9999}:9999"
     environment:
       HINDSIGHT_API_LLM_PROVIDER: openai
-      HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_API_LLM_MODEL:-gpt-5.4-mini}
+      HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_API_LLM_MODEL:-gpt-6-luna}
       HINDSIGHT_API_LLM_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in the project .env file}
       HINDSIGHT_API_WORKER_ID: zackon-robot
+      LD_LIBRARY_PATH: /home/hindsight/.pg0/installation/18.1.0/lib
+    command:
+      - /bin/sh
+      - -c
+      - |
+        if ! python -c "import socket; socket.create_connection(('api.openai.com', 443), timeout=5).close()" >/dev/null 2>&1; then
+          echo "Waiting for network access to api.openai.com before starting Hindsight."
+        fi
+        until python -c "import socket; socket.create_connection(('api.openai.com', 443), timeout=5).close()" >/dev/null 2>&1; do
+          sleep 5
+        done
+        exec /app/start-all.sh
     volumes:
       - hindsight-data:/home/hindsight/.pg0
     healthcheck:

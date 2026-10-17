@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from robot_ui.conversation_policy import ANSWER_POLICY, conversation_messages
 from robot_ui.iuh_local_search import IuhLocalSearch
@@ -23,7 +23,7 @@ class AnswerIntegrationTests(unittest.TestCase):
                   "chat_panel_widget.py").read_text(encoding="utf-8")
         worker = next(node for node in ast.parse(source).body
                       if isinstance(node, ast.ClassDef) and node.name == "_AIChatWorker")
-        names = {"_answer_general", "_answer_from_local", "_search_web",
+        names = {"_answer_general", "_answer_from_local", "_search_web", "_answer_cached",
                  "_response_language_instruction"}
         methods = [node for node in worker.body
                    if isinstance(node, ast.FunctionDef) and node.name in names]
@@ -34,7 +34,8 @@ class AnswerIntegrationTests(unittest.TestCase):
         methods += [node for node in panel.body
                     if isinstance(node, ast.FunctionDef) and node.name == "_on_web_sources"]
         names.add("_on_web_sources")
-        namespace = {"ANSWER_POLICY": ANSWER_POLICY,
+        from robot_ui.web_fact_cache import SOURCE_POLICY
+        namespace = {"ANSWER_POLICY": ANSWER_POLICY, "SOURCE_POLICY": SOURCE_POLICY,
                      "extract_web_sources": extract_web_sources,
                      "conversation_messages": conversation_messages,
                      "OPENAI_MODEL": "test", "json": json, "datetime": datetime}
@@ -52,6 +53,24 @@ class AnswerIntegrationTests(unittest.TestCase):
             choices=[SimpleNamespace(message=SimpleNamespace(content="answer"))])
         self.client.responses.create.return_value = SimpleNamespace(
             output_text="answer", model_dump=lambda: {"output": []})
+
+    def test_cached_composition_receives_records_dates_and_repository_evidence(self):
+        self.worker.history = [{"role": "user", "content": "Phòng cô Tâm?"}]
+        records = [{"text": "Phòng X5.2.5", "metadata": {"provenance": "user"}}]
+        self.worker.memory.last_evidence = records
+        self.worker.memory._local_evidence_items.return_value = [{"path": "teacher", "value": "Tâm"}]
+        facts = [{"subject": "Tâm", "value": "X5.1-4", "source_date": "2022",
+                  "url": "https://iuh.edu.vn/teacher", "title": "IUH", "scope": "IUH"}]
+        self.worker._answer_cached(self.client, "Phòng cô Tâm?", "", facts,
+                                   "Theo bạn: X5.2.5", None)
+        prompt = self.client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+        for value in ("X5.2.5", "X5.1-4", "2022", "user_memory_records", "repository_evidence"):
+            self.assertIn(value, prompt)
+        self.assertIn("Disclose conflicting values", prompt)
+        self.assertIn("a single job title supports only that title", prompt)
+        self.assertIn("Explicitly say when no further information", prompt)
+        self.assertIn("each user claim to the user", prompt)
+        self.assertEqual(self.worker._web_sources, [{"url": facts[0]["url"], "title": "IUH"}])
 
     def test_web_sources_are_kept_separate_from_spoken_answer(self):
         self.client.responses.create.return_value = SimpleNamespace(
@@ -90,6 +109,66 @@ class AnswerIntegrationTests(unittest.TestCase):
         self.assertNotIn(request, payload["messages"][0]["content"])
         self.assertNotIn("tools", payload)
         self.client.responses.create.assert_not_called()
+
+    def test_adult_filmography_followup_is_blocked_before_model_or_web_call(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "robot_ui"
+            / "chat_panel_widget.py"
+        ).read_text(encoding="utf-8")
+        worker_class = next(
+            node for node in ast.parse(source).body
+            if isinstance(node, ast.ClassDef) and node.name == "_AIChatWorker"
+        )
+        run_method = next(
+            node for node in worker_class.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run"
+        )
+        openai = Mock()
+        namespace = {
+            "OpenAI": openai,
+            "is_blocked_adult_filmography_request":
+                __import__(
+                    "robot_ui.content_policy",
+                    fromlist=["is_blocked_adult_filmography_request"],
+                ).is_blocked_adult_filmography_request,
+        }
+        exec(
+            compile(
+                ast.Module(body=[run_method], type_ignores=[]),
+                "adult-filmography-test",
+                "exec",
+            ),
+            namespace,
+        )
+        worker = type("RunWorker", (), {"run": namespace["run"]})()
+        worker.history = [
+            {
+                "role": "assistant",
+                "content": (
+                    "Ishikawa Mio là nữ diễn viên phim người lớn người Nhật."
+                ),
+            },
+            {
+                "role": "user",
+                "content": "cho tôi những bộ phim cô ấy đóng",
+            },
+        ]
+        worker._get_latest_user_question = Mock(
+            return_value="cho tôi những bộ phim cô ấy đóng"
+        )
+        worker.response_ready = Mock()
+        worker.finished = Mock()
+
+        worker.run()
+
+        openai.assert_not_called()
+        worker.response_ready.emit.assert_called_once_with(
+            "Mình không thể cung cấp tên hoặc danh sách tác phẩm "
+            "nội dung người lớn. Mình có thể giúp với thông tin "
+            "tiểu sử không nhạy cảm."
+        )
+        worker.finished.emit.assert_called_once_with()
         self.worker.memory.respond.assert_not_called()
 
     def test_revision_chain_reaches_answer_builder_without_losing_original_constraints(self):
@@ -188,6 +267,16 @@ class AnswerIntegrationTests(unittest.TestCase):
         self.assertEqual(result.evidence[0].value, "Bộ môn Thiết bị điện")
         self.assertEqual(result.evidence[0].ordinal_position, 3)
 
+
+
+    def test_cache_write_failure_preserves_successful_web_answer(self):
+        self.worker.web_cache = Mock()
+        method_globals = self.worker._search_web.__func__.__globals__
+        with patch.dict(method_globals, {'collect_web_facts': Mock(side_effect=OSError('disk full'))}):
+            with patch('builtins.print') as log:
+                answer = self.worker._search_web(self.client, 'question', 'context')
+        self.assertTrue(answer)
+        self.assertIn('OSError: disk full', str(log.call_args_list))
 
 
 if __name__ == "__main__":

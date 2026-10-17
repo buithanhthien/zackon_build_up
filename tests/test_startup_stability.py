@@ -22,7 +22,7 @@ class PlainChatTests(unittest.TestCase):
         self.assertEqual(plain_chat_text(text), text)
 
     def test_display_history_and_tts_receive_same_clean_reply(self):
-        panel = SimpleNamespace(_typing_timer=Mock(), _chat_history=[],
+        panel = SimpleNamespace(_set_companion_activity=Mock(), _typing_timer=Mock(), _chat_history=[],
                                 log_signal=Mock(), _voice_engine=Mock(), _language='vi')
         ChatPanel._on_response(panel, 'Chào bạn! 😊')
         self.assertEqual(panel._chat_history[-1]['content'], 'Chào bạn!')
@@ -30,7 +30,7 @@ class PlainChatTests(unittest.TestCase):
         panel._voice_engine.speak_in_language.assert_called_once_with('Chào bạn!', 'vi')
 
     def test_emoji_only_reply_does_not_start_empty_speech(self):
-        panel = SimpleNamespace(_typing_timer=Mock(), voice_status_label=Mock(),
+        panel = SimpleNamespace(_set_companion_activity=Mock(), _typing_timer=Mock(), voice_status_label=Mock(),
                                 _voice_engine=Mock(), _chat_history=[])
         ChatPanel._on_response(panel, '😊')
         self.assertEqual(panel._chat_history, [])
@@ -48,6 +48,7 @@ class StartupLifecycleTests(unittest.TestCase):
             window.chat_panel = Mock()
         with patch('startup_layout.rclpy.init'), patch('startup_layout.Node'), \
              patch('startup_layout.ActionClient'), patch('startup_layout.QTimer'), \
+             patch('startup_layout.HindsightLifecycle'), \
              patch.object(RobotUI, '_load_waypoints', return_value={}), \
              patch.object(RobotUI, 'init_ui', init_ui), \
              patch.object(RobotUI, '_report_motion_status') as report, \
@@ -71,11 +72,12 @@ class StartupLifecycleTests(unittest.TestCase):
         window._ros_node.destroy_node.assert_not_called()
 
     def test_mode_switch_does_not_launch_when_close_is_rejected(self):
-        window = SimpleNamespace(log=Mock(), close=Mock(return_value=False))
+        window = SimpleNamespace(log=Mock(), close=Mock(return_value=False), open_tracking_dialog=Mock())
         with patch('startup_layout.subprocess.Popen') as launch:
             RobotUI.start_docking(window)
             RobotUI.mode_changed(window, 'Tracking')
             launch.assert_not_called()
+        window.open_tracking_dialog.assert_called_once()
 
     def test_stop_also_cancels_localization_rotation(self):
         window = SimpleNamespace(localization_worker=Mock(), _motion=Mock(),

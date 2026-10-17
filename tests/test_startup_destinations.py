@@ -186,9 +186,10 @@ class StartupDestinationsTests(unittest.TestCase):
 
     def test_startup_chat_keyboard_and_route_dialog_are_independent(self):
         w = self.window
-        panel = SimpleNamespace(hide=Mock(), voice_btn=QPushButton(),
+        panel = SimpleNamespace(activity_changed=Mock(), hide=Mock(), voice_btn=QPushButton(),
                                 voice_status_label=QLabel(), interrupt_btn=QPushButton(),
-                                log_signal=Mock(), _ai_thread=None, _ask_ai=Mock())
+                                log_signal=Mock(), _ai_thread=None, _ask_ai=Mock(),
+                                _voice_engine=SimpleNamespace(playback_changed=Mock()))
         with patch('startup_layout.ChatPanel', return_value=panel), patch.object(w, 'update_status'):
             w.init_ui()
             self.app.processEvents()

@@ -5,6 +5,7 @@ from pathlib import Path
 import unittest
 
 from PyQt6.QtWidgets import QApplication, QPushButton
+from PyQt6.QtTest import QTest, QSignalSpy
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("startup_preview", ROOT / "tool" / "preview_startup_ui.py")
@@ -24,6 +25,24 @@ class StartupPresentationTests(unittest.TestCase):
         self.addCleanup(window.hide)
         return window
 
+    def test_learning_card_states_and_accessibility(self):
+        from unittest.mock import Mock
+        for language, title in (("vi", "Chế độ học"), ("en", "Learning mode")):
+            w = self.make_window(language)
+            w.hindsight = Mock()
+            for state, enabled in (("checking", False), ("starting", False),
+                                   ("stopping", False), ("on", True),
+                                   ("off", True), ("error", True)):
+                w._update_learning_status(state, '')
+                self.assertEqual(w.learning_toggle.isEnabled(), enabled)
+                self.assertIn(title, w.learning_card['widget'].accessibleName())
+            w._update_learning_status('on', '')
+            w.learning_toggle.click()
+            w.hindsight.set_enabled.assert_called_once_with(False)
+            w._update_learning_status('off', 'command-timeout')
+            self.assertIn('OFF', w.learning_card['state'].text())
+            self.assertIn('command-timeout', w.learning_card['state'].toolTip())
+
     def test_resolutions_languages_and_touch_keyboard_fit(self):
         for language in ("vi", "en"):
             for width, height in ((1024, 720), (1280, 720), (1920, 1080)):
@@ -38,6 +57,22 @@ class StartupPresentationTests(unittest.TestCase):
                         self.app.processEvents()
                         self.assertEqual((w.width(), w.height()), (width, height))
                         self.assertGreaterEqual(w.chat_history_box.height(), 80)
+                        mango = w.mango_companion
+                        self.assertGreaterEqual(mango.height(), 110)
+                        self.assertTrue(mango.rect().contains(mango.character_rect().toAlignedRect()))
+                        self.assertEqual(mango.geometry(), w.centralWidget().rect())
+                        for control in (w.chat_input, w.chat_panel.voice_btn,
+                                        w.chat_panel.interrupt_btn, w.keyboard_toggle,
+                                        w.btn_map, w.learning_toggle,
+                                        w.stm32_card["detail_btn"],
+                                        w.stm32_card["widget"], w.chat_history_box):
+                            if control is None:
+                                continue
+                            point = control.mapTo(w.centralWidget(), control.rect().center())
+                            mango._place(preview.QtCore.QPointF(point))
+                            mango._sync_mask()
+                            self.assertTrue(mango.mask().contains(point))
+                            self.assertIs(w.centralWidget().childAt(point), mango)
                         for button in w.findChildren(QPushButton):
                             if button.isVisible():
                                 point = button.mapTo(w, button.rect().topLeft())
@@ -47,6 +82,114 @@ class StartupPresentationTests(unittest.TestCase):
                                 self.assertLessEqual(point.y() + button.height(), height)
                                 self.assertGreaterEqual(button.height(), 44)
                     w.hide()
+
+    def test_keyboard_rebuild_does_not_leave_deleted_overlay_zones(self):
+        w = self.make_window()
+        w.show()
+        w.keyboard_toggle.setChecked(True)
+        self.app.processEvents()
+        for key in ('shift', 'symbols', 'letters'):
+            old_keys = w.virtual_keyboard.findChildren(QPushButton)
+            w.virtual_keyboard._handle_virtual_key(key)
+            for button in old_keys:
+                preview.QtCore.QCoreApplication.sendPostedEvents(
+                    button, preview.QtCore.QEvent.Type.DeferredDelete)
+            w.mango_companion._tick()
+            self.assertIn(w.virtual_keyboard, w.mango_companion._protected)
+            self.assertFalse(any(zone is not w.virtual_keyboard and w.virtual_keyboard.isAncestorOf(zone)
+                                 for zone in w.mango_companion._protected))
+
+    def test_mango_interaction_does_not_trigger_chat_or_voice(self):
+        w = self.make_window()
+        w.show()
+        self.app.processEvents()
+        spies = [QSignalSpy(button.clicked) for button in
+                 (w.chat_panel.voice_btn, w.chat_panel.interrupt_btn, w.send_chat_button)]
+        w.chat_input.setText("Giữ nội dung đang nhập")
+        history = w.chat_history_box.toPlainText()
+        mango = w.mango_companion
+        QTest.mouseClick(mango, preview.QtCore.Qt.MouseButton.LeftButton,
+                         pos=mango.character_rect().center().toPoint())
+        self.assertEqual(mango.state, "happy")
+        self.assertTrue(all(len(spy) == 0 for spy in spies))
+        self.assertEqual(w.chat_input.text(), "Giữ nội dung đang nhập")
+        self.assertEqual(w.chat_history_box.toPlainText(), history)
+
+    def test_controls_remain_clickable_when_mango_is_over_them(self):
+        w = self.make_window()
+        w.show()
+        self.app.processEvents()
+        mango = w.mango_companion
+        button = w.chat_panel.interrupt_btn
+        point = button.mapTo(w.centralWidget(), button.rect().center())
+        mango._place(preview.QtCore.QPointF(point))
+        mango._sync_mask()
+        self.assertIs(w.centralWidget().childAt(point), mango)
+        spy = QSignalSpy(button.clicked)
+        QTest.mouseClick(mango, preview.QtCore.Qt.MouseButton.LeftButton, pos=point)
+        self.assertEqual(len(spy), 1)
+
+    def test_mango_remains_draggable_over_controls_outside_voice_panel(self):
+        w = self.make_window()
+        w.show()
+        self.app.processEvents()
+        mango = w.mango_companion
+        point = w.btn_map.mapTo(w.centralWidget(), w.btn_map.rect().center())
+        mango._place(preview.QtCore.QPointF(point))
+        mango._sync_mask()
+        self.assertTrue(mango._hit(preview.QtCore.QPointF(point)))
+        start_position = preview.QtCore.QPointF(mango._position)
+        QTest.mousePress(mango, preview.QtCore.Qt.MouseButton.LeftButton, pos=point)
+        QTest.mouseMove(mango, point + preview.QtCore.QPoint(80, 40))
+        self.assertEqual(mango.state, "dragging")
+        self.assertNotEqual(mango._position, start_position)
+        QTest.mouseRelease(mango, preview.QtCore.Qt.MouseButton.LeftButton,
+                           pos=point + preview.QtCore.QPoint(80, 40))
+
+    def test_playback_signal_controls_mango_even_while_hidden(self):
+        w = self.make_window()
+        w.show()
+        w.chat_panel._voice_engine.playback_changed.emit(True)
+        self.assertTrue(w.mango_companion.speaking)
+        w.hide()
+        w.chat_panel._voice_engine.playback_changed.emit(False)
+        w.show()
+        self.assertFalse(w.mango_companion.speaking)
+
+    def test_speaking_locks_mic_across_playback_gaps_and_keeps_stop_available(self):
+        from test_voice_recording_flow import _extract_method, CHAT_PANEL
+        for language in ("vi", "en"):
+            w = self.make_window(language)
+            p = w.chat_panel
+            p._pending_reply = None
+            p._typing_timer = preview.QtCore.QTimer(p)
+            p._voice_enabled = False
+            p._reset_recording_controls = lambda: _extract_method(
+                CHAT_PANEL, "ChatPanel", "_reset_recording_controls")(p)
+            state_changed = _extract_method(CHAT_PANEL, "ChatPanel", "_on_voice_state_changed")
+            stop_calls = []
+            p.interrupt_btn.clicked.connect(lambda: stop_calls.append(True))
+            state_changed(p, "[<<] SPEAKING")
+            self.assertFalse(p.voice_btn.isEnabled())
+            for playing in (True, False, True, False):
+                p._voice_engine.playback_changed.emit(playing)
+                w._refresh_control_presentation()
+                self.assertFalse(p.voice_btn.isEnabled())
+                self.assertEqual(p.voice_btn.text(), preview.startup_text(language)["speaking_button"])
+                self.assertEqual(p.voice_btn.accessibleName(), p.voice_btn.text())
+                self.assertIn(preview.startup_text(language)["mic_locked"], p.voice_btn.toolTip())
+                self.assertEqual(p.voice_btn.accessibleDescription(), p.voice_btn.toolTip())
+            mic_clicks = QSignalSpy(p.voice_btn.clicked)
+            p.voice_btn.click()
+            self.assertEqual(len(mic_clicks), 0)
+            self.assertTrue(p.interrupt_btn.isEnabled())
+            p.interrupt_btn.click()
+            self.assertEqual(stop_calls, [True])
+            state_changed(p, "")
+            w._refresh_control_presentation()
+            self.assertTrue(p.voice_btn.isEnabled())
+            self.assertEqual(p.voice_btn.text(), preview.startup_text(language)["listen_button"])
+            self.assertEqual(p.voice_btn.toolTip(), preview.startup_text(language)["voice_hint"])
 
     def test_device_states_have_labels_and_diagnostics_remains_available(self):
         w = self.make_window()
@@ -75,7 +218,7 @@ class StartupPresentationTests(unittest.TestCase):
         self.assertFalse(hasattr(w, "voice_status_display"))
         p._recording_active = False
         p.voice_btn.setChecked(False)
-        p.voice_btn.setEnabled(False)
+        p._voice_state = "[..] THINKING"
         w._refresh_control_presentation()
         self.assertEqual(p.voice_btn.text(), "Processing…")
         self.assertFalse(p.voice_btn.isEnabled())
@@ -101,6 +244,7 @@ class StartupPresentationTests(unittest.TestCase):
             p._typing_dots = 0
             p._typing_timer = preview.QtCore.QTimer(p)
             p.voice_status_label.show()
+            p._voice_state = "[..] THINKING"
             p.voice_status_label.setText("[..] THINKING")
             w._refresh_control_presentation()
             self.assertEqual(p.voice_btn.text(), speech)
@@ -117,10 +261,12 @@ class StartupPresentationTests(unittest.TestCase):
                     self.assertEqual(p.voice_status_label.text(), source_text)
                     self.assertEqual(p.voice_btn.text(), thinking + "." * (tick % 4))
             p._typing_timer.stop()
+            p._voice_state = ""
             p.voice_status_label.hide()
             w._refresh_control_presentation()
             self.assertEqual(p.voice_btn.text(), preview.startup_text(language)["listen_button"])
-            p.voice_status_label.setText("[>>] SPEAKING")
+            p._voice_state = "[<<] SPEAKING"
+            p.voice_status_label.setText("[<<] SPEAKING")
             p.voice_status_label.show()
             w._refresh_control_presentation()
             self.assertEqual(p.voice_btn.text(), preview.startup_text(language)["speaking_button"])

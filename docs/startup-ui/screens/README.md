@@ -1,5 +1,8 @@
 # Các màn hình mở từ Startup
 
+Nhân vật xoài tương tác trên Startup được mô tả riêng trong
+[bàn giao MVP](../../virtual-mango-companion.md), kèm preview và kết quả kiểm thử.
+
 Các ảnh PNG trong thư mục này được tạo từ widget thật bằng Qt offscreen.
 Preview không gọi constructor khởi động ROS/docking/tracking; voice và memory
 của tab Hội thoại được thay bằng mock.

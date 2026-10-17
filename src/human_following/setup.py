@@ -29,6 +29,7 @@ setup(
     entry_points={
         'console_scripts': [
             'human_following_node = human_following.human_following_node:main',
+            'camera_preview_node = human_following.camera_preview_node:main',
         ],
     },
 )

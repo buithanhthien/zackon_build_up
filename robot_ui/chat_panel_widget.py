@@ -2,6 +2,7 @@
 import json
 import sqlite3
 import os
+import threading
 import unicodedata
 import re
 import sys
@@ -26,6 +27,15 @@ from web_sources import extract_web_sources, format_answer_sources
 from conversation_policy import (
     ANSWER_POLICY, answer_turn, conversation_messages, plan_turn,
 )
+from content_policy import is_blocked_adult_filmography_request
+from codex_cli import (
+    open_desktop_application,
+    open_local_folder,
+    open_website_search,
+    open_youtube_search,
+    run_codex_task,
+)
+from codex_router import classify_codex_task
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -421,6 +431,7 @@ class _AIChatWorker(QObject):
     response_ready = pyqtSignal(str)
     sources_ready = pyqtSignal(list)
     language_ready = pyqtSignal(str, str)
+    system_action_ready = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
     finished       = pyqtSignal()
 
@@ -757,10 +768,32 @@ class _AIChatWorker(QObject):
 
     def run(self):
         try:
-            client = OpenAI(api_key=OPENAI_API_KEY)
             question = self._get_latest_user_question()
             if not question:
                 raise ValueError("Không tìm thấy câu hỏi người dùng")
+
+            conversation_context = "\n".join(
+                str(message.get("content", ""))
+                for message in self.history
+                if message.get("role") in ("user", "assistant")
+            )
+            if is_blocked_adult_filmography_request(
+                question, conversation_context
+            ):
+                self.response_ready.emit(
+                    "Mình không thể cung cấp tên hoặc danh sách tác phẩm "
+                    "nội dung người lớn. Mình có thể giúp với thông tin "
+                    "tiểu sử không nhạy cảm."
+                )
+                return
+
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            codex_task = classify_codex_task(
+                client, OPENAI_MODEL, question
+            )
+            if codex_task is not None:
+                self.system_action_ready.emit(codex_task)
+                return
 
             context = self._get_recent_context()
             plan = plan_turn(client, OPENAI_MODEL, self.history,
@@ -802,6 +835,33 @@ class _AIChatWorker(QObject):
 
         finally:
             self.finished.emit()
+
+
+class _CodexTaskWorker(QObject):
+    response_ready = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)
+    finished = pyqtSignal()
+
+    def __init__(self, task):
+        super().__init__()
+        self.task = task
+        self._cancel_event = threading.Event()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            answer = run_codex_task(self.task, self._cancel_event)
+            if not self._cancel_event.is_set():
+                self.response_ready.emit(answer)
+        except Exception as exc:
+            if not self._cancel_event.is_set():
+                self.error_occurred.emit(str(exc)[:2000])
+        finally:
+            self.finished.emit()
+
+    def cancel(self):
+        self._cancel_event.set()
+
 
 class _IntentWorker(QObject):
     """
@@ -924,6 +984,8 @@ class ChatPanel(QWidget):
 
         self._ai_worker     = None
         self._ai_thread     = None
+        self._codex_worker = None
+        self._codex_thread = None
         self._intent_worker = None
         self._intent_thread = None
         self._voice_enabled   = False
@@ -1150,6 +1212,9 @@ class ChatPanel(QWidget):
             self._correction_memory,
             self._local_search,
         )
+        self._ai_worker.system_action_ready.connect(
+            self._on_system_action_ready
+        )
 
         self._ai_thread = QThread()
 
@@ -1187,6 +1252,109 @@ class ChatPanel(QWidget):
     def _on_response_language(self, reply_language, conversation_language):
         self._ai_request_language = reply_language
         self._conversation_language = conversation_language
+
+    @pyqtSlot(dict)
+    def _on_system_action_ready(self, action):
+        if action.get("action") == "blocked_adult_content":
+            self._on_response(
+                "Mình không thể mở hoặc tìm kiếm website/nội dung người lớn."
+                if self._language != "en"
+                else "I can't open or search for adult websites or content."
+            )
+            return
+
+        if action.get("action") == "open_website":
+            website_query = action.get("query")
+            if not isinstance(website_query, str) or not website_query.strip():
+                self._on_error("Website search returned an invalid query.")
+                return
+            try:
+                open_website_search(website_query)
+            except (OSError, ValueError) as exc:
+                self._on_error(f"Không thể tìm website trong Firefox: {exc}")
+                return
+            self._on_response(
+                f'Đã mở kết quả tìm website cho “{website_query}” trong Firefox.'
+                if self._language != "en"
+                else f'Opened website search results for “{website_query}” in Firefox.'
+            )
+            return
+
+        if action.get("action") == "open_app":
+            app = action.get("app")
+            if not isinstance(app, str) or not app.strip():
+                self._on_error("Application request returned an invalid name.")
+                return
+            try:
+                open_desktop_application(app)
+            except (OSError, ValueError) as exc:
+                self._on_error(f"Không thể mở ứng dụng “{app}”: {exc}")
+                return
+            self._on_response(
+                f"Đã mở ứng dụng {app}." if self._language != "en"
+                else f"Opened application {app}."
+            )
+            return
+
+        if action.get("action") == "open_folder":
+            folder = action.get("path")
+            if not isinstance(folder, str) or not folder:
+                self._on_error("Folder request returned an invalid path.")
+                return
+            try:
+                open_local_folder(folder)
+            except (OSError, ValueError) as exc:
+                self._on_error(f"Không thể mở thư mục: {exc}")
+                return
+            self._on_response(
+                f"Đã mở thư mục {folder}." if self._language != "en"
+                else f"Opened folder {folder}."
+            )
+            return
+
+        if action.get("action") == "youtube_search":
+            query = action.get("query")
+            if not isinstance(query, str) or not query.strip():
+                self._on_error("YouTube search returned an invalid title.")
+                return
+            try:
+                open_youtube_search(query)
+            except (OSError, ValueError) as exc:
+                self._on_error(f"Không thể mở YouTube trong Firefox: {exc}")
+                return
+            self._on_response(
+                f'Đã mở Firefox tới kết quả YouTube cho “{query}”.'
+                if self._language != "en"
+                else f'Opened Firefox YouTube search results for “{query}”.'
+            )
+            return
+
+        task = action.get("task")
+        if action.get("action") != "codex_task" or not isinstance(task, str):
+            self._on_error("Codex handoff returned an invalid task.")
+            return
+
+        if self._codex_thread and self._codex_thread.isRunning():
+            self._on_error("Một tác vụ Codex khác đang chạy.")
+            return
+
+        self._codex_worker = _CodexTaskWorker(task)
+        self._codex_thread = QThread(self)
+        self._codex_worker.moveToThread(self._codex_thread)
+        self._codex_thread.started.connect(self._codex_worker.run)
+        self._codex_worker.response_ready.connect(self._on_response)
+        self._codex_worker.error_occurred.connect(self._on_error)
+        self._codex_worker.finished.connect(self._codex_thread.quit)
+        self._codex_worker.finished.connect(self._codex_worker.deleteLater)
+        self._codex_thread.finished.connect(self._on_codex_thread_finished)
+        self._codex_thread.finished.connect(self._codex_thread.deleteLater)
+        self._codex_thread.start()
+
+    @pyqtSlot()
+    def _on_codex_thread_finished(self):
+        self._codex_worker = None
+        self._codex_thread = None
+        self._refresh_microphone_enabled()
 
     def _on_response(self, reply):
 
@@ -1741,6 +1909,10 @@ class ChatPanel(QWidget):
 
     def cleanup(self):
         self._cancel_companion()
+        if self._codex_worker is not None and self._codex_thread is not None:
+            if self._codex_thread.isRunning():
+                self._codex_worker.cancel()
+                self._codex_thread.wait(5000)
         # Recording and TTS are independent resources and both must be stopped.
         self._voice_engine.stop_listening()
         self._voice_engine.stop_speaking()

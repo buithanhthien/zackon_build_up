@@ -1,52 +1,31 @@
-import os
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler, EmitEvent
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
 
 def generate_launch_description():
-    camera_url_arg = DeclareLaunchArgument(
-        'camera_url',
-        default_value='0',
-        description='Camera URL for human following'
-    )
-    
-    view_robot_dir = get_package_share_directory('view_robot_pkg')
-    nav2_params_file = os.path.join(view_robot_dir, 'config', 'nav2_params.yaml')
-    
+    defaults = {
+        'camera_url': ('realsense', str),
+        'camera_serial': ('', str),
+        'camera_width': ('640', int),
+        'camera_height': ('480', int),
+        'camera_fps': ('30', int),
+        'camera_format': ('YUYV', str),
+        'enable_motion': ('false', bool),
+    }
+    node = Node(
+        package='human_following', executable='human_following_node',
+        name='human_following_node', output='screen',
+        parameters=[{**{name: ParameterValue(LaunchConfiguration(name), value_type=kind)
+                        for name, (_, kind) in defaults.items()}, 'use_nav2': False}])
     return LaunchDescription([
-        camera_url_arg,
-        
-        Node(
-            package='human_following',
-            executable='human_following_node',
-            name='human_following_node',
-            parameters=[{
-                'camera_url': LaunchConfiguration('camera_url'),
-                'use_nav2': False
-            }],
-            output='screen'
-        ),
-        
-        Node(
-            package='nav2_controller',
-            executable='controller_server',
-            name='controller_server',
-            output='screen',
-            parameters=[nav2_params_file],
-            remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')]
-        ),
-        
-        Node(
-            package='nav2_lifecycle_manager',
-            executable='lifecycle_manager',
-            name='lifecycle_manager_navigation',
-            output='screen',
-            parameters=[{
-                'use_sim_time': False,
-                'autostart': True,
-                'node_names': ['controller_server']
-            }]
-        ),
+        *[DeclareLaunchArgument(name, default_value=value)
+          for name, (value, _) in defaults.items()],
+        RegisterEventHandler(OnProcessExit(target_action=node, on_exit=[
+            EmitEvent(event=Shutdown(reason='Human following node exited; inspect its log'))])),
+        node,
     ])

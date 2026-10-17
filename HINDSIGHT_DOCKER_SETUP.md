@@ -193,6 +193,18 @@ messages; raw Docker output and container environment are never logged. Closing
 the UI detaches the monitor and leaves the container and any accepted operation
 alone. The named volume is preserved by Disable (`compose stop`).
 
+The embedded PostgreSQL 18.1 installation in `hindsight-data` includes its ICU
+70 runtime libraries. The Hindsight image may not include that ICU version, so
+Compose sets `LD_LIBRARY_PATH` to the installation's `lib` directory. Keep this
+setting aligned with the PostgreSQL version stored in the volume; do not delete
+the installation or volume as a workaround.
+
+At boot, Hindsight waits for a TCP connection to `api.openai.com:443` before
+starting its API. This avoids repeated failed starts when Docker comes up before
+the host has working external network access. If the connection never becomes
+available, check the host network and firewall; an unhealthy service can also
+indicate a separate provider credential or configuration problem.
+
 `HINDSIGHT_ENABLED=true` remains required for chat to use storage. This card
 controls the local container; a custom remote `HINDSIGHT_URL` is not controlled.
 The existing readiness callback follows the current observed health, including

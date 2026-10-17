@@ -150,3 +150,10 @@ trình duyệt.
 Codex CLI cần được cài và đăng nhập bằng tài khoản ChatGPT hoặc API key. Firefox
 cần có trên PATH để mở kết quả tìm kiếm bài hát; Ubuntu `xdg-open` được dùng
 để mở thư mục.
+
+### Theo dõi người với D435i
+
+Chế độ **Theo dõi** mặc định lấy luồng màu bằng RealSense SDK (`camera_url:=realsense`),
+không dùng chỉ số camera cố định. Popup hiển thị bản đồ và trạng thái camera/detector;
+**Đóng** hoặc Escape dừng theo dõi và quay lại startup đang mở. Chuyển động mặc định
+tắt, cần bật rõ ràng khi thử robot. Xem [hướng dẫn D435i, tham số và nghiệm thu](src/human_following/README.md).

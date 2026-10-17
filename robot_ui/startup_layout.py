@@ -826,6 +826,7 @@ class RobotUI(QMainWindow):
             ("load_map", self.load_map),
             ("new_map", self.start_new_map),
             ("tracking", lambda: self.mode_changed("Tracking")),
+            ("camera_test", self.open_camera_test_dialog),
             ("reestimate", self.start_reestimate),
             ("nav2", lambda: self.mode_changed("Nav2")),
             ("language", self.open_language_dialog),
@@ -1674,7 +1675,7 @@ class RobotUI(QMainWindow):
     def update_language_ui(self):
         language = get_language()
         text = get_ui_text(language)
-        for key in ("waypoints", "docking", "load_map", "new_map", "tracking",
+        for key in ("waypoints", "docking", "load_map", "new_map", "tracking", "camera_test",
                     "reestimate", "nav2", "language"):
             getattr(self, "btn_" + key).setText("Ngôn ngữ" if key == "language" and language == "vi" else text[key])
         self.btn_dev.setText("Developer")
@@ -1713,8 +1714,7 @@ class RobotUI(QMainWindow):
     def mode_changed(self, mode):
         self.log(f"Đã chuyển sang chế độ {mode}")
         if mode == "Tracking":
-            if self.close():
-                subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
+            self.open_tracking_dialog()
         elif mode == "Waypoints":
             self.open_destination_dialog()
         elif mode == "Nav2":
@@ -1791,6 +1791,28 @@ class RobotUI(QMainWindow):
         self.btn_reestimate.setStyleSheet("")
         self.localization_thread = None
         self.localization_worker = None
+
+    def open_tracking_dialog(self):
+        from tracking_mode_layout import TrackingModeUI
+        dialog = getattr(self, '_tracking_dialog', None)
+        if dialog is None or dialog._cleaned:
+            if dialog is not None:
+                dialog.deleteLater()
+            self._tracking_dialog = TrackingModeUI(self)
+        self._tracking_dialog.show()
+        self._tracking_dialog.raise_()
+        self._tracking_dialog.activateWindow()
+
+    def open_camera_test_dialog(self):
+        from camera_test_layout import CameraTestUI
+        dialog = getattr(self, '_camera_test_dialog', None)
+        if dialog is None or dialog._cleaned:
+            if dialog is not None:
+                dialog.deleteLater()
+            self._camera_test_dialog = CameraTestUI(self)
+        self._camera_test_dialog.show()
+        self._camera_test_dialog.raise_()
+        self._camera_test_dialog.activateWindow()
 
     def start_new_map(self):
         if getattr(self, '_new_map_dialog', None) is None:
@@ -1999,6 +2021,14 @@ class RobotUI(QMainWindow):
                 self.log('Đang chờ luồng định vị dừng; hãy đóng lại sau khi hoàn tất.')
                 event.ignore()
                 return
+        tracking = getattr(self, '_tracking_dialog', None)
+        if tracking is not None and not tracking.close():
+            event.ignore()
+            return
+        camera_test = getattr(self, '_camera_test_dialog', None)
+        if camera_test is not None and not camera_test.close():
+            event.ignore()
+            return
         dialog = getattr(self, '_new_map_dialog', None)
         if dialog is not None and not dialog.close():
             event.ignore()

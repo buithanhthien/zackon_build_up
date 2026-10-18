@@ -231,8 +231,9 @@ class HumanFollowingNode(Node):
         self.status['tracking'] = ('locked' if human_pose is not None else 'searching')
         measurement = self.tracker.measurement_status
         if isinstance(measurement, str):
+            distance = human_pose.get('distance') if human_pose else None
             self.status.update(measurement=measurement,
-                               distance=human_pose.get('distance') if human_pose else None,
+                               distance=float(distance) if distance is not None else None,
                                error='')
             if human_pose is None:
                 self.status['tracking'] = measurement

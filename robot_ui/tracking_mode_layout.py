@@ -209,12 +209,23 @@ class TrackingModeUI(QDialog):
                       'error': 'lỗi', 'unavailable': 'không khả dụng'}
             detector = {'ready': 'sẵn sàng', 'starting': 'đang khởi tạo', 'not_ready': 'chưa sẵn sàng'}
             tracking = {'locked': 'đang khóa người', 'searching': 'chưa phát hiện người',
-                        'waiting': 'đang chờ', 'stopped': 'đã dừng'}
+                        'waiting': 'đang chờ', 'stopped': 'đã dừng',
+                        'depth_invalid': 'depth không hợp lệ — đã dừng',
+                        'depth_warming': 'chờ depth ổn định — đã dừng',
+                        'tf_unavailable': 'thiếu TF — đã dừng',
+                        'frame_stale': 'xử lý ảnh quá chậm — đã dừng',
+                        'target_lost': 'mất người đã khóa — đã dừng',
+                        'nav_unavailable': 'Nav2 chưa sẵn sàng',
+                        'estimate_invalid': 'không thể ước lượng — đã dừng'}
             self.last_error = status.get('error', '')
             if status['camera'] in ('error', 'unavailable'):
                 self.video.show_status('Camera không khả dụng: ' + self.last_error)
             self.last_status_time = time.monotonic()
+            distance = status.get('distance')
+            distance_text = f"{distance:.2f} m" if isinstance(distance, (int, float)) else '—'
+            method = 'ước lượng ảnh màu' if status.get('measurement') == 'estimated' else status.get('measurement', '—')
             self.status_label.setText(
+                f"Khoảng cách: {distance_text} ({method})\n"
                 f"Camera: {camera.get(status['camera'], status['camera'])}\n"
                 f"Detector: {detector.get(status['detector'], status['detector'])}\n"
                 f"Theo dõi: {tracking.get(status['tracking'], status['tracking'])}\n"
@@ -247,6 +258,13 @@ class TrackingModeUI(QDialog):
         source = device['source']
         arguments = ['camera_url:=' + source,
                      'enable_motion:=' + str(self._motion_active).lower()]
+        for name in ('desired_distance', 'depth_min', 'depth_max', 'max_linear',
+                     'max_angular', 'camera_frame', 'nav_frame', 'use_nav2',
+                     'max_frame_age', 'publish_camera_tf', 'camera_x', 'camera_y',
+                     'camera_z', 'camera_roll', 'camera_pitch', 'camera_yaw'):
+            value = os.environ.get('TRACKING_' + name.upper(), '').strip()
+            if value:
+                arguments.append(name + ':=' + value)
         serial = device.get('serial', '')
         if serial:
             arguments.append('camera_serial:=' + serial)

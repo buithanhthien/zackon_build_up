@@ -15,6 +15,22 @@ from .tracker import HumanTracker
 import time
 import math
 import json
+import numpy as np
+from rclpy.time import Time
+from tf2_ros import Buffer, TransformListener, TransformException
+
+
+def transform_matrix(transform):
+    t, q = transform.translation, transform.rotation
+    x, y, z, w = q.x, q.y, q.z, q.w
+    matrix = np.eye(4)
+    matrix[:3, :3] = [
+        [1-2*(y*y+z*z), 2*(x*y-z*w), 2*(x*z+y*w)],
+        [2*(x*y+z*w), 1-2*(x*x+z*z), 2*(y*z-x*w)],
+        [2*(x*z-y*w), 2*(y*z+x*w), 1-2*(x*x+y*y)]]
+    matrix[:3, 3] = [t.x, t.y, t.z]
+    return matrix
+
 
 class HumanFollowingNode(Node):
     def __init__(self):
@@ -23,8 +39,16 @@ class HumanFollowingNode(Node):
         self.declare_parameter('camera_url', 'realsense')
         for name, default in [('camera_serial', ''), ('camera_width', 640),
                               ('camera_height', 480), ('camera_fps', 30),
-                              ('camera_format', 'YUYV'), ('enable_motion', False)]:
+                              ('camera_format', 'YUYV'), ('enable_motion', False),
+                              ('desired_distance', 1.0), ('depth_min', 0.3),
+                              ('depth_max', 3.0), ('max_linear', 0.2),
+                              ('max_angular', 0.5),
+                              ('camera_frame', 'tracking_camera_color_optical_frame'),
+                              ('nav_frame', 'odom'), ('max_frame_age', 0.5)]:
             self.declare_parameter(name, default)
+        self.max_frame_age = self.get_parameter('max_frame_age').value
+        if not math.isfinite(self.max_frame_age) or self.max_frame_age <= 0:
+            raise ValueError('max_frame_age must be positive')
         self.enable_motion = self.get_parameter('enable_motion').value
         self.declare_parameter('use_nav2', False)
         camera_url = self.get_parameter('camera_url').value
@@ -34,6 +58,15 @@ class HumanFollowingNode(Node):
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.lock_publisher = self.create_publisher(String, '/human_lock_status', 10)
         
+        self.camera_frame = self.get_parameter('camera_frame').value
+        self.nav_frame = self.get_parameter('nav_frame').value
+        if self.nav_frame == 'base_link':
+            raise ValueError('nav_frame must be a fixed navigation frame such as odom')
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.goal_generation = 0
+        self.goal_pending = False
+        self.current_goal_handle = None
         if self.use_nav2:
             self.nav2_client = ActionClient(self, FollowPath, '/follow_path')
             self.current_goal_handle = None
@@ -65,7 +98,10 @@ class HumanFollowingNode(Node):
             self.detector = HumanDetector()
             self.detector.detect(frame)  # Readiness includes actual inference.
             self.status['detector'] = 'ready'
-            self.tracker = HumanTracker(frame_width=frame.shape[1], frame_height=frame.shape[0])
+            self.tracker = HumanTracker(
+                frame_width=frame.shape[1], frame_height=frame.shape[0],
+                **{name: self.get_parameter(name).value for name in
+                   ('desired_distance', 'depth_min', 'depth_max', 'max_linear', 'max_angular')})
         except KeyboardInterrupt:
             self.stop()
             raise
@@ -77,67 +113,134 @@ class HumanFollowingNode(Node):
         mode = "Nav2" if self.use_nav2 else "Direct"
         self.get_logger().info(f'Human following node started ({mode} mode) with camera: {camera_url}')
         
-    def send_nav2_goal(self, human_pose):
-        current_time = time.time()
-        if current_time - self.last_goal_time < self.goal_interval:
-            return
-            
-        if self.current_goal_handle:
+    def cancel_navigation(self):
+        self.goal_generation += 1
+        if self.current_goal_handle is not None:
             self.current_goal_handle.cancel_goal_async()
-        
-        goal_msg = FollowPath.Goal()
-        goal_msg.path = Path()
-        goal_msg.path.header.stamp = self.get_clock().now().to_msg()
-        goal_msg.path.header.frame_id = 'base_link'
-        
-        pose = PoseStamped()
-        pose.header = goal_msg.path.header
-        pose.pose.position.x = float(human_pose['x'])
-        pose.pose.position.y = float(human_pose['y'])
-        pose.pose.position.z = 0.0
-        
-        yaw = math.atan2(human_pose['y'], human_pose['x'])
-        pose.pose.orientation.z = float(math.sin(yaw / 2))
-        pose.pose.orientation.w = float(math.cos(yaw / 2))
-        
-        goal_msg.path.poses.append(pose)
-        
-        self.nav2_client.wait_for_server(timeout_sec=0.1)
-        send_goal_future = self.nav2_client.send_goal_async(goal_msg)
-        send_goal_future.add_done_callback(self.goal_response_callback)
-        self.last_goal_time = current_time
-        
-    def goal_response_callback(self, future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
+
+    def send_nav2_goal(self, human_pose):
+        distance = human_pose['distance']
+        remaining = max(0.0, distance - self.tracker.desired_distance)
+        if remaining <= .05:
+            self.cancel_navigation()
+            self.publisher.publish(Twist())
+            return
+        # A moving base_link path would move with the robot. Freeze both endpoints
+        # in the controller's fixed frame. Use the latest bounded-age TF because
+        # odometry typically arrives just before the image-receive timestamp.
+        try:
+            transform = self.tf_buffer.lookup_transform(self.nav_frame, 'base_link', Time())
+            stamp = Time.from_msg(transform.header.stamp)
+            age = (self.frame_stamp.nanoseconds - stamp.nanoseconds) / 1e9
+            if stamp.nanoseconds and not (-.1 <= age <= self.max_frame_age):
+                raise TransformException('Navigation TF is stale')
+            fixed = transform_matrix(transform.transform)
+        except TransformException:
+            self.status.update(tracking='tf_unavailable', error='Missing navigation TF')
+            self.cancel_navigation()
+            self.publisher.publish(Twist())
+            return
+        now = time.monotonic()
+        if self.goal_pending or now-self.last_goal_time < self.goal_interval:
+            return
+        if self.current_goal_handle is not None:
+            # Wait for completion of cancellation before submitting a replacement.
+            self.current_goal_handle.cancel_goal_async()
+            return
+        if not self.nav2_client.server_is_ready():
+            self.status.update(tracking='nav_unavailable', error='FollowPath server unavailable')
+            self.publisher.publish(Twist())
+            return
+        end = np.array([human_pose['x']*remaining/distance,
+                        human_pose['y']*remaining/distance, 0.0, 1.0])
+        origin = fixed @ np.array([0., 0., 0., 1.])
+        target = fixed @ end
+        yaw = math.atan2(target[1]-origin[1], target[0]-origin[0])
+        goal = FollowPath.Goal()
+        goal.path = Path()
+        goal.path.header.stamp = self.frame_stamp.to_msg()
+        goal.path.header.frame_id = self.nav_frame
+        for fraction in np.linspace(0., 1., max(2, int(remaining/.1)+1)):
+            pose = PoseStamped()
+            pose.header = goal.path.header
+            position = origin + fraction*(target-origin)
+            pose.pose.position.x, pose.pose.position.y = map(float, position[:2])
+            pose.pose.orientation.z = math.sin(yaw/2)
+            pose.pose.orientation.w = math.cos(yaw/2)
+            goal.path.poses.append(pose)
+        generation = self.goal_generation
+        self.goal_pending = True
+        future = self.nav2_client.send_goal_async(goal)
+        future.add_done_callback(lambda result: self.goal_response_callback(result, generation))
+        self.last_goal_time = now
+
+    def goal_response_callback(self, future, generation):
+        self.goal_pending = False
+        try:
+            handle = future.result()
+        except Exception as exc:
+            self.get_logger().error(str(exc))
+            return
+        if not handle.accepted:
             self.get_logger().warn('Nav2 goal rejected, will retry')
             return
-            
-        self.current_goal_handle = goal_handle
-        result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self.goal_result_callback)
-        
-    def goal_result_callback(self, future):
-        result = future.result().result
-        status = future.result().status
-        if status != 4:  # Not SUCCEEDED
-            self.get_logger().warn(f'Nav2 goal aborted/failed (status={status}), will replan on next frame')
-        
+        self.current_goal_handle = handle
+        handle.get_result_async().add_done_callback(
+            lambda result: self.goal_result_callback(result, handle))
+        if generation != self.goal_generation:
+            handle.cancel_goal_async()
+
+    def goal_result_callback(self, future, handle):
+        if self.current_goal_handle is handle:
+            self.current_goal_handle = None
+
     def process_frame(self):
-        start_time = time.time()
+        start_time = time.monotonic()
         try:
             ret, frame = self.camera.read()
             if not ret:
                 raise RuntimeError('Camera lost: no colour frame received')
+            acquired_at = time.monotonic()
+            self.frame_stamp = self.get_clock().now()
             self.publish_frame(frame)
             results = self.detector.detect(frame)
         except Exception as exc:
             self.fail(exc)
             return
 
-        linear, angular, tracked, human_pose = self.tracker.get_human_position(results, time.time())
+        try:
+            options = {}
+            if self.camera.requires_depth is True:
+                try:
+                    matrix = transform_matrix(self.tf_buffer.lookup_transform(
+                        'base_link', self.camera_frame, self.frame_stamp).transform)
+                except TransformException:
+                    matrix = None
+                options = dict(depth_m=self.camera.depth_m,
+                               deproject=self.camera.deproject if self.camera.intrinsics else None,
+                               camera_to_base=matrix, require_depth=True)
+            if time.monotonic() - acquired_at > getattr(self, 'max_frame_age', .5):
+                linear, angular, tracked, human_pose = self.tracker._stop([], 'frame_stale')
+            else:
+                linear, angular, tracked, human_pose = self.tracker.get_human_position(
+                    results, time.monotonic(), **options)
+        except Exception as exc:
+            self.fail(exc)
+            return
         
         self.status['tracking'] = ('locked' if human_pose is not None else 'searching')
+        measurement = self.tracker.measurement_status
+        if isinstance(measurement, str):
+            self.status.update(measurement=measurement,
+                               distance=human_pose.get('distance') if human_pose else None,
+                               error='')
+            if human_pose is None:
+                self.status['tracking'] = measurement
+        if human_pose is None or not self.enable_motion:
+            linear = angular = 0.0
+            if self.use_nav2:
+                self.cancel_navigation()
+                self.publisher.publish(Twist())
         if human_pose is not None and self.enable_motion:
             if self.use_nav2:
                 self.send_nav2_goal(human_pose)
@@ -169,7 +272,7 @@ class HumanFollowingNode(Node):
             self.publisher.publish(msg)
         
         if linear != 0.0 or angular != 0.0:
-            elapsed_ms = (time.time() - start_time) * 1000
+            elapsed_ms = (time.monotonic() - start_time) * 1000
             track_info = ', '.join([f'ID{t[0]}' for t in tracked])
             self.get_logger().info(f'Tracking [{track_info}] - linear: {linear:.2f}, angular: {angular:.2f}, speed: {elapsed_ms:.2f}ms')
         
@@ -177,7 +280,7 @@ class HumanFollowingNode(Node):
         # Camera already supplies BGR8; no second capture or cv_bridge needed.
         msg = Image()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'tracking_camera_color_optical_frame'
+        msg.header.frame_id = getattr(self, 'camera_frame', 'tracking_camera_color_optical_frame')
         msg.height, msg.width = frame.shape[:2]
         msg.encoding = 'bgr8'
         msg.is_bigendian = 0
@@ -206,6 +309,8 @@ class HumanFollowingNode(Node):
         raise RuntimeError(self.status['error'])
 
     def stop(self):
+        if getattr(self, 'use_nav2', False):
+            self.cancel_navigation()
         msg = Twist()
         msg.linear.x = 0.0
         msg.angular.z = 0.0
@@ -236,6 +341,12 @@ def main(args=None):
         if node is not None:
             try:
                 node.stop()
+                # Allow pending action responses/cancellation to reach Nav2 before
+                # destroying the action client; bound shutdown if the server is gone.
+                deadline = time.monotonic() + .5
+                while (node.use_nav2 and rclpy.ok() and time.monotonic() < deadline
+                       and (node.goal_pending or node.current_goal_handle is not None)):
+                    rclpy.spin_once(node, timeout_sec=.05)
             finally:
                 node.destroy_node()
         if rclpy.ok():

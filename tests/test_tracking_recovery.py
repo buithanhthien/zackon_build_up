@@ -21,13 +21,24 @@ class CameraTests(unittest.TestCase):
     def test_realsense_requests_colour_bgr_and_serial(self):
         rs = Mock()
         colour = np.zeros((480, 640, 3), dtype=np.uint8)
-        rs.pipeline.return_value.wait_for_frames.return_value.get_color_frame.return_value.get_data.return_value = colour
+        frames = rs.align.return_value.process.return_value
+        frames.get_color_frame.return_value.get_data.return_value = colour
+        frames.get_depth_frame.return_value.get_data.return_value = np.full((480, 640), 2000, dtype=np.uint16)
+        rs.pipeline.return_value.start.return_value.get_device.return_value.first_depth_sensor.return_value.get_depth_scale.return_value = .001
         with patch.dict(sys.modules, pyrealsense2=rs):
             camera = Camera(serial='123')
             rs.config.return_value.enable_device.assert_called_once_with('123')
-            rs.config.return_value.enable_stream.assert_called_once_with(
+            rs.config.return_value.enable_stream.assert_any_call(
                 rs.stream.color, 640, 480, rs.format.bgr8, 30)
+            rs.config.return_value.enable_stream.assert_any_call(
+                rs.stream.depth, 640, 480, rs.format.z16, 30)
             self.assertTrue(camera.read()[0])
+            np.testing.assert_allclose(camera.depth_m, 2.)
+            rs.align.assert_called_once_with(rs.stream.color)
+            frames.get_depth_frame.return_value = None
+            self.assertTrue(camera.read()[0])
+            self.assertIsNone(camera.depth_m)
+            self.assertIsNone(camera.intrinsics)
             camera.release()
             camera.release()
             rs.pipeline.return_value.stop.assert_called_once()
@@ -105,7 +116,7 @@ class NodeTests(unittest.TestCase):
         from geometry_msgs.msg import Twist
         node = SimpleNamespace(camera=Mock(), detector=Mock(), tracker=Mock(),
                                enable_motion=False, use_nav2=False, status={},
-                               publisher=Mock(), publish_frame=Mock(), last_locked_id=None, get_logger=Mock())
+                               publisher=Mock(), publish_frame=Mock(), last_locked_id=None, get_logger=Mock(), get_clock=Mock())
         node.camera.read.return_value = (True, np.zeros((480, 640, 3)))
         node.tracker.get_human_position.return_value = (0.4, 0.2, [], None)
         node.tracker.locked_id = None

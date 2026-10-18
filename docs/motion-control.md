@@ -27,8 +27,9 @@ Chấp nhận các câu ví dụ trong yêu cầu, “quay sang trái”, số d
 “một trăm tám mươi độ”, “một phẩy năm mét”, và dấu phẩy thập phân.
 Bộ phân tích chỉ nhận ngữ pháp mệnh lệnh rõ ràng; câu thiếu đơn vị, chuỗi có
 một bước không hợp lệ hoặc tham số ngoài giới hạn bị từ chối toàn bộ.
-Lệnh chuyển động trực tiếp và dừng không cần wake word. Quy tắc wake word của
-waypoint giữ nguyên. Câu hỏi/hội thoại đi qua luồng hội thoại hiện có.
+Lệnh chuyển động trực tiếp và dừng không cần wake word. Khi gọi điều hướng
+waypoint bằng giọng nói, có thể dùng “xoài” hoặc “Bé Xoài”; các wake word cũ
+vẫn được giữ để tương thích. Câu hỏi/hội thoại đi qua luồng hội thoại hiện có.
 
 ## Bộ thực thi và giới hạn
 

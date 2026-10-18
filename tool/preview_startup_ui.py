@@ -96,8 +96,8 @@ def main():
         window.resize(1280, 720)
         window._set_card_status(window.stm32_card, True)
         window._set_card_status(window.front_lidar_card, False)
-        window._append_chat_message("[Bạn] Xin chào Bé Son, cho tôi biết trạng thái robot.")
-        window._append_chat_message("[Bé Son] Bạn có thể kiểm tra kết nối ở ba thẻ thiết bị phía trên. Nút Dừng luôn nằm trong khu điều khiển giọng nói.")
+        window._append_chat_message("[Bạn] Xin chào Bé Xoài, cho tôi biết trạng thái robot.")
+        window._append_chat_message("[Bé Xoài] Bạn có thể kiểm tra kết nối ở ba thẻ thiết bị phía trên. Nút Dừng luôn nằm trong khu điều khiển giọng nói.")
         panel = window.chat_panel
         panel._recording_active = True
         panel.voice_btn.setChecked(True)

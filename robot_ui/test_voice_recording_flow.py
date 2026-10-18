@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from motion_commands import parse_motion, validate_motion
+from motion_commands import normalize, parse_motion, validate_motion
 from voice_controls import microphone_state, refresh_microphone_enabled
 
 
@@ -173,6 +173,54 @@ def test_empty_transcript_is_not_sent_and_nonempty_is_sent_once():
 
     handler(panel, "Xin chao")
     assert asked == ["Xin chao"]
+
+
+def test_xoai_wake_words_allow_direct_motion_commands():
+    expected = {
+        "intent": "motion",
+        "actions": [{"type": "move", "direction": "forward", "duration_seconds": 2.0}],
+    }
+
+    assert parse_motion("Xoài, đi thẳng 2 giây") == expected
+    assert parse_motion("Bé Xoài, đi thẳng 2 giây") == expected
+    assert parse_motion("Bé Son, đi thẳng 2 giây") == expected
+
+
+def test_xoai_wake_words_activate_waypoint_intent_classification():
+    handler = _extract_method(
+        CHAT_PANEL,
+        "ChatPanel",
+        "_on_voice_transcript",
+        extra_globals={
+            "_normalize_room_names": normalize,
+            "parse_motion": parse_motion,
+            "validate_motion": validate_motion,
+        },
+    )
+
+    classified = []
+    panel = SimpleNamespace(
+        _waypoints_provider=object(),
+        _voice_engine=DummyVoiceEngine(),
+        navigation_stop=DummySignal(),
+        log_signal=DummySignal(),
+        _answer_current_location=lambda: None,
+        _classify_intent=lambda normalized, original: classified.append(
+            (normalized, original)
+        ),
+        _ask_ai=lambda _text: None,
+    )
+
+    for utterance in (
+        "Xoài, đưa tôi đến X5.7",
+        "Bé Xoài, đưa tôi đến X5.7",
+    ):
+        handler(panel, utterance)
+
+    assert [original for _, original in classified] == [
+        "Xoài, đưa tôi đến X5.7",
+        "Bé Xoài, đưa tôi đến X5.7",
+    ]
 
 
 def test_interrupt_button_remains_bound_to_stop_speaking():

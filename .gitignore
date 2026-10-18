@@ -66,3 +66,5 @@ tool/debug_controller/*.txt
 robot_ui/language_settings.json
 robot_ui/last_robot_pose.json
 /src/human_following/test/
+
+/tests/

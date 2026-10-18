@@ -140,9 +140,8 @@ class CorrectionMemory:
         results = data.get("results")
         if not isinstance(results, list) or any(not isinstance(r, dict) for r in results):
             raise MemoryUnavailable("Invalid recall response")
-        # The pinned 0.4.9 recall serializer omits metadata. Documents retain it
-        # in retain_params, exposed by the document listing endpoint. Fetch once
-        # per document per recall; a persistent cache could hide later updates.
+        # Current Hindsight responses include metadata. Recover it from the
+        # document listing only for older responses that omit it.
         metadata_by_document = {}
         for record in results:
             document_id = record.get("document_id")
@@ -285,8 +284,7 @@ class CorrectionMemory:
         available = self.enabled
         if self.enabled:
             try:
-                # Hindsight 0.4.9 rejects queries above 500 tokens. History and
-                # session snapshots belong in the routing prompt, not retrieval.
+                # Keep conversation history in the routing prompt, not retrieval.
                 if self.startup_wait is not None and not self.startup_wait():
                     raise MemoryUnavailable(category="startup-not-ready")
                 memories = self.recall(recall_query or question)

@@ -249,6 +249,8 @@ def _find_microphone_index_from_alsa_card(
 
 class VoiceEngine(QObject):
     state_changed    = pyqtSignal(str)
+    playback_changed = pyqtSignal(bool)
+    utterance_finished = pyqtSignal(str)  # success / idle (cancel) / error
     transcript_ready = pyqtSignal(str)
     ui_command       = pyqtSignal(str)
 
@@ -989,6 +991,7 @@ class VoiceEngine(QObject):
         text = text.strip()
 
         if not text:
+            self.utterance_finished.emit("idle")
             return
 
         _debug(
@@ -1026,6 +1029,7 @@ class VoiceEngine(QObject):
             self._stop_flag.clear()
 
             tmp_path = None
+            outcome = "error"
             try:
                 with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
                     tmp_path = f.name
@@ -1047,7 +1051,16 @@ class VoiceEngine(QObject):
                     
                     if not self._stop_flag.is_set():
                         self._set_state(VoiceState.SPEAKING)
-                        self._play_audio(tmp_path)
+                        self.playback_changed.emit(True)
+                        try:
+                            result = self._play_audio(tmp_path)
+                            outcome = ("idle" if self._stop_flag.is_set() else
+                                       "success" if result in (None, 0) else "error")
+                        finally:
+                            # End each utterance, including cancellation or playback failure.
+                            self.playback_changed.emit(False)
+                    else:
+                        outcome = "idle"
                 else:
                     print("[TTS] Supertonic not available, skipping synthesis")
             except Exception as e:
@@ -1058,6 +1071,7 @@ class VoiceEngine(QObject):
                         os.unlink(tmp_path)
                     except Exception:
                         pass
+            self.utterance_finished.emit(outcome)
             self._tts_queue.task_done()
             if self._tts_queue.empty():
                 self._set_state("")
@@ -1084,3 +1098,4 @@ class VoiceEngine(QObject):
                     proc.kill()
                     break
                 time.sleep(0.05)
+            return proc.returncode

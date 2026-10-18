@@ -10,6 +10,7 @@ import threading
 import time
 import shlex
 import uuid
+import signal
 
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
@@ -48,8 +49,10 @@ from waypoint_store import load_waypoint_file, resolve_waypoint, save_waypoint_f
 from waypoint_dialogs import (DestinationDialog, WaypointPickerDialog, NewWaypointDialog,
                               PathManagerDialog, NewPathDialog, DIALOG_STYLE)
 from virtual_keyboard import VirtualKeyboard
+from mango_companion import MangoCompanion
 from waypoint_map_widget import MapWidget
 from process_manager import ProcessManager
+from hindsight_lifecycle import HindsightLifecycle
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 from action_msgs.msg import GoalStatus
@@ -250,10 +253,14 @@ class LocalizationWorker(QObject):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class RobotUI(QMainWindow):
+    learning_status = pyqtSignal(str, str)
     motion_status = pyqtSignal(str)
 
     def __init__(self, skip_micro_ros=False):
         super().__init__()
+        self.hindsight = HindsightLifecycle(changed=self.learning_status.emit)
+        self.learning_status.connect(self._update_learning_status)
+        QApplication.instance().aboutToQuit.connect(self.hindsight.stop)
         self.process_mgr                 = ProcessManager()
         # Tránh khởi động Nav2 nhiều lần
         self._nav2_started               = False
@@ -341,6 +348,8 @@ class RobotUI(QMainWindow):
         self._ros_spin_timer.start(100)
 
         self.init_ui()
+        self.chat_panel._correction_memory.startup_wait = self.hindsight.wait_until_ready
+        self.hindsight.start()
         self.motion_status.connect(self._report_motion_status)
         self._motion = RosMotionController(self.motion_status.emit)
         self.chat_panel.motion_command.connect(self.execute_motion)
@@ -817,6 +826,7 @@ class RobotUI(QMainWindow):
             ("load_map", self.load_map),
             ("new_map", self.start_new_map),
             ("tracking", lambda: self.mode_changed("Tracking")),
+            ("camera_test", self.open_camera_test_dialog),
             ("reestimate", self.start_reestimate),
             ("nav2", lambda: self.mode_changed("Nav2")),
             ("language", self.open_language_dialog),
@@ -875,6 +885,14 @@ class RobotUI(QMainWindow):
         self.rear_lidar_card = self._make_status_card("rear")
         for card in (self.stm32_card, self.front_lidar_card, self.rear_lidar_card):
             cards.addWidget(card["widget"], 1)
+        self._learning_state = 'checking'
+        self._learning_error = ''
+        self.learning_card = self._make_status_card("learning")
+        self.learning_toggle = QPushButton()
+        self.learning_toggle.setMinimumSize(64, 48)
+        self.learning_toggle.clicked.connect(self._toggle_learning)
+        self.learning_card["widget"].layout().addWidget(self.learning_toggle)
+        cards.addWidget(self.learning_card["widget"], 1)
         body.addLayout(cards)
 
         # Reuse ChatPanel's controls and signals; all robot callbacks remain owned
@@ -884,10 +902,21 @@ class RobotUI(QMainWindow):
         self.voice_panel = QWidget()
         self.voice_panel.setObjectName("voice-panel")
         self.voice_panel.setMinimumWidth(250)
-        self.voice_panel.setMaximumWidth(340)
+        self.voice_panel.setMaximumWidth(480)
         voice = QVBoxLayout(self.voice_panel)
         voice.setContentsMargins(20, 20, 20, 20)
-        voice.setSpacing(12)
+        voice.setSpacing(8)
+        self.mango_companion = MangoCompanion()
+        self.chat_panel._voice_engine.playback_changed.connect(self.mango_companion.set_speaking)
+        self.chat_panel.activity_changed.connect(self.mango_companion.set_activity)
+        mango_home = QWidget()
+        mango_home.setMinimumHeight(110)
+        voice.addWidget(mango_home, 1)
+        self.mango_hint = QLabel()
+        self.mango_hint.setObjectName("muted")
+        self.mango_hint.setWordWrap(True)
+        self.mango_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        voice.addWidget(self.mango_hint)
         self.voice_title = QLabel()
         self.voice_title.setObjectName("panel-title")
         voice.addWidget(self.voice_title)
@@ -895,17 +924,15 @@ class RobotUI(QMainWindow):
         self.voice_hint.setObjectName("muted")
         self.voice_hint.setWordWrap(True)
         voice.addWidget(self.voice_hint)
-        voice.addStretch()
         mic = self.chat_panel.voice_btn
         mic.setIcon(startup_icon("mic", size=28))
         mic.setIconSize(QSize(28, 28))
-        mic.setMinimumSize(0, 112)
+        mic.setMinimumSize(0, 56)
         mic.setMaximumSize(16777215, 16777215)
         mic.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         voice.addWidget(mic)
-        voice.addStretch()
         stop = self.chat_panel.interrupt_btn
-        stop.setMinimumSize(0, 80)
+        stop.setMinimumSize(0, 48)
         stop.setMaximumSize(16777215, 16777215)
         stop.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         voice.addWidget(stop)
@@ -956,9 +983,12 @@ class RobotUI(QMainWindow):
         content = QHBoxLayout()
         content.setSpacing(16)
         content.addWidget(self.voice_panel, 1)
-        content.addWidget(chat, 2)
+        content.addWidget(chat, 1)
         body.addLayout(content, 1)
         main_layout.addWidget(right, 1)
+        self.mango_companion.attach_to(central,
+            [sidebar, self.chat_history_box, self.chat_input, self.virtual_keyboard,
+             *central.findChildren(QPushButton)], mango_home)
         self.update_language_ui()
 
         self.status_timer = QTimer(self)
@@ -968,7 +998,7 @@ class RobotUI(QMainWindow):
         self._reestimate_pulse_timer = QTimer(self)
         self._reestimate_pulse_timer.timeout.connect(self._pulse_reestimate)
         self._pulse_state = False
-        # Presentation only: observe existing state without issuing commands.
+        # Refresh labels and mic availability from the shared voice state.
         self._presentation_timer = QTimer(self)
         self._presentation_timer.timeout.connect(self._refresh_control_presentation)
         self._presentation_timer.start(150)
@@ -998,6 +1028,10 @@ class RobotUI(QMainWindow):
         if motion is not None:
             self.chat_panel._on_voice_transcript(message)
             self.chat_input.clear()
+            return
+
+        codex_thread = self.chat_panel._codex_thread
+        if codex_thread and codex_thread.isRunning():
             return
 
         worker_thread = self.chat_panel._ai_thread
@@ -1171,17 +1205,20 @@ class RobotUI(QMainWindow):
         card.setProperty("state", "checking")
         card.setMinimumHeight(104)
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setContentsMargins(8, 12, 8, 12)
+        layout.setSpacing(6)
         dot = QLabel()
         dot.setObjectName("device-icon")
-        dot.setFixedSize(44, 44)
+        dot.setFixedSize(28, 28)
         dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
         dot.setPixmap(startup_icon(device_name, size=24).pixmap(QSize(24, 24)))
         info = QVBoxLayout()
         name = QLabel(device_name)
         name.setObjectName("device-name")
+        name.setWordWrap(True)
         state = QLabel()
         state.setObjectName("device-state")
+        state.setWordWrap(True)
         info.addWidget(name)
         info.addWidget(state)
         layout.addWidget(dot)
@@ -1211,6 +1248,35 @@ class RobotUI(QMainWindow):
         if card["detail_btn"] is not None:
             card["detail_btn"].setToolTip(t["diagnostics"])
             card["detail_btn"].setAccessibleName(t["diagnostics"])
+
+    def _toggle_learning(self):
+        self.hindsight.set_enabled(self._learning_state != 'on')
+
+    def _update_learning_status(self, state, error):
+        self._learning_state, self._learning_error = state, error
+        self._render_learning_status()
+        if error:
+            t = startup_text(get_language())
+            self.learning_card["state"].setToolTip(t['learning_error'] + ': ' + error)
+
+    def _render_learning_status(self):
+        t = startup_text(get_language())
+        state = self._learning_state
+        card = self.learning_card
+        text = t['learning_' + state]
+        if self._learning_error:
+            text += ' · ' + t['learning_error']
+        card['name'].setText(t['learning'])
+        card['state'].setText(text)
+        card['state'].setToolTip(self._learning_error)
+        card['widget'].setAccessibleName(t['learning'] + ': ' + text)
+        style = 'online' if state == 'on' else 'offline' if state in ('off', 'error') else 'checking'
+        card['widget'].setProperty('state', style)
+        repolish(card['widget'])
+        label = t['learning_disable'] if state == 'on' else t['learning_enable']
+        self.learning_toggle.setText(label)
+        self.learning_toggle.setAccessibleName(label + ' ' + t['learning'])
+        self.learning_toggle.setEnabled(state in ('on', 'off', 'error'))
 
     def _update_clock(self):
         from datetime import datetime
@@ -1609,13 +1675,16 @@ class RobotUI(QMainWindow):
     def update_language_ui(self):
         language = get_language()
         text = get_ui_text(language)
-        for key in ("waypoints", "docking", "load_map", "new_map", "tracking",
+        for key in ("waypoints", "docking", "load_map", "new_map", "tracking", "camera_test",
                     "reestimate", "nav2", "language"):
             getattr(self, "btn_" + key).setText("Ngôn ngữ" if key == "language" and language == "vi" else text[key])
         self.btn_dev.setText("Developer")
         if not hasattr(self, "chat_title"):
             return
         t = startup_text(language)
+        self.mango_companion.set_language(language)
+        self.mango_hint.setText("Click to play · Drag to move" if language == "en"
+                                else "Chạm để chơi · Kéo để di chuyển")
         for label, key in ((self.overview_label, "overview"),
                            (self.menu_heading, "operations"),
                            (self.developer_heading, "tools"),
@@ -1639,13 +1708,13 @@ class RobotUI(QMainWindow):
         self.virtual_keyboard._render_virtual_keyboard()
         for card in (self.stm32_card, self.front_lidar_card, self.rear_lidar_card):
             self._set_card_status(card, card["available"])
+        self._render_learning_status()
         self._refresh_control_presentation()
 
     def mode_changed(self, mode):
         self.log(f"Đã chuyển sang chế độ {mode}")
         if mode == "Tracking":
-            if self.close():
-                subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/tracking_mode_layout.py'])
+            self.open_tracking_dialog()
         elif mode == "Waypoints":
             self.open_destination_dialog()
         elif mode == "Nav2":
@@ -1722,6 +1791,28 @@ class RobotUI(QMainWindow):
         self.btn_reestimate.setStyleSheet("")
         self.localization_thread = None
         self.localization_worker = None
+
+    def open_tracking_dialog(self):
+        from tracking_mode_layout import TrackingModeUI
+        dialog = getattr(self, '_tracking_dialog', None)
+        if dialog is None or dialog._cleaned:
+            if dialog is not None:
+                dialog.deleteLater()
+            self._tracking_dialog = TrackingModeUI(self)
+        self._tracking_dialog.show()
+        self._tracking_dialog.raise_()
+        self._tracking_dialog.activateWindow()
+
+    def open_camera_test_dialog(self):
+        from camera_test_layout import CameraTestUI
+        dialog = getattr(self, '_camera_test_dialog', None)
+        if dialog is None or dialog._cleaned:
+            if dialog is not None:
+                dialog.deleteLater()
+            self._camera_test_dialog = CameraTestUI(self)
+        self._camera_test_dialog.show()
+        self._camera_test_dialog.raise_()
+        self._camera_test_dialog.activateWindow()
 
     def start_new_map(self):
         if getattr(self, '_new_map_dialog', None) is None:
@@ -1930,6 +2021,14 @@ class RobotUI(QMainWindow):
                 self.log('Đang chờ luồng định vị dừng; hãy đóng lại sau khi hoàn tất.')
                 event.ignore()
                 return
+        tracking = getattr(self, '_tracking_dialog', None)
+        if tracking is not None and not tracking.close():
+            event.ignore()
+            return
+        camera_test = getattr(self, '_camera_test_dialog', None)
+        if camera_test is not None and not camera_test.close():
+            event.ignore()
+            return
         dialog = getattr(self, '_new_map_dialog', None)
         if dialog is not None and not dialog.close():
             event.ignore()
@@ -2303,7 +2402,18 @@ class RobotUI(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setFont(QFont("Fira Sans", 12))
-    skip_micro_ros = '--skip-micro-ros' in sys.argv
-    window = RobotUI(skip_micro_ros)
-    window.showMaximized()
-    sys.exit(app.exec())
+    # Let Python receive terminal/service shutdown signals while Qt is idle.
+    signal_timer = QTimer()
+    signal_timer.timeout.connect(lambda: None)
+    signal_timer.start(250)
+    try:
+        skip_micro_ros = '--skip-micro-ros' in sys.argv
+        window = RobotUI(skip_micro_ros)
+        signal.signal(signal.SIGINT, lambda *_: window.close())
+        signal.signal(signal.SIGTERM, lambda *_: window.close())
+        window.showMaximized()
+        exit_code = app.exec()
+    finally:
+        if 'window' in locals():
+            window.hindsight.stop()
+    sys.exit(exit_code)

@@ -10,7 +10,6 @@ from pathlib import Path
 import subprocess
 import sys
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "robot_ui"))
 from PyQt6 import QtWidgets, QtCore, QtGui
@@ -18,15 +17,22 @@ from startup_icons import startup_icon
 from startup_style import STARTUP_STYLESHEET, startup_text, repolish, refresh_voice_button
 from styles import MAIN_STYLESHEET
 from virtual_keyboard import VirtualKeyboard
+from mango_companion import MangoCompanion
 from ui_utils import setup_clock_timer
 from language_config import get_ui_text
 
 
+class PreviewVoiceEngine(QtCore.QObject):
+    playback_changed = QtCore.pyqtSignal(bool)
+
+
 class PreviewChatPanel(QtWidgets.QWidget):
     log_signal = QtCore.pyqtSignal(str)
+    activity_changed = QtCore.pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._voice_engine = PreviewVoiceEngine(self)
         self.voice_btn = QtWidgets.QPushButton("CLICK\n TO SPEAK", self)
         self.voice_btn.setObjectName("voice-btn")
         self.voice_btn.setCheckable(True)
@@ -41,7 +47,8 @@ def make_window(source, language="vi"):
     tree = ast.parse(source)
     robot = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "RobotUI")
     names = {"init_ui", "_make_status_card", "_set_card_status", "update_language_ui",
-             "_refresh_control_presentation", "_append_chat_message"}
+             "_refresh_control_presentation", "_append_chat_message",
+             "_toggle_learning", "_update_learning_status", "_render_learning_status"}
     selected = [n for n in robot.body if isinstance(n, ast.FunctionDef) and n.name in names]
     view = ast.ClassDef(name="PreviewWindow", bases=[ast.Name(id="QMainWindow", ctx=ast.Load())],
                         keywords=[], body=selected, decorator_list=[])
@@ -49,7 +56,7 @@ def make_window(source, language="vi"):
     namespace = {}
     for provider in (QtWidgets, QtCore, QtGui):
         namespace.update({k: getattr(provider, k) for k in dir(provider) if k.startswith("Q") or k == "Qt"})
-    namespace.update(ChatPanel=PreviewChatPanel, VirtualKeyboard=VirtualKeyboard,
+    namespace.update(ChatPanel=PreviewChatPanel, VirtualKeyboard=VirtualKeyboard, MangoCompanion=MangoCompanion,
                      STARTUP_STYLESHEET=STARTUP_STYLESHEET, MAIN_STYLESHEET=MAIN_STYLESHEET, DIALOG_STYLE=MAIN_STYLESHEET,
                      startup_icon=startup_icon, startup_text=startup_text, refresh_voice_button=refresh_voice_button, repolish=repolish, get_language=lambda: language,
                      get_ui_text=get_ui_text, setup_clock_timer=setup_clock_timer)
@@ -66,6 +73,7 @@ def make_window(source, language="vi"):
 
 
 def main():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     output = ROOT / "docs" / "startup-ui"
     output.mkdir(parents=True, exist_ok=True)

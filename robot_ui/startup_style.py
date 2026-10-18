@@ -1,5 +1,6 @@
 """Startup-only visual language; shared screens/dialog styles stay independent."""
 from PyQt6.QtWidgets import QWidget
+from voice_controls import microphone_state, refresh_microphone_enabled
 
 # IUH brand handbook, colour specification (page 5):
 # https://www.senviet.art/wp-content/uploads/2025/11/So-tay-thuong-hieu-IUH-moi-chinh-thuc.pdf
@@ -39,11 +40,11 @@ QWidget#startup-root QWidget#status-card[state="online"] QLabel#device-state,
 QWidget#startup-root QWidget#status-card[state="online"] QLabel#status-dot { color: %(blue)s; }
 QWidget#startup-root QWidget#status-card[state="offline"] QLabel#device-state,
 QWidget#startup-root QWidget#status-card[state="offline"] QLabel#status-dot { color: %(red)s; }
-QWidget#startup-root QPushButton#voice-btn { background: %(yellow)s; color: %(blue)s; min-height: 112px; font-size: 20px; font-weight: 700; border: 2px solid %(yellow)s; border-radius: 12px; }
+QWidget#startup-root QPushButton#voice-btn { background: %(yellow)s; color: %(blue)s; min-height: 56px; font-size: 20px; font-weight: 700; border: 2px solid %(yellow)s; border-radius: 12px; }
 QWidget#startup-root QPushButton#voice-btn:hover { background: #ffe293; }
 QWidget#startup-root QPushButton#voice-btn:checked { background: %(blue)s; color: white; border-color: %(blue)s; }
 QWidget#startup-root QPushButton#voice-btn:disabled { background: %(yellow)s; color: %(blue)s; border-color: %(yellow)s; }
-QWidget#startup-root QPushButton#interrupt-btn { background: %(red)s; color: white; border: 2px solid %(red)s; min-height: 80px; font-size: 23px; font-weight: 700; border-radius: 12px; }
+QWidget#startup-root QPushButton#interrupt-btn { background: %(red)s; color: white; border: 2px solid %(red)s; min-height: 48px; font-size: 23px; font-weight: 700; border-radius: 12px; }
 QWidget#startup-root QPushButton#interrupt-btn:hover { background: #941a28; }
 QWidget#startup-root QPushButton#interrupt-btn:pressed { background: #711320; border-color: #ffb8c0; }
 QWidget#startup-root QPushButton#interrupt-btn:focus, QWidget#startup-root QPushButton#voice-btn:focus { border-color: %(yellow)s; }
@@ -68,10 +69,14 @@ QWidget#startup-root QLabel#clock { background: white; border: 1px solid %(line)
 """ % PALETTE
 
 TEXT = {
-    "vi": dict(title="Bảng điều khiển robot", subtitle="Startup · Giám sát kết nối và vận hành",
+    "vi": dict(learning="Chế độ học", learning_checking="Đang kiểm tra",
+               learning_on="ON", learning_off="OFF", learning_starting="Đang bật…",
+               learning_stopping="Đang tắt…", learning_error="Lỗi / chưa xác định",
+               learning_enable="Bật", learning_disable="Tắt", title="Bảng điều khiển robot", subtitle="Startup · Giám sát kết nối và vận hành",
                overview="Tổng quan", operations="VẬN HÀNH", tools="CÔNG CỤ", front="LiDAR trước", rear="LiDAR sau",
                checking="Đang kiểm tra", online="Hoạt động", offline="Mất kết nối",
                diagnostics="Chẩn đoán STM32", voice_title="Điều khiển giọng nói",
+               mic_locked="Mic tạm khóa. Nhấn Dừng để ngắt Bé Son.",
                voice_hint="Nhấn để bắt đầu nghe. Nhấn lần nữa để kết thúc thu âm.",
                listen_button="Bắt đầu nghe", listening_button="Đang nghe…\nKết thúc thu âm",
                thinking_button="Đang suy nghĩ", speaking_button="Đang nói…",
@@ -81,10 +86,14 @@ TEXT = {
                chat_title="Hội thoại với Bé Son", input="Nhập tin nhắn…", send="Gửi",
                history="Tin nhắn và phản hồi của Bé Son sẽ xuất hiện ở đây.", map="Bản đồ",
                keyboard="Hiện hoặc ẩn bàn phím ảo"),
-    "en": dict(title="Robot dashboard", subtitle="Startup · Connection monitoring and operations",
+    "en": dict(learning="Learning mode", learning_checking="Checking",
+               learning_on="ON", learning_off="OFF", learning_starting="Starting…",
+               learning_stopping="Stopping…", learning_error="Error / unknown",
+               learning_enable="Enable", learning_disable="Disable", title="Robot dashboard", subtitle="Startup · Connection monitoring and operations",
                overview="Overview", operations="OPERATIONS", tools="TOOLS", front="Front LiDAR", rear="Rear LiDAR",
                checking="Checking", online="Connected", offline="Disconnected",
                diagnostics="STM32 diagnostics", voice_title="Voice control",
+               mic_locked="Microphone unavailable. Press Stop to interrupt Bé Son.",
                voice_hint="Press to listen. Press again to finish recording.",
                listen_button="Start listening", listening_button="Listening…\nFinish recording",
                thinking_button="Thinking", speaking_button="Speaking…",
@@ -109,27 +118,20 @@ def repolish(widget):
 
 
 def refresh_voice_button(panel, language):
-    """Mirror recording/AI/TTS state on the mic without changing its behavior."""
+    """Present the same state that guards microphone capture."""
     t = startup_text(language)
-    recording = getattr(panel, "_recording_active", False)
-    busy = not panel.voice_btn.isEnabled()
-    source = panel.voice_status_label
-    status = source.text()
-    typing_timer = getattr(panel, "_typing_timer", None)
-    # Keep the source label inside the hidden ChatPanel; present its state
-    # and animation only on the microphone button.
-    thinking = typing_timer is not None and typing_timer.isActive()
-    visible_status = not source.isHidden()
-    if recording:
-        display = t["listening_button"]
-    elif thinking:
+    state = microphone_state(panel)
+    refresh_microphone_enabled(panel)
+    if state == "thinking":
         dots = "." * ((max(1, getattr(panel, "_typing_dots", 0)) - 1) % 4)
         display = t["thinking_button"] + dots
-    elif visible_status and "SPEAKING" in status:
-        display = t["speaking_button"]
-    elif busy or (visible_status and "THINKING" in status):
-        display = t["processing_button"]
     else:
-        display = t["listen_button"]
+        key = "listen_button" if state == "idle" else state + "_button"
+        display = t[key]
+    hint = t["voice_hint"] if state in ("idle", "listening") else t["mic_locked"]
+    if state == "speaking":
+        hint = t["speaking"] + " " + hint
     panel.voice_btn.setText(display)
+    panel.voice_btn.setToolTip(hint)
     panel.voice_btn.setAccessibleName(display.replace("\n", " "))
+    panel.voice_btn.setAccessibleDescription(hint)

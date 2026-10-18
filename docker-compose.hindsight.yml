@@ -2,7 +2,7 @@ name: hindsight
 
 services:
   hindsight:
-    image: ghcr.io/vectorize-io/hindsight:0.4.9
+    image: ghcr.io/vectorize-io/hindsight:1.0.0
     container_name: hindsight
     # Manual OFF lasts until Docker Engine (or the host) restarts.
     restart: always

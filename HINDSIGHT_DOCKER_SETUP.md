@@ -31,6 +31,21 @@ to the Hindsight API or control panel by default. The Hindsight API uses TCP
 8888; the robot's micro-ROS agent uses UDP 8888, so these are separate
 transports.
 
+## Upgrading Hindsight
+
+The Compose file pins Hindsight `1.0.0`. Before its first start with an existing
+`hindsight-data` volume, make a backup: the service applies database migrations
+at startup. Keep the existing volume; do not use `down -v` when upgrading.
+
+From the project root, pull and start the pinned release:
+
+```bash
+docker compose -f docker-compose.hindsight.yml pull hindsight
+docker compose -f docker-compose.hindsight.yml up -d --wait --wait-timeout 120 hindsight
+```
+
+The application uses the same bank and API endpoints after the upgrade.
+
 ## Robot correction memory
 
 `ChatPanel` now checks the dedicated `beson-corrections` bank before its
@@ -84,7 +99,7 @@ python3 -m unittest discover -s tests -v
 ```
 
 API contract checked against the pinned version:
-https://github.com/vectorize-io/hindsight/blob/v0.4.9/hindsight-api/hindsight_api/api/http.py
+https://github.com/vectorize-io/hindsight/blob/v1.0.0/hindsight-api-slim/hindsight_api/api/http.py
 
 ### Troubleshooting a forgotten fact
 
@@ -107,12 +122,13 @@ the fictional scenario; test facts cannot override real IUH JSON evidence.
 Separately test an operator-supplied correction of one known IUH JSON field.
 
 The client sends the planner's resolved retrieval question, without the chat
-history, to recall. Version 0.4.9 rejects queries above 500 tokens. Its recall
-serializer also omits metadata: the client recovers it from the matching
-document listing's `retain_params.metadata` before applying scope/provenance
-filters. That lookup adds HTTP requests per recalled document. If retrieval or
-metadata lookup fails, the correction remains session-only; repeat the explicit
-correction after recovery. Local lookup misses now check memory before web.
+history, to recall. Hindsight 1.0.0 returns recall metadata directly. For older
+responses that omit it, the client recovers metadata from the matching document
+listing's `retain_params.metadata` before applying scope/provenance filters.
+That compatibility lookup adds HTTP requests per recalled document only when
+metadata is missing. If retrieval or metadata lookup fails, the correction
+remains session-only; repeat the explicit correction after recovery. Local
+lookup misses now check memory before web.
 
 For persistence acceptance, use `docker compose -f docker-compose.hindsight.yml
 restart hindsight`, wait for health, reopen the UI, then repeat both questions.

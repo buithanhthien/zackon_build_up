@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 import rclpy
+import signal
+from rclpy.signals import SignalHandlerOptions
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import Image
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import Twist, PoseStamped
@@ -7,17 +11,22 @@ from nav2_msgs.action import FollowPath
 from nav_msgs.msg import Path
 from std_msgs.msg import String
 from .camera import Camera
-from .detector import HumanDetector
 from .tracker import HumanTracker
 import time
 import math
+import json
 
 class HumanFollowingNode(Node):
     def __init__(self):
         super().__init__('human_following_node')
         
-        self.declare_parameter('camera_url', 1)
-        self.declare_parameter('use_nav2', True)
+        self.declare_parameter('camera_url', 'realsense')
+        for name, default in [('camera_serial', ''), ('camera_width', 640),
+                              ('camera_height', 480), ('camera_fps', 30),
+                              ('camera_format', 'YUYV'), ('enable_motion', False)]:
+            self.declare_parameter(name, default)
+        self.enable_motion = self.get_parameter('enable_motion').value
+        self.declare_parameter('use_nav2', False)
         camera_url = self.get_parameter('camera_url').value
         self.use_nav2 = self.get_parameter('use_nav2').value
         
@@ -31,15 +40,39 @@ class HumanFollowingNode(Node):
             self.last_goal_time = 0
             self.goal_interval = 1.0
         
-        self.camera = Camera(source=camera_url)
-        self.detector = HumanDetector()
-        self.tracker = HumanTracker(frame_width=640, frame_height=480)
-        
-        self.last_reconnect_attempt = 0
-        self.reconnect_interval = 1.0
+        self.status_publisher = self.create_publisher(String, '/tracking_status', 10)
+        self.image_publisher = self.create_publisher(
+            Image, '/tracking/color/image_raw',
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
+        self.camera = None
         self.camera_connected = False
         self.last_locked_id = None
-        
+        self.status = dict(camera='starting', detector='starting', tracking='waiting', error='')
+        self.status_timer = self.create_timer(0.5, self.publish_status)
+        try:
+            self.camera = Camera(source=camera_url,
+                width=self.get_parameter('camera_width').value,
+                height=self.get_parameter('camera_height').value,
+                fps=self.get_parameter('camera_fps').value,
+                serial=self.get_parameter('camera_serial').value,
+                pixel_format=self.get_parameter('camera_format').value)
+            ok, frame = self.camera.read()
+            if not ok:
+                raise RuntimeError(f'No colour frame from {camera_url}')
+            self.publish_frame(frame)
+            self.status['camera'] = 'connected'
+            from .detector import HumanDetector
+            self.detector = HumanDetector()
+            self.detector.detect(frame)  # Readiness includes actual inference.
+            self.status['detector'] = 'ready'
+            self.tracker = HumanTracker(frame_width=frame.shape[1], frame_height=frame.shape[0])
+        except KeyboardInterrupt:
+            self.stop()
+            raise
+        except Exception as exc:
+            self.fail(exc)
+            return
+
         self.timer = self.create_timer(0.1, self.process_frame)
         mode = "Nav2" if self.use_nav2 else "Direct"
         self.get_logger().info(f'Human following node started ({mode} mode) with camera: {camera_url}')
@@ -92,32 +125,20 @@ class HumanFollowingNode(Node):
         
     def process_frame(self):
         start_time = time.time()
-        ret, frame = self.camera.read()
-        
-        if not ret or frame is None:
-            if not self.camera_connected:
-                current_time = time.time()
-                if current_time - self.last_reconnect_attempt >= self.reconnect_interval:
-                    self.camera.reconnect()
-                    self.last_reconnect_attempt = current_time
-            else:
-                self.camera_connected = False
-                self.get_logger().warn('Camera disconnected, attempting reconnection...')
-            
-            msg = Twist()
-            msg.linear.x = 0.0
-            msg.angular.z = 0.0
-            self.publisher.publish(msg)
+        try:
+            ret, frame = self.camera.read()
+            if not ret:
+                raise RuntimeError('Camera lost: no colour frame received')
+            self.publish_frame(frame)
+            results = self.detector.detect(frame)
+        except Exception as exc:
+            self.fail(exc)
             return
-        
-        if not self.camera_connected:
-            self.camera_connected = True
-            self.get_logger().info('Camera connected successfully')
-            
-        results = self.detector.detect(frame)
+
         linear, angular, tracked, human_pose = self.tracker.get_human_position(results, time.time())
         
-        if human_pose is not None:
+        self.status['tracking'] = ('locked' if human_pose is not None else 'searching')
+        if human_pose is not None and self.enable_motion:
             if self.use_nav2:
                 self.send_nav2_goal(human_pose)
             else:
@@ -134,7 +155,7 @@ class HumanFollowingNode(Node):
                 
                 self.goal_publisher.publish(goal_msg)
         
-        if self.tracker.locked_id and self.tracker.locked_id != self.last_locked_id:
+        if self.tracker.locked_id is not None and self.tracker.locked_id != self.last_locked_id:
             lock_msg = String()
             lock_msg.data = f"Human locked: ID {self.tracker.locked_id}"
             self.lock_publisher.publish(lock_msg)
@@ -143,8 +164,8 @@ class HumanFollowingNode(Node):
         
         if not self.use_nav2:
             msg = Twist()
-            msg.linear.x = linear
-            msg.angular.z = angular
+            msg.linear.x = linear if self.enable_motion else 0.0
+            msg.angular.z = angular if self.enable_motion else 0.0
             self.publisher.publish(msg)
         
         if linear != 0.0 or angular != 0.0:
@@ -152,25 +173,75 @@ class HumanFollowingNode(Node):
             track_info = ', '.join([f'ID{t[0]}' for t in tracked])
             self.get_logger().info(f'Tracking [{track_info}] - linear: {linear:.2f}, angular: {angular:.2f}, speed: {elapsed_ms:.2f}ms')
         
+    def publish_frame(self, frame):
+        # Camera already supplies BGR8; no second capture or cv_bridge needed.
+        msg = Image()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'tracking_camera_color_optical_frame'
+        msg.height, msg.width = frame.shape[:2]
+        msg.encoding = 'bgr8'
+        msg.is_bigendian = 0
+        msg.step = msg.width * 3
+        msg.data = frame.tobytes()
+        self.image_publisher.publish(msg)
+
+    def publish_status(self):
+        msg = String()
+        msg.data = json.dumps(self.status)
+        self.status_publisher.publish(msg)
+
+    def fail(self, exc):
+        self.status.update(camera='unavailable', tracking='stopped', error=str(exc))
+        if self.status['detector'] == 'starting':
+            self.status['detector'] = 'not_ready'
+        self.get_logger().error(str(exc))
+        self.publish_status()
+        if hasattr(self, 'timer'):
+            self.timer.cancel()
+        self.stop()
+        # Give the UI time to receive the failure before terminating the launch.
+        self.failure_timer = self.create_timer(1.0, self.exit_failed)
+
+    def exit_failed(self):
+        raise RuntimeError(self.status['error'])
+
     def stop(self):
         msg = Twist()
         msg.linear.x = 0.0
         msg.angular.z = 0.0
-        self.publisher.publish(msg)
-        self.camera.release()
+        try:
+            if rclpy.ok():
+                self.publisher.publish(msg)
+        finally:
+            if self.camera is not None:
+                self.camera.release()
 
 def main(args=None):
-    rclpy.init(args=args)
-    node = HumanFollowingNode()
-    
+    # Keep the ROS context alive until the zero velocity command is published.
+    def interrupt(signum, frame):
+        raise KeyboardInterrupt
+
+    previous = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGINT, signal.SIGTERM)}
+    node = None
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
     try:
+        node = HumanFollowingNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        node.stop()
-        node.destroy_node()
-        rclpy.shutdown()
+        # Do not let a repeated launch signal interrupt camera release.
+        for sig in previous:
+            signal.signal(sig, signal.SIG_IGN)
+        if node is not None:
+            try:
+                node.stop()
+            finally:
+                node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
 
 if __name__ == '__main__':
     main()

@@ -1,0 +1,116 @@
+{
+  "pending_explanation": "Only unconfirmed writes; confirmed documents live in Hindsight.",
+  "pending_file": "/home/khoaiuh/zackon_build_up/.local/hindsight-pending.sqlite3",
+  "pending": [],
+  "documents": [
+    {
+      "document_id": "correction-json-aae44eea136e100ade99",
+      "original_text": "Thầy Hoàng Đình Khôi ở Khoa Công nghệ Điện.",
+      "created_at": "2026-10-15T06:07:55.452479+00:00",
+      "updated_at": "2026-10-15T06:07:55.452479+00:00",
+      "memory_unit_count": 1,
+      "metadata": {
+        "source": "user_correction",
+        "json_path": "khoa_cong_nghe_dien.bo_mon.3.giang_vien.5",
+        "derivation": "stated",
+        "provenance": "user",
+        "revisions_json": "[]",
+        "source_message": "THẦY HOÀNG ĐÌNH KHÔI Ở KHOA CÔNG NGHỆ ĐIỆN",
+        "base_json_value": "\"Tiến Sĩ Hoàng Đình Khôi\""
+      },
+      "retain_params": {
+        "context": "Explicit factual correction supplied by the robot operator",
+        "metadata": {
+          "source": "user_correction",
+          "json_path": "khoa_cong_nghe_dien.bo_mon.3.giang_vien.5",
+          "derivation": "stated",
+          "provenance": "user",
+          "revisions_json": "[]",
+          "source_message": "THẦY HOÀNG ĐÌNH KHÔI Ở KHOA CÔNG NGHỆ ĐIỆN",
+          "base_json_value": "\"Tiến Sĩ Hoàng Đình Khôi\""
+        },
+        "event_date": "2026-10-15T06:07:52.000545+00:00"
+      }
+    },
+    {
+      "document_id": "correction-9f4a62a33dbb44c28a8ee554c27a52dc",
+      "original_text": "Thầy Hoàng Đình Khôi thường hướng dẫn sinh viên làm đồ án về robot và các hệ thống điều khiển thông minh.",
+      "created_at": "2026-10-15T06:06:26.768961+00:00",
+      "updated_at": "2026-10-15T06:06:26.768961+00:00",
+      "memory_unit_count": 1,
+      "metadata": {
+        "source": "user_correction",
+        "derivation": "stated",
+        "provenance": "user",
+        "revisions_json": "[]",
+        "source_message": "THẦY KHÔI THƯỜNG HƯỚNG DẪN SINH VIÊN LÀM CÁC ĐỒ ÁN VỀ ROBOT VÀ CÁC HỆ THỐNG ĐIỀU KHIỂN THÔNG MINH"
+      },
+      "retain_params": {
+        "context": "Explicit factual correction supplied by the robot operator",
+        "metadata": {
+          "source": "user_correction",
+          "derivation": "stated",
+          "provenance": "user",
+          "revisions_json": "[]",
+          "source_message": "THẦY KHÔI THƯỜNG HƯỚNG DẪN SINH VIÊN LÀM CÁC ĐỒ ÁN VỀ ROBOT VÀ CÁC HỆ THỐNG ĐIỀU KHIỂN THÔNG MINH"
+        },
+        "event_date": "2026-10-15T06:06:23.341912+00:00"
+      }
+    },
+    {
+      "document_id": "correction-f94d4e0cf1fb4c859e96a92c8d9a8ec9",
+      "original_text": "Cô Đặng Thanh Tâm là giáo vụ của Khoa Công nghệ Điện.",
+      "created_at": "2026-10-15T06:03:17.234063+00:00",
+      "updated_at": "2026-10-15T06:03:17.234063+00:00",
+      "memory_unit_count": 1,
+      "metadata": {
+        "source": "user_correction",
+        "derivation": "stated",
+        "provenance": "user",
+        "revisions_json": "[]",
+        "source_message": "CÔ ĐẶNG THANH TÂM LÀ GIÁO VỤ CỦA KHOA CÔNG NGHỆ ĐIỆN"
+      },
+      "retain_params": {
+        "context": "Explicit factual correction supplied by the robot operator",
+        "metadata": {
+          "source": "user_correction",
+          "derivation": "stated",
+          "provenance": "user",
+          "revisions_json": "[]",
+          "source_message": "CÔ ĐẶNG THANH TÂM LÀ GIÁO VỤ CỦA KHOA CÔNG NGHỆ ĐIỆN"
+        },
+        "event_date": "2026-10-15T06:03:13.679085+00:00"
+      }
+    },
+    {
+      "document_id": "correction-f4d3224f028a465babd23946ae4f3254",
+      "original_text": "Theo thông tin người dùng cung cấp, Bùi Thanh Thiên là sinh viên Khoa Công nghệ Điện của Trường Đại học Công nghiệp Thành phố Hồ Chí Minh, học ngành Điều khiển và Tự động hóa, chuyên ngành Robot, và là người tạo ra Bé Son.",
+      "created_at": "2026-10-14T12:29:11.023129+00:00",
+      "updated_at": "2026-10-14T12:29:11.023129+00:00",
+      "memory_unit_count": 1,
+      "metadata": {
+        "scope": "current_session",
+        "source": "user_correction",
+        "derivation": "stated",
+        "provenance": "user",
+        "revisions_json": "[]",
+        "source_message": "Bùi Thanh Thiên là sinh viên Khoa Công nghệ Điện của Trường Đại học Công nghiệp Thành phố Hồ Chí Minh, học ngành Điều khiển và Tự động hóa, chuyên ngành Robot, và là người tạo ra Bé Son."
+      },
+      "retain_params": {
+        "context": "Explicit factual correction supplied by the robot operator",
+        "metadata": {
+          "scope": "current_session",
+          "source": "user_correction",
+          "derivation": "stated",
+          "provenance": "user",
+          "revisions_json": "[]",
+          "source_message": "Bùi Thanh Thiên là sinh viên Khoa Công nghệ Điện của Trường Đại học Công nghiệp Thành phố Hồ Chí Minh, học ngành Điều khiển và Tự động hóa, chuyên ngành Robot, và là người tạo ra Bé Son."
+        },
+        "event_date": "2026-10-14T12:29:07.289154+00:00"
+      }
+    }
+  ],
+  "errors": [],
+  "bank": "beson-corrections",
+  "recall_checks": []
+}

@@ -72,11 +72,12 @@ class StartupLifecycleTests(unittest.TestCase):
         window._ros_node.destroy_node.assert_not_called()
 
     def test_mode_switch_does_not_launch_when_close_is_rejected(self):
-        window = SimpleNamespace(log=Mock(), close=Mock(return_value=False))
+        window = SimpleNamespace(log=Mock(), close=Mock(return_value=False), open_tracking_dialog=Mock())
         with patch('startup_layout.subprocess.Popen') as launch:
             RobotUI.start_docking(window)
             RobotUI.mode_changed(window, 'Tracking')
             launch.assert_not_called()
+        window.open_tracking_dialog.assert_called_once()
 
     def test_stop_also_cancels_localization_rotation(self):
         window = SimpleNamespace(localization_worker=Mock(), _motion=Mock(),

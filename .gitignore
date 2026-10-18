@@ -70,3 +70,5 @@ robot_ui/last_robot_pose.json
 /.local/
 
 /src/human_following/test/
+
+/tests/

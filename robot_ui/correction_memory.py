@@ -132,7 +132,7 @@ class CorrectionMemory:
 
     def recall(self, query):
         # Create an empty bank on first use; PUT is idempotent across UI workers.
-        self._request("PUT", "", {"name": "Be Son corrections"})
+        self._request("PUT", "", {"name": "Be Xoai corrections"})
         data = self._request("POST", "/memories/recall", {
             "query": query, "budget": "mid", "max_tokens": 2048,
             "types": ["world", "experience"],

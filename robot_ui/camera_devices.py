@@ -22,7 +22,6 @@ def discover_cameras():
     for entry in sorted(Path('/sys/class/video4linux').glob('video*')):
         try:
             name = (entry / 'name').read_text().strip()
-            # Secondary interfaces commonly expose metadata/depth, not colour.
             if (entry / 'index').read_text().strip() != '0':
                 continue
             if realsense_available and 'realsense' in name.lower():

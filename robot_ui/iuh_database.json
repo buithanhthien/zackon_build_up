@@ -220,8 +220,8 @@
         }
     },
     "robot_be_son": {
-        "ten": "Bé Son",
-        "mo_ta": "Robot Bé Son là robot tự hành được phát triển bởi sinh viên Đại học Công nghiệp Thành phố Hồ Chí Minh (IUH)",
+        "ten": "Bé Xoài",
+        "mo_ta": "Robot Bé Xoài là robot tự hành được phát triển bởi sinh viên Đại học Công nghiệp Thành phố Hồ Chí Minh (IUH)",
         "cong_nghe": [
             "ROS 2",
             "Nav2 (điều hướng tự động)",

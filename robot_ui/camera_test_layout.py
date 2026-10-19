@@ -4,6 +4,8 @@ import os
 import shlex
 import sys
 import time
+from datetime import datetime
+from pathlib import Path
 
 import rclpy
 from PyQt6.QtCore import Qt, QTimer
@@ -16,6 +18,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from camera_devices import discover_cameras
 from config import SOURCE_PATH, shell_source_workspace
 from styles import DIALOG_STYLESHEET
@@ -24,6 +27,8 @@ from tracking_process import TrackingProcess
 
 
 class CameraTestUI(QDialog):
+    capture_directory = Path('/home/khoaiuh/images')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setModal(False)
@@ -71,6 +76,10 @@ class CameraTestUI(QDialog):
         self.stop_button = QPushButton('Dừng camera')
         self.stop_button.clicked.connect(self.stop_preview)
         buttons.addWidget(self.stop_button)
+        self.capture_button = QPushButton('Chụp ảnh')
+        self.capture_button.clicked.connect(self.capture_image)
+        self.capture_button.setEnabled(False)
+        buttons.addWidget(self.capture_button)
         close_button = QPushButton('Đóng')
         close_button.clicked.connect(self.close)
         buttons.addWidget(close_button)
@@ -110,6 +119,7 @@ class CameraTestUI(QDialog):
         if not device or not device.get('source'):
             self.status_label.setText('Chưa có camera hợp lệ. Hãy làm mới danh sách.')
             self.video.show_status('Không có camera được chọn')
+            self.update_controls()
             return
         if self.tracking_process.process is not None:
             self.status_label.setText('Camera preview đang chạy.')
@@ -144,12 +154,35 @@ class CameraTestUI(QDialog):
         if (msg.encoding != 'bgr8' or msg.width <= 0 or msg.height <= 0 or
                 msg.step < msg.width * 3 or len(msg.data) < msg.step * msg.height):
             self.video.show_status('Frame camera không hợp lệ')
+            self.update_controls()
             return
         frame = QImage(bytes(msg.data), msg.width, msg.height, msg.step,
                        QImage.Format.Format_BGR888).copy()
         self.last_frame_time = time.monotonic()
         self.video.show_frame(frame)
         self.status_label.setText(f'Đang nhận hình ảnh màu · {msg.width} × {msg.height}')
+        self.update_controls()
+
+    def capture_image(self):
+        frame = self.video.frame
+        if self.tracking_process.process is None or frame is None or frame.isNull():
+            self.status_label.setText('Chưa có hình ảnh hợp lệ để chụp.')
+            self.update_controls()
+            return
+        try:
+            self.capture_directory.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+            output_path = self.capture_directory / f'camera_{timestamp}.png'
+            suffix = 1
+            while output_path.exists():
+                output_path = self.capture_directory / f'camera_{timestamp}_{suffix}.png'
+                suffix += 1
+            if not frame.save(str(output_path), 'PNG'):
+                raise OSError('Không thể ghi ảnh PNG')
+        except OSError as exc:
+            self.status_label.setText(f'Không thể lưu ảnh: {exc}')
+            return
+        self.status_label.setText(f'Đã lưu ảnh: {output_path}')
 
     def check_preview(self):
         output = self.tracking_process.read_log()
@@ -168,6 +201,7 @@ class CameraTestUI(QDialog):
         elif (self.last_frame_time is not None and
               time.monotonic() - self.last_frame_time > 3):
             self.video.show_status('Không nhận được hình ảnh camera')
+            self.update_controls()
 
     def update_controls(self, *_):
         running = self.tracking_process.process is not None
@@ -175,6 +209,7 @@ class CameraTestUI(QDialog):
         self.refresh_button.setEnabled(not running)
         self.start_button.setEnabled(not running and self.camera_source.currentData() is not None)
         self.stop_button.setEnabled(running)
+        self.capture_button.setEnabled(running and self.video.frame is not None)
 
     def cleanup(self):
         if self._cleaned:

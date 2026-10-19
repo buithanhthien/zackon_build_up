@@ -87,7 +87,7 @@ def validate_motion(data):
 def parse_motion(text):
     """Return None for conversation/waypoints; reject malformed motion imperatives."""
     text = normalize(text)
-    text = re.sub(r'^(?:be son|bson|haha|ha ha|khang)\b[ ,:]*', '', text)
+    text = re.sub(r'^(?:be son|be xoai|xoai|bson|haha|ha ha|khang)\b[ ,:]*', '', text)
     text = re.sub(r'^(?:hay |vui long )', '', text)
     text = re.sub(r' (?:nhe|nha)$', '', text)
     if text in ('dung', 'dung lai', 'dung robot', 'huy lenh', 'huy hanh trinh',

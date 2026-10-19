@@ -14,7 +14,7 @@ else
     exit 1
 fi
 
-# Workspace Bé Son
+# Workspace Bé Xoài
 source "$PROJECT/install/setup.bash"
 
 # Virtual environment

@@ -17,7 +17,7 @@ dashboard trước khi thêm nhân vật.
 │ Điểm đến         │ STM32         [i] │ LiDAR trước     │ LiDAR sau         │
 │ Về trạm sạc      │ ● Nhãn trạng thái │ ● Nhãn trạng thái│ ● Nhãn trạng thái│
 │ Tải bản đồ       ├───────────────────┴─────────────────┴───────────────────┤
-│ Bản đồ mới       │ Điều khiển giọng nói │ Hội thoại với Bé Son             │
+│ Bản đồ mới       │ Điều khiển giọng nói │ Hội thoại với Bé Xoài            │
 │ Theo dõi         │ Hướng dẫn thu âm     │                               │
 │ Định vị lại      │                      │ Lịch sử có cuộn và xuống dòng  │
 │ Nav2             │ [Bắt đầu nghe]       │                               │
@@ -102,6 +102,6 @@ Bản điều chỉnh dùng menu trắng có icon đồng bộ, nhãn Tổng qua
 
 ## Sửa thông báo suy nghĩ/xử lý
 
-ChatPanel có timer animation 400 ms; trước đây Startup có timer trình bày 150 ms cùng ghi vào `voice_status_label`, khiến “Bé Son đang suy nghĩ” và “Đang xử lý” luân phiên ghi đè. Startup hiện đọc nhãn gốc và hiển thị qua `voice_status_display` riêng, không sửa nội dung, style hoặc visibility của nhãn nguồn. Khi timer suy nghĩ hoạt động, nhãn hiển thị “Bé Son đang suy nghĩ…”; khi voice engine báo THINKING, hiển thị “Đang xử lý giọng nói…”. Nút micro bị khóa vẫn ghi “Đang xử lý…” theo trạng thái thu âm có sẵn. Các thông báo tiếng Anh cũng phân biệt hai giai đoạn.
+ChatPanel có timer animation 400 ms; trước đây Startup có timer trình bày 150 ms cùng ghi vào `voice_status_label`, khiến “Bé Xoài đang suy nghĩ” và “Đang xử lý” luân phiên ghi đè. Startup hiện đọc nhãn gốc và hiển thị qua `voice_status_display` riêng, không sửa nội dung, style hoặc visibility của nhãn nguồn. Khi timer suy nghĩ hoạt động, nhãn hiển thị “Bé Xoài đang suy nghĩ…”; khi voice engine báo THINKING, hiển thị “Đang xử lý giọng nói…”. Nút micro bị khóa vẫn ghi “Đang xử lý…” theo trạng thái thu âm có sẵn. Các thông báo tiếng Anh cũng phân biệt hai giai đoạn.
 
 Đã kiểm tra thứ tự xen kẽ callback của animation và Startup, bao gồm trước tick suy nghĩ đầu tiên, các tick tiếp theo và lúc ẩn trạng thái: 19 test presentation/voice/keyboard đã qua. Không thay đổi xử lý AI, voice engine hay callback dừng.

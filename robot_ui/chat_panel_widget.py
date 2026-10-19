@@ -319,7 +319,7 @@ def get_system_prompt(language):
     if language == "en":
 
         return (
-            "You are Be Son.\n"
+            "You are Be Xoai.\n"
             "You are an assistant robot at the "
             "Industrial University of Ho Chi Minh City (IUH).\n"
             "Always answer in English clearly, naturally, "
@@ -347,7 +347,7 @@ def get_system_prompt(language):
     # ============================================================
 
     return (
-        "Bạn là Bé Son.\n"
+        "Bạn là Bé Xoài.\n"
         "Bạn là robot trợ lý tại Đại học Công nghiệp "
         "Thành phố Hồ Chí Minh (IUH).\n"
         "Luôn trả lời bằng tiếng Việt, rõ ràng, ngắn gọn, "
@@ -371,7 +371,7 @@ def get_system_prompt(language):
 
 # ── Intent classification (voice navigation) ──────────────────────────────
 INTENT_SYSTEM_PROMPT_TEMPLATE = (
-    "Bạn là bộ phân loại ý định cho robot Bé Son trong một tòa nhà.\n"
+    "Bạn là bộ phân loại ý định cho robot Bé Xoài trong một tòa nhà.\n"
 
     "Danh sách địa điểm hợp lệ hiện tại, định dạng "
     "\"TÊN_CHÍNH_XÁC: cách gọi khác 1, cách gọi khác 2, ...\":\n"
@@ -392,19 +392,19 @@ INTENT_SYSTEM_PROMPT_TEMPLATE = (
     "đang ở một địa điểm phải là intent \"chat\".\n"
 
     "Ví dụ CHAT:\n"
-    "- Bé Son, phòng X5.7 ở đâu?\n"
-    "- Bé Son, hôm nay tôi học ở X5.7.\n"
-    "- Bé Son, phòng SCADA có mở cửa không?\n"
-    "- Bé Son, cô Tâm có ở phòng không?\n"
-    "- Bé Son, tôi vừa đi ngang X5.11.\n"
+    "- Bé Xoài, phòng X5.7 ở đâu?\n"
+    "- Bé Xoài, hôm nay tôi học ở X5.7.\n"
+    "- Bé Xoài, phòng SCADA có mở cửa không?\n"
+    "- Bé Xoài, cô Tâm có ở phòng không?\n"
+    "- Bé Xoài, tôi vừa đi ngang X5.11.\n"
 
     "4. Các câu thể hiện rõ yêu cầu di chuyển mới là navigate.\n"
 
     "Ví dụ NAVIGATE:\n"
-    "- Bé Son, đi tới X5.7.\n"
-    "- Bé Son, đưa tôi đến phòng SCADA.\n"
-    "- Bé Son, dẫn tôi tới gặp cô Tâm.\n"
-    "- Bé Son, hãy tới phòng X5.11.\n"
+    "- Bé Xoài, đi tới X5.7.\n"
+    "- Bé Xoài, đưa tôi đến phòng SCADA.\n"
+    "- Bé Xoài, dẫn tôi tới gặp cô Tâm.\n"
+    "- Bé Xoài, hãy tới phòng X5.11.\n"
 
     "5. Nếu câu có ý phủ định việc di chuyển như "
     "\"đừng đi\", \"không đi\", \"không cần tới\", "
@@ -508,7 +508,7 @@ class _AIChatWorker(QObject):
                 prefix = "Người dùng"
 
             elif role == "assistant":
-                prefix = "Bé Son"
+                prefix = "Bé Xoài"
 
             else:
                 continue
@@ -546,7 +546,7 @@ class _AIChatWorker(QObject):
                 })
 
         prompt = f"""
-            Bạn là Bé Son, robot trợ lý tại IUH.
+            Bạn là Bé Xoài, robot trợ lý tại IUH.
 
             {language_instruction}
 
@@ -646,7 +646,7 @@ class _AIChatWorker(QObject):
         language_instruction = (self._response_language_instruction())
 
         instructions = f"""
-            Bạn là Bé Son, robot trợ lý tại
+            Bạn là Bé Xoài, robot trợ lý tại
             Đại học Công nghiệp Thành phố Hồ Chí Minh.
 
             QUY TẮC NGÔN NGỮ BẮT BUỘC:
@@ -1060,7 +1060,7 @@ class ChatPanel(QWidget):
 
     def _animate_status(self):
         dots = "." * (self._typing_dots % 4)
-        self.voice_status_label.setText(f"Bé Son đang suy nghĩ{dots}")
+        self.voice_status_label.setText(f"Bé Xoài đang suy nghĩ{dots}")
         self._typing_dots += 1
 
     # ------------------------------------------------------- host wiring ---
@@ -1374,7 +1374,7 @@ class ChatPanel(QWidget):
         )
 
         self.log_signal.emit(
-            f"[Bé Son] {reply}"
+            f"[Bé Xoài] {reply}"
         )
 
         print(
@@ -1495,7 +1495,7 @@ class ChatPanel(QWidget):
                     self.motion_command.emit(validated)
             except ValueError as exc:
                 self._set_companion_activity("error")
-                self.log_signal.emit(f"[Bé Son] Không thực hiện: {exc}")
+                self.log_signal.emit(f"[Bé Xoài] Không thực hiện: {exc}")
             self.voice_status_label.hide()
             return
 
@@ -1688,12 +1688,12 @@ class ChatPanel(QWidget):
         if pose is None:
 
             reply = (
-                "Bé Son chưa xác định được vị trí hiện tại. "
+                "Bé Xoài chưa xác định được vị trí hiện tại. "
                 "Bạn hãy chờ hệ thống định vị AMCL ổn định."
             )
 
             self.log_signal.emit(
-                f"[Bé Son] {reply}"
+                f"[Bé Xoài] {reply}"
             )
 
             self._pending_reply = reply
@@ -1784,11 +1784,11 @@ class ChatPanel(QWidget):
             reply = (
                 "Bạn đang ở tầng 5, tòa X, "
                 "tại cơ sở 12 Nguyễn Văn Bảo của IUH. "
-                "Bé Son chưa xác định được phòng gần nhất."
+                "Bé Xoài chưa xác định được phòng gần nhất."
             )
 
         self.log_signal.emit(
-            f"[Bé Son] {reply}"
+            f"[Bé Xoài] {reply}"
         )
 
         self._pending_reply = reply
@@ -1811,14 +1811,14 @@ class ChatPanel(QWidget):
         # ============================================================
         # 1. LỆNH DỪNG
         #
-        # Vì đây là lệnh an toàn nên KHÔNG bắt buộc phải nói "Bé Son".
+        # Vì đây là lệnh an toàn nên KHÔNG bắt buộc phải nói "Bé Xoài".
         # ============================================================
 
         # Parse the original transcript: room normalization can alter numbers.
         try:
             motion = parse_motion(text)
         except ValueError as exc:
-            self.log_signal.emit(f"[Bé Son] Không thực hiện: {exc}")
+            self.log_signal.emit(f"[Bé Xoài] Không thực hiện: {exc}")
             return
         if motion is not None:
             self._cancel_companion()
@@ -1840,6 +1840,10 @@ class ChatPanel(QWidget):
             "vi tri hien tai cua toi",
             "be son toi dang o dau",
             "be son cho toi biet toi dang o dau",
+            "be xoai toi dang o dau",
+            "be xoai cho toi biet toi dang o dau",
+            "xoai toi dang o dau",
+            "xoai cho toi biet toi dang o dau",
         ]
 
         if any(
@@ -1854,7 +1858,8 @@ class ChatPanel(QWidget):
         # ============================================================
 
         wake_words = [
-            "bé son",
+            "be xoai",
+            "xoai",
             "be son",
             "bson",
             "haha",
@@ -1868,7 +1873,7 @@ class ChatPanel(QWidget):
         )
 
         # ============================================================
-        # 3. KHÔNG GỌI "BÉ SON"
+        # 3. KHÔNG GỌI TÊN ROBOT
         #
         # Không bao giờ được gửi sang navigation classifier.
         # Chỉ coi là trò chuyện bình thường.
@@ -1877,7 +1882,7 @@ class ChatPanel(QWidget):
         if not has_wake_word:
 
             self.log_signal.emit(
-                "[VOICE] Không có wake word Bé Son -> không navigation"
+                "[VOICE] Không có wake word Bé Xoài -> không navigation"
             )
 
             self._ask_ai(text)
@@ -1885,7 +1890,7 @@ class ChatPanel(QWidget):
             return
 
         # ============================================================
-        # 4. CÓ GỌI "BÉ SON"
+        # 4. CÓ GỌI TÊN ROBOT
         #
         # Lúc này mới kiểm tra xem là:
         # - navigate

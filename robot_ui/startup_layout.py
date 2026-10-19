@@ -389,7 +389,7 @@ class RobotUI(QMainWindow):
         #)
 
     def _report_motion_status(self, message):
-        self.chat_panel.log_signal.emit(f"[Bé Son] {message}")
+        self.chat_panel.log_signal.emit(f"[Bé Xoài] {message}")
 
     def execute_motion(self, data):
         try:
@@ -1078,9 +1078,9 @@ class RobotUI(QMainWindow):
                 "#dbeafe"
             )
 
-        elif message.startswith("[Bé Son]"):
+        elif message.startswith("[Bé Xoài]"):
             speaker = "BÉ SON"
-            text = message.replace("[Bé Son]", "", 1).strip()
+            text = message.replace("[Bé Xoài]", "", 1).strip()
             alignment = (Qt.AlignmentFlag.AlignLeft)
             speaker_color = QColor("#214196")
             text_color = QColor("#172554")
@@ -1661,7 +1661,7 @@ class RobotUI(QMainWindow):
             data, _ = load_waypoint_file(self._waypoints_file)
 
             self.log(
-                f"Đã tải {len(data)} waypoint cho Bé Son"
+                f"Đã tải {len(data)} waypoint cho Bé Xoài"
             )
 
             return data
@@ -2011,7 +2011,7 @@ class RobotUI(QMainWindow):
         while (self._nav_goal_handle is not None or getattr(self, '_nav_pending', False)) and time.monotonic() < deadline:
             rclpy.spin_once(self._ros_node, timeout_sec=0.05)
         if self._nav_goal_handle is not None or getattr(self, '_nav_pending', False):
-            self.log('[Bé Son] Chưa xác nhận waypoint đã dừng; giữ giao diện mở để xử lý hủy.')
+            self.log('[Bé Xoài] Chưa xác nhận waypoint đã dừng; giữ giao diện mở để xử lý hủy.')
             event.ignore()
             return
         localization_thread = getattr(self, 'localization_thread', None)
@@ -2073,7 +2073,7 @@ class RobotUI(QMainWindow):
             return
 
         self.log(
-            f"[Bé Son] Lệnh điều hướng: {command}"
+            f"[Bé Xoài] Lệnh điều hướng: {command}"
         )
 
         names = [
@@ -2102,7 +2102,7 @@ class RobotUI(QMainWindow):
 
         if not self._voice_nav_queue:
             self.log(
-                "[Bé Son] Đã hoàn thành hành trình"
+                "[Bé Xoài] Đã hoàn thành hành trình"
             )
             return
 
@@ -2216,7 +2216,7 @@ class RobotUI(QMainWindow):
         )
 
         self.log(
-            f"[Bé Son] Đang đi tới {display_name} | "
+            f"[Bé Xoài] Đang đi tới {display_name} | "
             f"x={waypoint['x']:.2f}, "
             f"y={waypoint['y']:.2f}"
         )
@@ -2290,7 +2290,7 @@ class RobotUI(QMainWindow):
             try:
                 future.result()
                 self._nav_goal_handle = None
-                self.log('[Bé Son] Waypoint đã kết thúc sau yêu cầu hủy.')
+                self.log('[Bé Xoài] Waypoint đã kết thúc sau yêu cầu hủy.')
             except Exception as exc:
                 self.log(f'Chưa xác nhận waypoint dừng: {exc}')
             return
@@ -2312,7 +2312,7 @@ class RobotUI(QMainWindow):
         if status == GoalStatus.STATUS_SUCCEEDED:
 
             self.log(
-                "[Bé Son] Đã tới waypoint"
+                "[Bé Xoài] Đã tới waypoint"
             )
 
             # Nếu người dùng yêu cầu nhiều waypoint
@@ -2325,7 +2325,7 @@ class RobotUI(QMainWindow):
         elif status == GoalStatus.STATUS_CANCELED:
 
             self.log(
-                "[Bé Son] Navigation đã bị hủy"
+                "[Bé Xoài] Navigation đã bị hủy"
             )
 
             self._voice_nav_queue.clear()
@@ -2333,7 +2333,7 @@ class RobotUI(QMainWindow):
         else:
 
             self.log(
-                f"[Bé Son] Navigation thất bại, "
+                f"[Bé Xoài] Navigation thất bại, "
                 f"status={status}"
             )
 
@@ -2378,7 +2378,7 @@ class RobotUI(QMainWindow):
             return
 
         self.log(
-            "[Bé Son] Đang hủy navigation"
+            "[Bé Xoài] Đang hủy navigation"
         )
 
         if not getattr(self, '_nav_cancel_requested', False):

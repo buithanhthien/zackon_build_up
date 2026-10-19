@@ -12,7 +12,8 @@ startup, 5 seconds after the first status). Restart after fixing the problem.
 Startup → **Kiểm tra camera** opens a separate live colour-camera preview. This
 launch only opens the selected camera and publishes frames; it does not load the
 detector/tracker or publish robot motion. Closing the window stops its camera
-process and releases the selected device.
+process and releases the selected device. Use **Chụp ảnh** to save the current
+full-resolution frame as a PNG in `/home/khoaiuh/images`.
 
 ## Python and build
 

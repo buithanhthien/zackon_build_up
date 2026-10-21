@@ -693,7 +693,7 @@ global_costmap:
 # file & provide full path to map below. If CLI map configuration or launch default is provided, that will be used.
 map_server:
   ros__parameters:
-    yaml_filename: "maps/X5_08042026.yaml"
+    yaml_filename: "maps/X5_19102026.yaml"
     use_sim_time: False
     introspection_mode: "disabled"
 

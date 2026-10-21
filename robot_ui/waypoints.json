@@ -452,5 +452,19 @@
     "aliases": [],
     "deletable": false,
     "deletion_permission_pending": true
+  },
+  "X5_elevator": {
+    "id": "c950044f-5342-43cc-a461-911641e95c60",
+    "display_name": "X5_elevator",
+    "deletable": true,
+    "map_name": "X5_19102026",
+    "x": 29.23147249342181,
+    "y": 5.535694158021379,
+    "z": 0.0,
+    "qx": 0.0,
+    "qy": 0.0,
+    "qz": 0.701516368522216,
+    "qw": 0.71265334118027,
+    "aliases": []
   }
 }

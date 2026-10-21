@@ -20,6 +20,7 @@ class MotionController:
         self.scans = {}
         self.last_tick = clock()
         self.progress = 0.0
+        self.outcome = None
 
     @property
     def active(self):
@@ -74,12 +75,14 @@ class MotionController:
         error = self.safety_error()
         if error:
             raise ValueError(error)
+        self.outcome = None
         self.queue = actions
         self.last_tick = self.clock()
         self.status('Bắt đầu chuỗi chuyển động.')
 
     def stop(self, reason='Đã dừng chuyển động và hủy các bước còn lại.'):
         was_active = self.active
+        self.outcome = "failed"
         self.queue = []
         self.current = None
         try:
@@ -121,6 +124,8 @@ class MotionController:
             if completed:
                 self.publish(0.0, 0.0)
                 self.current = None
+                if not self.queue:
+                    self.outcome = 'succeeded'
                 self.status('Hoàn thành bước.' if self.queue else 'Hoàn thành chuỗi chuyển động.')
                 return
             if target is not None and elapsed > target / (LINEAR_SPEED if kind == 'move' else ANGULAR_SPEED) * 2 + 5:

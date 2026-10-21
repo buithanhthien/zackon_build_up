@@ -58,6 +58,7 @@ tool/debug_controller/*.txt
 
 # ===== ML model weights (large binary files) =====
 *.pt
+!/models/elevator_detect/best.pt
 *.pth
 *.onnx
 

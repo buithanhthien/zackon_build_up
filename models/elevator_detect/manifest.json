@@ -1,0 +1,19 @@
+{
+  "version": "2026-10-20-source-checkpoint",
+  "sha256": "a805bc0c0199c0f4ddcb19a67f3d1519984f76b32e5bdf794a4193e16f060957",
+  "size_bytes": 6199465,
+  "architecture": "torchvision.mobilenet_v3_small",
+  "classes": [
+    "available",
+    "unavailable"
+  ],
+  "image_size": 224,
+  "license_status": "authorized",
+  "preprocessing": "RGB, PIL bilinear resize 224x224, ToTensor, ImageNet mean/std; full frame, no crop",
+  "confidence_threshold": 0.85,
+  "authorization": {
+    "date": "2026-10-20",
+    "basis": "Owner confirmed personally training the model in response to the request for permission to include it in this repository.",
+    "scope": "Use and inclusion in this repository; no general public redistribution license specified."
+  }
+}

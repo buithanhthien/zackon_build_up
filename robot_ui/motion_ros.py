@@ -18,12 +18,13 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 from std_srvs.srv import SetBool
+from elevator_ros import ElevatorMixin
 from motion_commands import validate_motion
 from motion_controller import MotionController
 from motion_navigation import NavigationTask, relative_target
 
 
-class RosMotionController:
+class RosMotionController(ElevatorMixin):
     def __init__(self, status):
         self.lock = threading.RLock()
         self.node = Node('robot_ui_motion')
@@ -43,6 +44,7 @@ class RosMotionController:
         self._tf_listener = TransformListener(self._tf, self.node)
         self.navigation = NavigationTask(
             ActionClient(self.node, NavigateToPose, '/navigate_to_pose'), status, self.lock)
+        self.init_elevator()
         self.ui_heartbeat = time.monotonic()
         self.node.create_subscription(Odometry, '/odomfromSTM32', self._odom, qos_profile_sensor_data)
         for side in ('front', 'rear'):
@@ -111,7 +113,7 @@ class RosMotionController:
         with self.lock:
             if not self.thread.is_alive():
                 raise ValueError('Luồng ROS điều khiển đã ngừng hoạt động.')
-            if (self.navigation.active or self.controller.active or self._pending is not None or self._claim_future is not None
+            if (self.elevator.active or self.navigation.active or self.controller.active or self._pending is not None or self._claim_future is not None
                     or self._release_future is not None or self._leased):
                 raise ValueError('Đang chạy hoặc đang chuyển quyền điều khiển; hãy chờ/dừng trước.')
             if validated['actions'][0]['type'] == 'navigate_move':
@@ -135,10 +137,10 @@ class RosMotionController:
     @property
     def busy(self):
         with self.lock:
-            return (self.navigation.active or self.controller.active or self._pending is not None
+            return (self.elevator.active or self.navigation.active or self.controller.active or self._pending is not None
                     or self._claim_future is not None or self._release_future is not None or self._leased)
 
-    def _start_navigation(self, action):
+    def _start_navigation(self, action, waypoint=None):
         error = self._ownership_error()
         if error:
             raise ValueError(error)
@@ -163,7 +165,14 @@ class RosMotionController:
             raise ValueError('Quaternion TF không hợp lệ.')
         qx, qy, qz, qw = q.x/norm, q.y/norm, q.z/norm, q.w/norm
         yaw = math.atan2(2*(qw*qz + qx*qy), 1 - 2*(qy*qy + qz*qz))
-        x, y, yaw = relative_target(p.x, p.y, yaw, action['direction'], action['distance_meters'])
+        if waypoint is None:
+            x, y, yaw = relative_target(p.x, p.y, yaw, action['direction'], action['distance_meters'])
+        else:
+            x, y = waypoint['x'], waypoint['y']
+            qx, qy, qz, qw = (waypoint[k] for k in ('qx', 'qy', 'qz', 'qw'))
+            if not all(math.isfinite(v) for v in (x, y, qx, qy, qz, qw)) or abs(qx*qx+qy*qy+qz*qz+qw*qw-1) > 0.01:
+                raise ValueError('Pose waypoint không hợp lệ.')
+            yaw = math.atan2(2*(qw*qz+qx*qy), 1-2*(qy*qy+qz*qz))
         goal = NavigateToPose.Goal()
         goal.pose.header.frame_id = 'map'
         goal.pose.header.stamp = self.node.get_clock().now().to_msg()
@@ -204,6 +213,13 @@ class RosMotionController:
 
     def stop(self):
         with self.lock:
+            if self.elevator.active:
+                self.elevator.stop()
+            else:
+                self._stop_motion()
+
+    def _stop_motion(self):
+        with self.lock:
             self.navigation.stop()
             if self._pending is not None:
                 self.status('Đã hủy yêu cầu chuyển động đang chờ cấp quyền.')
@@ -218,6 +234,7 @@ class RosMotionController:
 
     def _tick(self):
         with self.lock:
+            self.elevator.tick()
             if self.navigation.active:
                 error = self._ownership_error()
                 if not error and (self.arbiter_state['ui_granted']
@@ -237,7 +254,8 @@ class RosMotionController:
                 if self._leased and state['ui_granted'] and state['owner'] == 'ui':
                     data, self._pending = self._pending, None
                     try:
-                        self.controller.start(data)
+                        if data != 'elevator_hold':
+                            self.controller.start(data)
                     except Exception as exc:
                         self.status(f'Không thể thực hiện: {exc}')
                         self._release()
@@ -255,7 +273,9 @@ class RosMotionController:
                     self.stop()
                     return
             self.controller.tick()
-            if not self.controller.active:
+            if self._elevator_hold and self._leased and not self.controller.active:
+                self._publish(0.0, 0.0)
+            elif not self.controller.active:
                 self._release()
 
     def _run(self):
@@ -271,11 +291,13 @@ class RosMotionController:
     def close(self):
         self.stop()
         deadline = time.monotonic() + 5.0
-        while self.navigation.active and self.thread.is_alive() and time.monotonic() < deadline:
+        while (self.navigation.active or self.elevator.active) and self.thread.is_alive() and time.monotonic() < deadline:
             time.sleep(0.02)
-        if self.navigation.active:
+        if self.navigation.active or self.elevator.active:
             self.status('Chưa xác nhận Nav2 đã dừng; giữ giao diện mở để tiếp tục xử lý hủy.')
             return False
+        if self.detector is not None:
+            self.detector.close()
         self.executor.shutdown(timeout_sec=2.0)
         self.thread.join(timeout=2.0)
         self.node.destroy_node()

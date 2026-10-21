@@ -15,6 +15,7 @@ class NavigationTask:
     def __init__(self, client, status, lock, clock=time.monotonic):
         self.client, self.status, self.lock, self.clock = client, status, lock, clock
         self.active = False
+        self.outcome = None
         self.handle = None
         self.cancel_requested = False
         self.cancel_future = None
@@ -26,6 +27,7 @@ class NavigationTask:
             raise ValueError('Nav2 đang chạy hoặc đang chờ hủy.')
         if not self.client.server_is_ready():
             raise ValueError('Nav2 chưa sẵn sàng: /navigate_to_pose.')
+        self.outcome = None
         self.active = True
         self.handle = None
         self.cancel_requested = self.warned = False
@@ -44,10 +46,12 @@ class NavigationTask:
                 handle = future.result()
             except Exception as exc:
                 self.active = False
+                self.outcome = "failed"
                 self.status(f'Lỗi gửi goal Nav2: {exc}')
                 return
             if not handle.accepted:
                 self.active = False
+                self.outcome = "failed"
                 self.status('Nav2 từ chối mục tiêu.')
                 return
             self.handle = handle
@@ -73,6 +77,7 @@ class NavigationTask:
                 self.stop()
                 return
             self.active = False
+            self.outcome = "succeeded" if result.status == 4 and not self.cancel_requested else "failed"
             self.handle = None
             self.cancel_future = None
             messages = {4: 'Điều hướng Nav2 thành công.', 5: 'Nav2 đã hủy mục tiêu và dừng hành trình.'}

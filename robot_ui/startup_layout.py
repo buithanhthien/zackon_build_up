@@ -840,6 +840,11 @@ class RobotUI(QMainWindow):
             button.clicked.connect(callback)
             setattr(self, "btn_" + key, button)
             menu.addWidget(button)
+        self.btn_elevator_test = QPushButton("Test thang máy")
+        self.btn_elevator_test.setObjectName("mode-btn")
+        self.btn_elevator_test.setMinimumHeight(48)
+        self.btn_elevator_test.clicked.connect(self.open_elevator_test_dialog)
+        menu.addWidget(self.btn_elevator_test)
         menu.addStretch()
         self.developer_heading = QLabel()
         self.developer_heading.setObjectName("section-label")
@@ -1802,6 +1807,14 @@ class RobotUI(QMainWindow):
         self._tracking_dialog.show()
         self._tracking_dialog.raise_()
         self._tracking_dialog.activateWindow()
+
+    def open_elevator_test_dialog(self):
+        from elevator_test_layout import ElevatorTestUI
+        if getattr(self, "_elevator_test_dialog", None) is None:
+            self._elevator_test_dialog = ElevatorTestUI(self)
+        self._elevator_test_dialog.show()
+        self._elevator_test_dialog.raise_()
+        self._elevator_test_dialog.activateWindow()
 
     def open_camera_test_dialog(self):
         from camera_test_layout import CameraTestUI

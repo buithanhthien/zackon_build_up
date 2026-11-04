@@ -1,0 +1,155 @@
+# Docking theo hình dạng trong workspace robot thật
+
+Mã nguồn thuật toán được đưa trực tiếp từ workspace `zackon_docking` vào
+`zackon_build_up/src/dock_shape_sim`. Giữ tên package để dễ đối chiếu nguồn;
+bản này chỉ chứa backend, không chạy Gazebo hoặc GUI PyQt5.
+
+## Build
+
+```bash
+sudo apt install python3-scipy python3-numpy python3-yaml python3-pyqt6
+cd /home/khoaiuh/zackon_build_up
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select dock_shape_sim --symlink-install
+source install/setup.bash
+```
+
+Không cần build/copy `view_robot_pkg` từ workspace mô phỏng. Bản phần cứng
+đang có trong workspace này tiếp tục cung cấp driver, TF, AMCL, Nav2 và arbiter.
+
+## Giao diện
+
+Mở `robot_ui/startup_layout.py` bằng môi trường Python đã cài requirements.
+Bấm **Về trạm sạc** để mở cửa sổ docking trong ứng dụng:
+
+1. Khởi động hệ thống cảm biến/AMCL/Nav2 thật như bình thường rồi mở docking.
+   Cửa sổ tự đọc `yaml_filename` từ `/map_server/get_parameters` và `odom_topic`
+   từ `/controller_server/get_parameters`, rồi tự kết nối/khởi động phần điều khiển
+   docking. Không chọn map hoặc bấm khởi động backend trong giao diện.
+2. Lái xe bằng điều khiển tay, nhả điều khiển và chờ đứng yên trước mỗi lần dạy.
+   **Lưu điểm predock**: đuôi xe hướng về trạm, LiDAR còn thấy đầy đủ chữ V,
+   khoảng cách theo detector tối thiểu 0.65 m. **Lưu điểm dock (mẫu sát trạm)**: xe ở
+   vị trí đỗ mong muốn, vẫn nhìn đủ hình và có điểm LiDAR gần.
+3. Mỗi lần bấm lưu lấy pose hiện tại từ TF `map → base_link`, odometry và
+   mẫu LiDAR; giao diện báo x/y/góc vừa lưu. Dạy cả hai mẫu trong cùng lần mở
+   cửa sổ, cùng map, không reset odometry.
+   Có thể dạy sát trạm trước hoặc điểm chờ trước. Mẫu phiên cũ không được
+   ghép với odometry phiên mới. Dữ liệu lưu cạnh map: `<map>.docking.yaml`.
+4. Đưa xe ra vị trí bắt đầu, dừng điều khiển tay rồi bấm **Bắt đầu về trạm**.
+   Nav2 phải trả SUCCEEDED trước khi backend chuyển sang điều khiển lùi.
+   Controller đứng yên trong 2 giây đầu (`acquisition_wait_time`) để nhận dạng
+   và xác nhận đủ 3 mẫu LiDAR. Hết thời gian này, nếu đã khóa được trạm và mẫu
+   còn mới thì bắt đầu tiếp cận. Nếu chưa khóa, robot tiếp tục đứng yên nhận dạng,
+   không xoay tìm và không kiểm tra vùng xoay tìm trạm. Quá `search_timeout`
+   (20 giây tính từ lúc bắt đầu controller) thì báo `FAILED_NO_V_SHAPE`.
+   Kiểm tra cảm biến, quyền điều khiển, đường lùi và căn góc cuối vẫn được giữ.
+5. **Hủy docking** yêu cầu hủy cả mission/controller, thu hồi heartbeat và
+   chờ trạng thái mới, goal Nav2 kết thúc, arbiter rảnh và odometry đứng yên.
+   **DỪNG** đồng thời chốt emergency_stop của arbiter. **Nhả dừng** là thao
+   tác riêng, không tự khởi động lại docking. DỪNG ở màn hình chính cũng nối
+   tới docking khi mission đang chạy.
+6. Khi đóng cửa sổ đang chạy phải chờ xác nhận dừng. Nếu Nav2 đổi map hoặc
+   nguồn odometry, giao diện hủy tác vụ đang chạy, chờ dừng rồi tự kết nối lại.
+   Khi mất xác nhận map/Nav2 thì không cho lưu điểm hoặc bắt đầu docking.
+   Hai điểm đã lưu được giữ trong file theo từng map; chỉ dạy lại khi cần đổi điểm.
+
+## Những điều cần đo trước khi thử phần cứng
+
+- Detector dùng mặt trạm rộng 250 mm, rãnh V rộng 100 mm / sâu 50 mm.
+  Ngưỡng sai số khớp RMS là 20 mm; vẫn yêu cầu đủ hai vai và hai nhánh V.
+  Trạm khác hình cần chỉnh `perception/v_shape.py`.
+- Đo footprint thực tế và sửa `config/docking.yaml` (nửa dài/nửa rộng/margin).
+  Bản ghép bắt đầu với tốc độ 0.04 m/s, omega tối đa 0.20 rad/s, margin 0.02 m;
+  các số này chưa phải kết quả kiểm định cho robot của bạn.
+- Cần hai LiDAR khác frame, odometry mà Nav2 đang dùng, TF tới `base_link`,
+  định vị map và Nav2. Workspace hiện tại dùng EKF `/odometry/filtered`;
+  UI tự đọc topic từ Nav2 và truyền cho cả controller, calibration và bridge.
+  Không yêu cầu tạo thêm `/odom` hoặc khởi chạy Nav2 lần nữa.
+- Profile mô phỏng không được mang sang làm profile vận hành. Bản phần cứng
+  yêu cầu dấu `hardware_calibration` do dịch vụ dạy mẫu tạo; không bật blind_finish.
+- DOCKED_GEOMETRY chỉ xác nhận hình học. UI chỉ gửi yêu cầu sạc thủ công khi
+  đã dock, đứng yên và có kênh phản hồi sạc; firmware phải thực hiện bảo vệ
+  tiếp điểm/dòng điện. Chưa có backend rời trạm, nên nút đó được vô hiệu hóa.
+- Nút phần mềm không thay thế nút dừng và watchdog trên phần cứng.
+
+## Hệ trục và kích thước
+
+Các điểm cản trong log dùng hệ `base_link`: +x về trước robot, +y sang trái,
++z lên trên. Gốc là gốc `base_link` khai báo trong URDF, không phải tâm LiDAR
+hay tâm trạm. Khi robot quay, hệ trục này quay theo robot; khi lùi, dấu trục
+không đổi. Detector lùi dùng hệ ảo quay 180 độ so với `base_link`, nhưng log
+`points_base_link` đã chuyển về hệ thân robot.
+
+Mặt dock rộng tổng cộng 250 mm là kích thước mẫu nhận dạng, độc lập với
+`footprint` của robot. Cấu hình hiện tại giả định thân robot đối xứng quanh
+`base_link`, dài 600 mm (`half_length=0.30`) và rộng 500 mm
+(`half_width=0.25`). `margin=0.02` cộng thêm 20 mm mỗi bên; vùng kiểm tra
+ở tư thế hiện tại là x trong ±320 mm và y trong ±270 mm.
+Phải đo kích thước thân robot và vị trí gốc `base_link` trước khi chỉnh các
+tham số này; không lấy chiều ngang dock làm chiều rộng robot.
+
+Khi xoay, thuật toán còn kiểm tra hình chữ nhật thân xe tại các góc trung gian.
+Điểm ngoài vùng kiểm tra hiện tại vẫn có thể nằm trong vùng thân xe quét qua.
+
+## Chạy backend bằng terminal để debug
+
+```bash
+cd /home/khoaiuh/zackon_build_up
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 launch dock_shape_sim hardware_docking.launch.py \
+  map_file:=/duong/dan/map_dang_chay.yaml odom_topic:=/odometry/filtered
+```
+
+Launch này không tự di chuyển robot. UI cung cấp heartbeat cấp quyền chỉ trong
+lượt docking. Mất UI, mất arbiter hoặc nguồn teleop/localization/following/UI
+giành quyền thì mission/controller dừng và không tự tiếp tục. Cả hai node có
+đầu ra `/cmd_vel_sources/docking`; chỉ arbiter được publish `/cmd_vel`.
+Domain/discovery/RMW kế thừa môi trường robot, không ép domain mô phỏng.
+
+UI kiểm tra đúng profile; backend so sánh map YAML + ảnh với `yaml_filename`
+của `/map_server`. Không mở hai backend docking hoặc hai UI docking cùng lúc.
+
+## File để đặt breakpoint
+
+| File trong `src/dock_shape_sim` | Điểm xử lý |
+| --- | --- |
+| `mission/node.py` | Nav2 action, bàn giao, cancel và run_id |
+| `mission/calibration.py` | Dạy hai mẫu qua ROS service |
+| `mission/profile.py` | Sidecar, map hash và chuyển đổi pose |
+| `perception/v_shape.py` | Nhận dạng mặt trạm |
+| `planning/quintic.py` | Đường bậc 5 và collision |
+| `control/tracker.py` | Bám đường và PID |
+| `control/node.py` | Adapter ROS và state machine |
+| `safety.py` | Heartbeat, arbiter và xác nhận map |
+
+Đường dẫn trên tính từ `src/dock_shape_sim/src/dock_shape_sim/` trong workspace.
+UI: `robot_ui/docking_layout.py`, `robot_ui/docking_bridge.py`.
+
+Với `--symlink-install`, sửa file Python trong src rồi restart backend để nạp
+mã mới. Thêm executable, đổi setup/package hoặc data file mới thì build lại.
+Backend log từ UI ở `log/docking/backend_*.log`.
+
+## Debug chỉ đọc
+
+```bash
+ros2 topic echo /dock_mission/status
+ros2 topic echo /v_dock/status
+ros2 topic echo /v_dock/metrics
+ros2 topic info /cmd_vel --verbose
+ros2 topic echo /velocity_arbiter/state
+```
+
+Status/metrics chứa JSON, `source_file` chỉ rõ bản mã đang được nạp. Đường
+`/v_dock/path` dùng frame odom; chọn đúng frame khi xem bằng RViz.
+
+## Unit test
+
+```bash
+cd /home/khoaiuh/zackon_build_up/src/dock_shape_sim
+PYTHONDONTWRITEBYTECODE=1 QT_QPA_PLATFORM=offscreen \
+  /usr/bin/python3 -m pytest -q -p no:cacheprovider
+```
+
+Test dùng mock cho điều khiển và transport UI; không chạy robot/Gazebo.
+Kết quả test không thay thế kiểm tra tích hợp và hiệu chuẩn robot thật.

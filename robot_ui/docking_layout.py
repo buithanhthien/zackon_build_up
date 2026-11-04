@@ -1,318 +1,449 @@
 #!/usr/bin/env python3
-import sys
-import subprocess
+"""PyQt6 docking controls for the backend in this workspace's src directory."""
+import math
 import os
+from pathlib import Path
 import shlex
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QPushButton, QLabel, QProgressBar)
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QFont
-from styles import DIALOG_STYLESHEET
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import Int32, Bool, Float32
+import signal
+import subprocess
+import sys
+import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from PyQt6.QtCore import QTimer
+from PyQt6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QPlainTextEdit)
+from std_msgs.msg import Bool
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import SOURCE_PATH, shell_source_workspace
-from process_manager import ProcessManager
+from styles import DIALOG_STYLESHEET
+from docking_bridge import DockingBridge
 
 
-class DockingUI(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.process_mgr = ProcessManager()
-        self.docking_process = None
-        self.battery_level = 0
-        
-        try:
-            rclpy.init()
-        except Exception:
-            pass
-        
-        self._ros_node = Node('docking_ui_node')
-        self._ros_node.create_subscription(
-            Int32, '/rear_docking_status', self._docking_status_callback, 10
-        )
-        self._ros_node.create_subscription(
-            Bool, '/charging_status', self._charging_status_callback, 10
-        )
-        self._ros_node.create_subscription(
-            Float32, '/battery_level', self._battery_callback, 10
-        )
-        
-        self._charge_pub = self._ros_node.create_publisher(Bool, '/charge_command', 10)
-        
-        self._ros_spin_timer = QTimer()
-        self._ros_spin_timer.timeout.connect(self._ros_spin_once)
-        self._ros_spin_timer.start(100)
-        
-        self.init_ui()
-    
-    def _ros_spin_once(self):
-        try:
-            if rclpy.ok():
-                rclpy.spin_once(self._ros_node, timeout_sec=0)
-        except Exception:
-            self._ros_spin_timer.stop()
-    
-    def _docking_status_callback(self, msg):
-        """Monitor docking status from /rear_docking_status topic"""
-        print(f"[DEBUG] Received /rear_docking_status: data={msg.data}")
-        
-        if msg.data == 1:  # Docked
-            # Turn on docked light, turn off docking light
-            self.docked_light.setStyleSheet("color: #22c55e;")
-            self.docking_light.setStyleSheet("color: #c8d4f0;")
-            
-            print("✓ Robot đã docked thành công! Đang tắt terminal...")
-            
-            # Kill the docking terminal
-            self.process_mgr.kill_by_pattern('zackon_docking.launch.py')
-            self.docking_process = None
-            print("✓ Đã dừng tiến trình docking")
-        else:  # Not docked
-            self.docked_light.setStyleSheet("color: #c8d4f0;")
-            self.docking_light.setStyleSheet("color: #fcb525;")
-    
-    def _charging_status_callback(self, msg):
-        """Monitor charging status"""
-        print(f"[DEBUG] Received /charging_status: data={msg.data}")
-        
-        if msg.data:  # Charging
-            self.charging_light.setStyleSheet("color: #fcb525;")
-        else:  # Not charging
-            self.charging_light.setStyleSheet("color: #c8d4f0;")
-    
-    def _battery_callback(self, msg):
-        """Update battery level"""
-        self.battery_level = int(msg.data)
-        self.battery_bar.setValue(self.battery_level)
-        self.battery_label.setText(f"Pin: {self.battery_level}%")
-    
-    def init_ui(self):
-        self.setWindowTitle("Trạm sạc")
+TERMINAL = ('IDLE', 'DOCKED_GEOMETRY')
+LABELS = {
+    'IDLE': 'Sẵn sàng', 'WAIT_NAV2': 'Chờ Nav2',
+    'NAVIGATING_STAGING': 'Đang đến điểm chờ', 'WAIT_V_DOCK': 'Bàn giao điều khiển',
+    'STARTING_V_DOCK': 'Khởi động nhận dạng', 'DOCKING': 'Đang docking',
+    'SEARCH': 'Tìm hình trạm', 'PLAN_QUINTIC': 'Lập đường bậc 5',
+    'APPROACH': 'Lùi theo quỹ đạo', 'ALIGN_FINAL': 'Căn góc cuối',
+    'WAIT_DETECTION': 'Dừng chờ nhận dạng lại', 'DOCKED_GEOMETRY': 'Đã vào vị trí hình học',
+    'FAILED_OBSTACLE': 'Dừng do vùng di chuyển hoặc xoay bị chặn',
+    'FAILED_NO_V_SHAPE': 'Chưa nhận dạng được hình trạm',
+}
+
+
+def terminal(state):
+    return state in TERMINAL or state.startswith('FAILED')
+
+
+class DockingUI(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Trạm sạc · Docking theo hình dạng')
         self.setStyleSheet(DIALOG_STYLESHEET)
-        
-        central = QWidget()
-        self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
-        
-        # Left panel - Back button and battery
-        left_panel = QWidget()
-        left_panel.setObjectName("left-panel")
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
-        back_btn = QPushButton("Quay lại")
-        back_btn.setObjectName("back-btn")
-        back_btn.clicked.connect(self.go_back)
-        left_layout.addWidget(back_btn)
-        
-        # Battery section
-        battery_section = QWidget()
-        battery_layout = QVBoxLayout(battery_section)
-        battery_layout.setSpacing(10)
-        
-        self.battery_label = QLabel("Pin: 0%")
-        battery_layout.addWidget(self.battery_label)
-        
-        self.battery_bar = QProgressBar()
-        self.battery_bar.setRange(0, 100)
-        self.battery_bar.setValue(0)
-        battery_layout.addWidget(self.battery_bar)
-        
-        left_layout.addWidget(battery_section)
-        
-        # Instructions - moved to left panel
-        instructions = QLabel(
-            "Chọn Về trạm sạc để bắt đầu docking.\n\n"
-            "Chọn Rời trạm để chuẩn bị di chuyển.\n\n"
-            "Chọn Bắt đầu sạc khi robot đã vào trạm.\n\n"
-            "Theo dõi trạng thái kết nối và sạc ở bảng bên cạnh."
-        )
-        instructions.setObjectName("muted")
-        instructions.setWordWrap(True)
-        left_layout.addWidget(instructions)
-        
-        left_layout.addStretch()
-        
-        # Right panel - Status and controls
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setSpacing(16)
-        
-        # Title
-        title = QLabel("Trạm sạc")
-        title.setFont(QFont("JetBrains Mono", 24, QFont.Weight.Bold))
-        title.setObjectName("header-title")
-        right_layout.addWidget(title)
-        
-        # Status indicators (4 lights in 2 rows)
-        status_container = QWidget()
-        status_layout = QVBoxLayout(status_container)
-        status_layout.setSpacing(20)
-        
-        # First row: Docking and Docked
-        row1 = QWidget()
-        row1_layout = QHBoxLayout(row1)
-        row1_layout.setSpacing(40)
-        
-        # Docking status
-        docking_widget = QWidget()
-        docking_widget.setObjectName("status-card")
-        docking_layout = QVBoxLayout(docking_widget)
-        docking_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.docking_light = QLabel("●")
-        self.docking_light.setObjectName("status-light")
-        self.docking_light.setStyleSheet("color: #c8d4f0;")
-        self.docking_light.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        docking_text = QLabel("Đang về trạm")
-        docking_text.setObjectName("status-text")
-        docking_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        docking_layout.addWidget(self.docking_light)
-        docking_layout.addWidget(docking_text)
-        
-        # Docked status
-        docked_widget = QWidget()
-        docked_widget.setObjectName("status-card")
-        docked_layout = QVBoxLayout(docked_widget)
-        docked_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.docked_light = QLabel("●")
-        self.docked_light.setObjectName("status-light")
-        self.docked_light.setStyleSheet("color: #c8d4f0;")
-        self.docked_light.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        docked_text = QLabel("Đã vào trạm")
-        docked_text.setObjectName("status-text")
-        docked_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        docked_layout.addWidget(self.docked_light)
-        docked_layout.addWidget(docked_text)
-        
-        row1_layout.addWidget(docking_widget)
-        row1_layout.addWidget(docked_widget)
-        
-        # Second row: Charging and Undock
-        row2 = QWidget()
-        row2_layout = QHBoxLayout(row2)
-        row2_layout.setSpacing(40)
-        
-        # Charging status
-        charging_widget = QWidget()
-        charging_widget.setObjectName("status-card")
-        charging_layout = QVBoxLayout(charging_widget)
-        charging_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.charging_light = QLabel("●")
-        self.charging_light.setObjectName("status-light")
-        self.charging_light.setStyleSheet("color: #c8d4f0;")
-        self.charging_light.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        charging_text = QLabel("Đang sạc")
-        charging_text.setObjectName("status-text")
-        charging_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        charging_layout.addWidget(self.charging_light)
-        charging_layout.addWidget(charging_text)
-        
-        # Undock status
-        undock_widget = QWidget()
-        undock_widget.setObjectName("status-card")
-        undock_layout = QVBoxLayout(undock_widget)
-        undock_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.undock_light = QLabel("●")
-        self.undock_light.setObjectName("status-light")
-        self.undock_light.setStyleSheet("color: #c8d4f0;")  # Default: off
-        self.undock_light.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        undock_text = QLabel("Sẵn sàng")
-        undock_text.setObjectName("status-text")
-        undock_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        undock_layout.addWidget(self.undock_light)
-        undock_layout.addWidget(undock_text)
-        
-        row2_layout.addWidget(charging_widget)
-        row2_layout.addWidget(undock_widget)
-        
-        status_layout.addWidget(row1)
-        status_layout.addWidget(row2)
-        right_layout.addWidget(status_container)
-        
-        # Buttons
-        dock_btn = QPushButton("Về trạm sạc")
-        dock_btn.setObjectName("dock-btn")
-        dock_btn.clicked.connect(self.execute_docking)
-        right_layout.addWidget(dock_btn)
-        
-        undock_btn = QPushButton("Rời trạm")
-        undock_btn.setObjectName("dock-btn")
-        undock_btn.clicked.connect(self.execute_undock)
-        right_layout.addWidget(undock_btn)
-        
-        charge_btn = QPushButton("Bắt đầu sạc")
-        charge_btn.setObjectName("dock-btn")
-        charge_btn.clicked.connect(self.send_charge_command)
-        right_layout.addWidget(charge_btn)
-        
-        right_layout.addStretch()
-        
-        layout.addWidget(left_panel, 2)
-        layout.addWidget(right_panel, 5)
-    
+        self.resize(950, 740)
+        self._cleaned = False
+        self._active = self._start_pending = self._stopping = False
+        self._saw_active = self._close_when_stopped = False
+        self._started = self._stop_time = None
+        self._process = self._log_stream = None
+        self._log_path = None
+        self._map_file = None
+        self._odom_topic = None
+        self._launch_attempt = None
+        self._navigation_changed = False
+        self._last_states = {}
+        self._estop_by_us = False
+        self._docked_confirmed = False
+        self._build_ui()
+        self.bridge = DockingBridge(self)
+        self.bridge.updated.connect(self._updated)
+        self.bridge.replied.connect(self._replied)
+        self.bridge.error.connect(self._bridge_error)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._refresh)
+        self.timer.start(200)
+        self.log('Đang kết nối Nav2. Hai điểm sẽ được lưu theo bản đồ và vị trí robot đang chạy.')
+
+    @property
+    def busy(self):
+        if self._active or self._start_pending or self._stopping:
+            return True
+        for key in ('mission', 'controller'):
+            state = self.bridge.latest.get(key, {}).get('state', '')
+            if state and not terminal(state):
+                return True
+        return False
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        title = QLabel('Về trạm sạc bằng LiDAR · Nav2 → điểm chờ → lùi vào trạm')
+        title.setObjectName('header-title')
+        layout.addWidget(title)
+        self.map_label = QLabel('Bản đồ Nav2: đang kết nối…')
+        self.map_label.setWordWrap(True)
+        layout.addWidget(self.map_label)
+        row = QHBoxLayout()
+        self.pre_btn = QPushButton('Lưu điểm predock')
+        self.pre_btn.clicked.connect(lambda: self._teach('pre'))
+        row.addWidget(self.pre_btn)
+        self.terminal_btn = QPushButton('Lưu điểm dock (mẫu sát trạm)')
+        self.terminal_btn.clicked.connect(lambda: self._teach('terminal'))
+        row.addWidget(self.terminal_btn)
+        layout.addLayout(row)
+        guide = QLabel('Đưa robot tới điểm chờ rồi lưu predock; đưa robot tới vị trí sát trạm rồi lưu dock. '
+                       'Mỗi lần lưu lấy tọa độ hiện tại trên bản đồ Nav2 và mẫu LiDAR khi robot đứng yên. '
+                       'Lưu cả hai điểm trong cùng lần mở cửa sổ, có thể lưu dock trước.')
+        guide.setWordWrap(True)
+        layout.addWidget(guide)
+        self.status = QLabel('Đang kết nối Nav2…')
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        self.health = QLabel('Chờ trạng thái cảm biến / arbiter')
+        self.health.setWordWrap(True)
+        layout.addWidget(self.health)
+        self.metrics = QLabel('Sai số x / y / góc: chưa có dữ liệu')
+        self.metrics.setWordWrap(True)
+        layout.addWidget(self.metrics)
+        self.battery = QLabel('Pin: chưa có dữ liệu · Sạc: chưa có dữ liệu')
+        layout.addWidget(self.battery)
+        row = QHBoxLayout()
+        self.start_btn = QPushButton('Bắt đầu về trạm')
+        self.start_btn.clicked.connect(self.execute_docking)
+        row.addWidget(self.start_btn)
+        self.cancel_btn = QPushButton('Hủy docking')
+        self.cancel_btn.clicked.connect(self.cancel_docking)
+        row.addWidget(self.cancel_btn)
+        self.stop_btn = QPushButton('DỪNG')
+        self.stop_btn.setStyleSheet('background: #b42332; color: white; font-weight: bold; padding: 12px;')
+        self.stop_btn.clicked.connect(self._emergency_stop)
+        row.addWidget(self.stop_btn)
+        self.reset_btn = QPushButton('Nhả dừng')
+        self.reset_btn.clicked.connect(self._reset_stop)
+        row.addWidget(self.reset_btn)
+        layout.addLayout(row)
+        row = QHBoxLayout()
+        self.charge_btn = QPushButton('Yêu cầu bắt đầu sạc')
+        self.charge_btn.clicked.connect(self.send_charge_command)
+        row.addWidget(self.charge_btn)
+        undock = QPushButton('Rời trạm — chưa có điều khiển')
+        undock.setEnabled(False)
+        row.addWidget(undock)
+        back = QPushButton('Quay lại')
+        back.clicked.connect(self.close)
+        row.addWidget(back)
+        layout.addLayout(row)
+        self.log_view = QPlainTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setMaximumBlockCount(1000)
+        layout.addWidget(self.log_view, 1)
+
+    def log(self, message):
+        self.log_view.appendPlainText(time.strftime('%H:%M:%S')+' '+message)
+
+    def _profile(self):
+        return str(Path(self._map_file).with_suffix('.docking.yaml')) if self._map_file else None
+
+    def _navigation_ready(self):
+        return (self.bridge.fresh('nav2_map', 3.) and self.bridge.fresh('nav2_odom', 3.)
+                and self.bridge.latest.get('nav2_map') == self._map_file
+                and self.bridge.latest.get('nav2_odom') == self._odom_topic)
+
+    def _matching_backend(self):
+        if not self._navigation_ready():
+            return False
+        if not self.bridge.fresh('mission') or not self.bridge.fresh('controller'):
+            return False
+        return all(self.bridge.latest[key].get('profile_file') == self._profile()
+                   and self.bridge.latest[key].get('odom_topic') == self._odom_topic
+                   for key in ('mission', 'controller'))
+
+    def _sync_navigation(self):
+        if not (self.bridge.fresh('nav2_map', 3.) and self.bridge.fresh('nav2_odom', 3.)):
+            return
+        map_file = self.bridge.latest['nav2_map']
+        odom_topic = self.bridge.latest['nav2_odom']
+        if (map_file, odom_topic) != (self._map_file, self._odom_topic):
+            if self.busy or self.bridge.pending:
+                if not self._navigation_changed:
+                    self.log('Nav2 đã đổi bản đồ/odometry; đang hủy tác vụ trước khi kết nối lại.')
+                self._navigation_changed = True
+                if self.busy:
+                    self.cancel_docking()
+                return
+            self._stop_backend()
+            self._map_file, self._odom_topic = map_file, odom_topic
+            self._navigation_changed = False
+            self._docked_confirmed = False
+            self._launch_attempt = None
+            self.map_label.setText('Bản đồ Nav2: '+Path(map_file).stem)
+            self.log('Đã nhận bản đồ Nav2: '+map_file)
+        self._launch_backend()
+
+    def _launch_backend(self):
+        if self._process is not None or self.busy or not self._navigation_ready():
+            return
+        if self.bridge.clients['start'].service_is_ready():
+            return
+        attempt = (self._map_file, self._odom_topic)
+        if self._launch_attempt == attempt:
+            return
+        self._launch_attempt = attempt
+        map_file = Path(self._map_file)
+        if not map_file.is_file():
+            self.log('Không tìm thấy map: '+str(map_file))
+            return
+        try:
+            directory = Path(SOURCE_PATH)/'log/docking'
+            directory.mkdir(parents=True, exist_ok=True)
+            self._log_path = directory/('backend_'+time.strftime('%Y%m%d_%H%M%S')+f'_{time.time_ns()}.log')
+            self._log_stream = self._log_path.open('w')
+            command = shell_source_workspace('exec ros2 launch dock_shape_sim hardware_docking.launch.py '
+                'map_file:='+shlex.quote(str(map_file))+' odom_topic:='+shlex.quote(self._odom_topic))
+            self._process = subprocess.Popen(['bash', '-c', command], start_new_session=True,
+                stdout=self._log_stream, stderr=subprocess.STDOUT)
+            self.log('Đang kết nối điều khiển docking với Nav2…')
+        except Exception as exc:
+            if self._log_stream:
+                self._log_stream.close()
+                self._log_stream = None
+            self.log('Không mở được điều khiển docking: '+str(exc))
+
+    def _stop_backend(self):
+        if self._process is not None and self._process.poll() is None:
+            try:
+                os.killpg(self._process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                self._process.wait(timeout=2.)
+            except subprocess.TimeoutExpired:
+                os.killpg(self._process.pid, signal.SIGKILL)
+                self._process.wait(timeout=1.)
+        self._process = None
+        if self._log_stream:
+            self._log_stream.close()
+            self._log_stream = None
+
+    def _teach(self, key):
+        if self.busy or self.bridge.pending or not self._matching_backend():
+            self.log('Chờ kết nối Nav2 và hủy docking trước khi lưu điểm.')
+            return
+        if not self._stationary():
+            self.log('Chờ robot đứng yên và có odometry từ Nav2 ('+str(self._odom_topic)+').')
+            return
+        self.bridge.request(key)
+
+    def _stationary(self):
+        odom = self.bridge.latest.get('odom', {})
+        return (self.bridge.fresh('odom', .7) and abs(odom.get('linear', 1.)) <= .01
+                and abs(odom.get('angular', 1.)) <= .03)
+
     def execute_docking(self):
-        """Launch docking process and monitor via ROS topic"""
-        print("Bắt đầu trình tự về trạm sạc")
-        
-        # Turn on docking light, turn off ready light
-        self.docking_light.setStyleSheet("color: #fcb525;")
-        self.undock_light.setStyleSheet("color: #c8d4f0;")
-        
-        # Launch docking process
-        self.docking_process = self.process_mgr.launch_terminal(
-            shell_source_workspace(
-                f'ros2 launch {shlex.quote(os.path.join(SOURCE_PATH, "src/lidar_dock_detector/launch/zackon_docking.launch.py"))}; exec bash'
-            ),
-            'Docking'
-        )
-        
-        if self.docking_process:
-            print("Đang theo dõi trạng thái docking qua /rear_docking_status...")
-        else:
-            print("Lỗi khởi động docking")
-            self.docking_light.setStyleSheet("color: #ef4444;")
-    
-    def execute_undock(self):
-        """Prepare robot to undock"""
-        print("Chuẩn bị undock...")
-        
-        # Turn on ready light
-        self.undock_light.setStyleSheet("color: #22c55e;")
-        
-        # Turn off other lights
-        self.docking_light.setStyleSheet("color: #c8d4f0;")
-        self.docked_light.setStyleSheet("color: #c8d4f0;")
-        self.charging_light.setStyleSheet("color: #c8d4f0;")
-        
-        print("✓ Robot sẵn sàng để sử dụng")
-    
+        if self.busy or self.bridge.pending or not self._matching_backend():
+            self.log('Chưa kết nối đúng bản đồ Nav2 hoặc đang có nhiệm vụ.')
+            return
+        parent = self.parent()
+        if parent is not None:
+            localization = getattr(parent, 'localization_thread', None)
+            if parent._navigation_busy() or (localization and localization.is_alive()):
+                self.log('Dừng tác vụ chuyển động/định vị của màn hình chính trước khi docking.')
+                return
+        arbiter = self.bridge.latest.get('arbiter', {})
+        if (not self.bridge.fresh('arbiter', .5) or not arbiter.get('healthy')
+                or arbiter.get('emergency_stop') or arbiter.get('navigation_busy')
+                or arbiter.get('owner') not in ('',)):
+            self.log('Dừng các nguồn khác, chờ arbiter sẵn sàng và nhả dừng trước khi docking.')
+            return
+        if not self._stationary():
+            self.log('Chưa xác nhận robot đứng yên.')
+            return
+        self._active = self._start_pending = True
+        self._docked_confirmed = False
+        self._saw_active = False
+        self._started = time.monotonic()
+        self.bridge.set_permit(True)
+        self.log('Bắt đầu về trạm: Nav2 → predock → lùi tới điểm dock.')
+        QTimer.singleShot(350, self._send_start)
+
+    def _send_start(self):
+        if self._active and self._start_pending and not self._stopping:
+            self.bridge.request('start')
+
+    def cancel_docking(self):
+        if self._cleaned:
+            return
+        self.bridge.set_permit(False)
+        if not self.busy:
+            return
+        if not self._stopping:
+            self._stopping = True
+            self._stop_time = time.monotonic()
+            self.log('Đang hủy; chờ mission, controller, arbiter và odometry xác nhận dừng.')
+        self.bridge.request('cancel')
+        self.bridge.request('controller_cancel')
+
+    def _emergency_stop(self):
+        self._estop_by_us = True
+        self.bridge.emergency_stop(True)
+        self.cancel_docking()
+        self.log('Đã gửi DỪNG tới velocity_arbiter. Nhả dừng là thao tác riêng.')
+
+    def _reset_stop(self):
+        if self.busy or not self._stationary():
+            self.log('Chờ xác nhận dừng trước khi nhả dừng.')
+            return
+        self.bridge.emergency_stop(False)
+        self._estop_by_us = False
+        self.log('Đã yêu cầu nhả dừng; robot không tự khởi động lại docking.')
+
     def send_charge_command(self):
-        """Send charge command to robot"""
-        print("Gửi lệnh sạc đến robot...")
-        msg = Bool()
-        msg.data = True
-        self._charge_pub.publish(msg)
-        print("✓ Đã gửi lệnh sạc")
-    
-    def go_back(self):
-        """Return to startup layout"""
-        subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/startup_layout.py', '--skip-micro-ros'])
-        self.close()
-    
+        controller = self.bridge.latest.get('controller', {})
+        if (self.busy or not self._stationary() or not self._docked_confirmed
+                or controller.get('state') != 'DOCKED_GEOMETRY'):
+            return
+        if (not self.bridge.fresh('controller') or not self.bridge.fresh('charging', 5.)
+                or not self.bridge.charge.get_subscription_count()):
+            self.log('Chưa có kết nối/phản hồi phần cứng sạc.')
+            return
+        self.bridge.charge.publish(Bool(data=True))
+        self.log('Đã gửi yêu cầu sạc; chỉ xác nhận sạc khi có phản hồi phần cứng.')
+
+    def _updated(self, key, data):
+        if key == 'odom' and (abs(data['linear']) > .01 or abs(data['angular']) > .03):
+            self._docked_confirmed = False
+        if key in ('mission', 'controller'):
+            state = data.get('state', '')
+            if state != self._last_states.get(key):
+                if key == 'controller' and state == 'DOCKED_GEOMETRY' and self._active:
+                    self._docked_confirmed = True
+                self.log(key+': '+state+' '+str(data.get('detail', '')))
+                self._last_states[key] = state
+            if key == 'mission' and self._active and not self._stopping:
+                if state and not terminal(state):
+                    self._saw_active = True
+                elif state and terminal(state) and self._saw_active:
+                    if state == 'DOCKED_GEOMETRY':
+                        self._docked_confirmed = True
+                    self.bridge.set_permit(False)
+                    self._active = self._start_pending = False
+
+    def _replied(self, key, success, message):
+        self.log(key+': '+('OK — ' if success else 'LỖI — ')+message)
+        if key == 'start':
+            self._start_pending = False
+            if self._stopping or not self._active:
+                self.bridge.set_permit(False)
+                self.bridge.request('cancel')
+                self.bridge.request('controller_cancel')
+            elif not success:
+                self.cancel_docking()
+
+    def _bridge_error(self, message):
+        self.log('Lỗi ROS: '+message)
+        if self.busy:
+            self._emergency_stop()
+
+    def _stop_confirmed(self):
+        if self._stop_time is None or not self._stationary():
+            return False
+        for key in ('mission', 'controller', 'arbiter', 'odom'):
+            if not self.bridge.fresh(key) or self.bridge.received[key] <= self._stop_time:
+                return False
+        mission = self.bridge.latest['mission']
+        arbiter = self.bridge.latest['arbiter']
+        return (terminal(mission.get('state', '')) and not mission.get('cancel_pending', True)
+                and terminal(self.bridge.latest['controller'].get('state', ''))
+                and not arbiter.get('navigation_busy', True) and not arbiter.get('owner')
+                and 'start' not in self.bridge.pending)
+
+    def _refresh(self):
+        if self._process is not None and self._process.poll() is not None:
+            code = self._process.returncode
+            self.log(f'Điều khiển docking đã ngừng (code={code}). Xem log: {self._log_path}')
+            self._process = None
+            self._log_stream.close()
+            self._log_stream = None
+            if self.busy:
+                self._emergency_stop()
+        self._sync_navigation()
+        if self._active and not self._stopping:
+            if (time.monotonic()-self._started > 2. and not self._matching_backend()
+                    or time.monotonic()-self._started > 5. and not self._saw_active):
+                self.log('Mất kết nối docking/Nav2 hoặc chưa xác nhận bắt đầu; đang hủy.')
+                self.cancel_docking()
+        if self._stopping and self._stop_confirmed():
+            self._stopping = self._active = self._start_pending = False
+            self.log('Đã xác nhận dừng.')
+            if self._close_when_stopped:
+                QTimer.singleShot(0, self.close)
+        elif self._stopping and time.monotonic()-self._stop_time > 3.:
+            self.bridge.emergency_stop(True)
+            self._estop_by_us = True
+        mission = self.bridge.latest.get('mission', {})
+        controller = self.bridge.latest.get('controller', {})
+        arbiter = self.bridge.latest.get('arbiter', {})
+        state = controller.get('state') if mission.get('state') == 'DOCKING' else mission.get('state', '')
+        if not self.busy and not self._matching_backend():
+            state = ''
+        detail = controller.get('detail') if state.startswith('FAILED') else ''
+        self.status.setText(('Đang chờ xác nhận hủy… ' if self._stopping else '')+
+                            LABELS.get(state, state or 'Đang kết nối Nav2…')+
+                            (' · '+detail if detail else ''))
+        self.health.setText(f"Kết nối Nav2: {'OK' if self._matching_backend() else 'chưa sẵn sàng'} · "
+            f"TF: {controller.get('tf_ok', '?')} · tuổi scan: {controller.get('scan_age')} · "
+            f"tuổi odom: {controller.get('odom_age')} · nguồn: {arbiter.get('owner', '?') or 'rảnh'} · "
+            f"dừng: {arbiter.get('emergency_stop', '?')}")
+        if self.busy and mission.get('safety_error'):
+            self.health.setText(self.health.text()+' · '+mission['safety_error'])
+        if not self._navigation_ready():
+            detail = self.bridge.latest.get('navigation_error',
+                'Chờ bản đồ từ map_server và odometry từ controller_server của Nav2.')
+            self.health.setText(self.health.text()+' · '+detail)
+        elif not self._matching_backend() and self.bridge.clients['start'].service_is_ready():
+            self.health.setText(self.health.text()+' · Điều khiển docking đang chạy khác map hoặc nguồn odometry; '
+                                'hãy đóng phiên docking cũ rồi mở lại cửa sổ này.')
+        metrics = controller.get('metrics') or {}
+        self.metrics.setText('Sai số x/y/góc: '+str([metrics.get(k) for k in ('error_x','error_y','error_yaw')])+
+            f" · Xác nhận: {controller.get('verification_count', 0)}/{controller.get('verification_required', 5)}")
+        battery = self.bridge.latest.get('battery')
+        battery_text = (f'{battery:.0f}%' if self.bridge.fresh('battery', 5.)
+                        and isinstance(battery, (int, float)) and math.isfinite(battery) else 'chưa có dữ liệu')
+        charge_text = ('đang sạc' if self.bridge.latest.get('charging') else 'chưa sạc') if self.bridge.fresh('charging', 5.) else 'chưa xác nhận'
+        self.battery.setText('Pin: '+battery_text+' · Sạc: '+charge_text)
+        busy = self.busy
+        self.start_btn.setEnabled(not busy and not self.bridge.pending and self._matching_backend())
+        self.pre_btn.setEnabled(not busy and not self.bridge.pending and self._matching_backend())
+        self.terminal_btn.setEnabled(not busy and not self.bridge.pending and self._matching_backend())
+        self.cancel_btn.setEnabled(busy)
+        self.reset_btn.setEnabled(not busy and bool(arbiter.get('emergency_stop')))
+        self.charge_btn.setEnabled(not busy and self._docked_confirmed and self.bridge.fresh('charging', 5.)
+            and bool(self.bridge.charge.get_subscription_count()) and self.bridge.fresh('controller')
+            and controller.get('state') == 'DOCKED_GEOMETRY' and self._stationary())
+
     def closeEvent(self, event):
-        self._ros_spin_timer.stop()
-        self._ros_node.destroy_node()
-        self.process_mgr.cleanup_all()
+        if self._cleaned:
+            event.accept()
+            return
+        if self.busy:
+            self._close_when_stopped = True
+            self.cancel_docking()
+            event.ignore()
+            return
+        self.timer.stop()
+        self.bridge.close()
+        self._stop_backend()
+        self._cleaned = True
         event.accept()
+
+    def reject(self):
+        # Escape must follow the same cancellation path as the window close button.
+        self.close()
 
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = DockingUI()
-    window.showMaximized()
+    window.show()
     sys.exit(app.exec())

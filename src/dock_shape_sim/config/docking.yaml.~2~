@@ -1,0 +1,33 @@
+# Runtime docking parameters. Planner/tracker algorithms contain no ROS parameters.
+v_docking:
+  ros__parameters:
+    direction: backward
+    max_linear_speed: 0.04
+    max_angular_speed: 0.20
+    search_timeout: 20.0
+    acquisition_wait_time: 2.0
+    collision_check_enabled: false
+    max_docking_time: 600.0
+    detection_timeout: 0.6
+    longitudinal_tolerance: 0.020
+    lateral_tolerance: 0.015
+    terminal_alignment_lateral_tolerance: 0.05
+    yaw_tolerance: 0.05
+    signature_tolerance: 0.020
+    success_samples: 5
+    planning.max_lateral: 0.65
+    planning.max_heading: 0.8
+    planning.max_curvature: 8.0
+    planning.max_distance: 2.5
+    planning.midpoint_replan: true
+    tracking.heading_kp: 2.0
+    tracking.heading_ki: 0.02
+    tracking.heading_kd: 0.02
+    tracking.cross_track_gain: 0.7
+    tracking.max_cross_track: 0.12
+    tracking.terminal_kp: 1.5
+    # Measure these dimensions on the actual robot before use.
+    # A positive margin is used for the initial hardware integration.
+    footprint.half_length: 0.30
+    footprint.half_width: 0.25
+    footprint.margin: 0.02

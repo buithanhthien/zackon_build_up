@@ -1,0 +1,583 @@
+"""ROS adapter: V detection -> fixed odom quintic -> tracking -> LiDAR verification.
+
+Debug entry points: _scan (perception), _plan_trajectory (reference),
+_follow_trajectory (feedback), _tick (safety/state machine). Algorithms live
+in perception/v_shape.py, planning/quintic.py and control/tracker.py.
+"""
+
+import json
+from math import atan2, cos, sin, hypot
+from pathlib import Path
+import time
+import uuid
+
+import rclpy
+from geometry_msgs.msg import PoseStamped, Twist
+from nav_msgs.msg import Odometry, Path as PathMessage
+import numpy as np
+from rclpy.clock import Clock, ClockType
+from rclpy.executors import ExternalShutdownException
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
+from rclpy.time import Time
+from sensor_msgs.msg import LaserScan
+from std_msgs.msg import String
+from std_srvs.srv import Trigger
+from tf2_ros import Buffer, TransformException, TransformListener
+import yaml
+
+from ..mission.profile import compose, inverse, load_profile, rear_pose
+from ..planning.quintic import PlanningError, plan_quintic, swept_collision, rotation_collision
+from .tracker import TrajectoryTracker, terminal_yaw_rate
+from .teleop import approach
+from ..safety import DockingSafety
+from ..perception.v_shape import ProfilePose, detect_profile, docking_errors, scan_points, signature_error, wrap
+
+
+ACTIVE = ('SEARCH', 'PLAN_QUINTIC', 'APPROACH', 'ALIGN_FINAL', 'WAIT_DETECTION')
+
+
+class VDocking(Node):
+    def __init__(self):
+        super().__init__('v_docking')
+        self.safety = DockingSafety(self)
+        for name, value in {
+                'profile_file': '', 'direction': 'backward',
+                'stop_face_distance': 0.46, 'max_linear_speed': 0.08,
+                'max_angular_speed': 0.30, 'max_docking_time': 600.0,
+                'detection_timeout': 0.6, 'search_timeout': 20.0,
+                'acquisition_wait_time': 2.0,
+                'collision_check_enabled': True,
+                'longitudinal_tolerance': 0.015, 'lateral_tolerance': 0.015,
+                'terminal_alignment_lateral_tolerance': 0.05,
+                'yaw_tolerance': 0.05, 'signature_tolerance': 0.015,
+                'success_samples': 5,
+                'planning.max_lateral': .65, 'planning.max_heading': .8,
+                'planning.max_curvature': 8., 'planning.max_distance': 2.5,
+                'planning.midpoint_replan': True,
+                'tracking.heading_kp': 2., 'tracking.heading_ki': .02,
+                'tracking.heading_kd': .02, 'tracking.cross_track_gain': .7,
+                'tracking.max_cross_track': .12, 'tracking.terminal_kp': 1.5,
+                'footprint.half_length': .30, 'footprint.half_width': .25,
+                'footprint.margin': 0.0}.items():
+            self.declare_parameter(name, value)
+        self.rear = self.get_parameter('direction').value == 'backward'
+        self.reference = dict(x=self.get_parameter('stop_face_distance').value,
+                              y=0.0, yaw=0.0, points=[])
+        self._profile_error = None
+        filename = self.get_parameter('profile_file').value
+        if filename:
+            try:
+                data = yaml.safe_load(Path(filename).read_text())
+                data = load_profile(data['map'])
+                self.reference = data['docked_reference']
+            except (OSError, KeyError, ValueError, TypeError) as exc:
+                self._profile_error = str(exc)
+                self.get_logger().error('Dock profile: ' + str(exc))
+        self._tf = Buffer()
+        self._listener = TransformListener(self._tf, self)
+        self._cmd = self.create_publisher(Twist, '/cmd_vel', 1)
+        self._pose = self.create_publisher(PoseStamped, '/v_dock/pose', 10)
+        self._path_pub = self.create_publisher(PathMessage, '/v_dock/path', QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self._trajectory = self._tracker = None
+        self._replan_count = 0
+        self._obstacle_cache = {}
+        self._state_pub = self.create_publisher(String, '/v_dock/state', 10)
+        self._metrics_pub = self.create_publisher(String, '/v_dock/metrics', QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self._last_metrics = None
+        self._failure_detail = ''
+        self._collision_diagnostic = None
+        self._perception_diagnostic = {}
+        self._status_pub = self.create_publisher(String, '/v_dock/status', QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self._instance_id = str(uuid.uuid4())
+        self._run_counter = 0
+        self._run_id = None
+        topic = '/scan_rear_lidar_filter' if self.rear else '/front_lidar/scan'
+        self.create_subscription(LaserScan, topic, self._scan, qos_profile_sensor_data)
+        self.create_subscription(Odometry, '/odom', self._odom, qos_profile_sensor_data)
+        self._collision_check_enabled = self.get_parameter('collision_check_enabled').value
+        other = '/front_lidar/scan' if self.rear else '/scan_rear_lidar_filter'
+        if self._collision_check_enabled:
+            self.create_subscription(LaserScan, other, self._other_scan, qos_profile_sensor_data)
+        self.create_service(Trigger, '/v_dock/start', self._start)
+        self.create_service(Trigger, '/v_dock/cancel', self._cancel)
+        self.create_service(Trigger, '/v_dock/get_status', self._get_status)
+        self._state = 'IDLE'
+        self._target = None
+        self._target_stamp = None
+        self._scan_stamp = None
+        self._scan_receipt = None
+        self._scan_transform_ok = False
+        self._start_ns = None
+        self._full_streak = 0
+        self._acquired = False
+        self._success_count = 0
+        self._last_success_stamp = None
+        self._loss_start = None
+        self._yaw = None
+        self._odom_pose = None
+        self._odom_receipt = None
+        self._odom_stamp = None
+        self._marker_odom = None
+        self._last_observed_odom = None
+        self._near_points = ()
+        self._corridor_points = ()
+        self._last_tick = time.monotonic()
+        self._v = self._w = 0.0
+        self.create_timer(0.05, self._tick, clock=Clock(clock_type=ClockType.STEADY_TIME))
+        self.create_timer(0.2, self._publish_status, clock=Clock(clock_type=ClockType.STEADY_TIME))
+
+    def _status_data(self):
+        now = time.monotonic()
+        age = lambda stamp: None if stamp is None else max(0., now-stamp)
+        return dict(state=self._state, phase=('VERIFYING' if self._state in ('APPROACH', 'ALIGN_FINAL') and
+                    self._success_count else self._state), run_id=self._run_id,
+                    controller='quintic_path_pid', source_file=__file__,
+                    profile_file=self.get_parameter('profile_file').value,
+                    odom_topic=self.resolve_topic_name('/odom'),
+                    scan_age=age(self._scan_receipt), odom_age=age(self._odom_receipt),
+                    tf_ok=self._scan_transform_ok, acquired=self._acquired,
+                    full_shape_streak=self._full_streak,
+                    verification_count=self._success_count,
+                    verification_required=self.get_parameter('success_samples').value,
+                    profile_error=self._profile_error, metrics=self._last_metrics,
+                    detail=self._failure_detail, collision=self._collision_diagnostic,
+                    collision_check_enabled=self._collision_check_enabled,
+                    perception=self._perception_diagnostic,
+                    safety_error=self.safety.error(),
+                    path_length=None if self._trajectory is None else self._trajectory.length,
+                    replan_count=self._replan_count)
+
+    def _publish_status(self):
+        self._status_pub.publish(String(data=json.dumps(self._status_data())))
+
+    def _get_status(self, _request, response):
+        response.success, response.message = True, json.dumps(self._status_data())
+        return response
+
+    def _set_state(self, state):
+        if self._state != state:
+            self._state = state
+            self.get_logger().info('V docking: ' + state)
+            self._state_pub.publish(String(data=state))
+            if state not in ACTIVE:
+                data = dict(getattr(self, '_last_metrics', None) or {}, state=state)
+                self._metrics_pub.publish(String(data=json.dumps(data)))
+                if state.startswith('FAILED') and 'error_x' in data:
+                    self.get_logger().info('Last docking errors: ' + json.dumps(data))
+        if state not in ACTIVE:
+            self._stop()
+
+    def _stop(self):
+        self._v = self._w = 0.0
+        self._cmd.publish(Twist())
+
+    def _fail_obstacle(self, phase, details):
+        labels = {'search_rotation': 'Chưa khóa được hình trạm; vùng xoay tìm trạm bị chặn',
+                  'final_rotation': 'Vùng xoay căn góc cuối bị chặn',
+                  'path': 'Vật cản nằm trong vùng thân robot sẽ đi qua',
+                  'corridor': 'Có điểm LiDAR nằm giữa robot và hình trạm'}
+        diagnostic = dict(details, phase=phase, acquired=self._acquired,
+                          full_shape_streak=getattr(self, '_full_streak', 0),
+                          perception=getattr(self, '_perception_diagnostic', {}))
+        pose = self._odom_pose
+        if pose is not None and details.get('points_odom'):
+            relative = np.asarray(details['points_odom'])-[pose['x'], pose['y']]
+            c, s = cos(pose['yaw']), sin(pose['yaw'])
+            diagnostic['points_base_link'] = (relative @ np.array([[c, -s], [s, c]])).tolist()
+        self._collision_diagnostic = diagnostic
+        self._failure_detail = labels[phase]+f" ({details.get('count', '?')} điểm)."
+        if diagnostic.get('points_base_link'):
+            x, y = diagnostic['points_base_link'][0]
+            self._failure_detail += f' Điểm cản trong base_link: x={x:.3f} m, y={y:.3f} m.'
+        self._last_metrics = dict(getattr(self, '_last_metrics', None) or {}, obstacle=diagnostic)
+        self.get_logger().error(self._failure_detail+' Diagnostic: '+json.dumps(diagnostic))
+        self._set_state('FAILED_OBSTACLE')
+
+    def _start(self, _request, response):
+        filename = self.get_parameter('profile_file').value
+        if filename:
+            try:
+                data = yaml.safe_load(Path(filename).read_text())
+                if (self.safety.required and self.safety.expected_map
+                        and Path(data['map']).resolve() != Path(self.safety.expected_map).resolve()):
+                    raise ValueError('Profile không thuộc map đang chọn.')
+                profile = load_profile(data['map'])
+                if self.safety.required and not profile.get('hardware_calibration'):
+                    raise ValueError('Hãy dạy hai mẫu trên robot thật trước khi docking.')
+                self.reference = profile['docked_reference']
+                if self.safety.required and self.reference.get('blind_finish'):
+                    raise ValueError('Bản phần cứng yêu cầu đích còn thấy LiDAR; blind_finish chưa được bật.')
+                self._profile_error = None
+            except (OSError, KeyError, ValueError, TypeError) as exc:
+                self._profile_error = str(exc)
+        safety_error = self.safety.error()
+        if safety_error:
+            response.success, response.message = False, safety_error
+        elif self.safety.required and not filename:
+            response.success, response.message = False, 'Thiếu profile phần cứng.'
+        elif self._profile_error:
+            response.success, response.message = False, self._profile_error
+        elif self._state in ACTIVE:
+            response.success, response.message = False, 'Docking already active'
+        else:
+            self._start_ns = self.get_clock().now().nanoseconds
+            self._full_streak = self._success_count = 0
+            self._acquired = False
+            self._marker_odom = None
+            self._target_stamp = None
+            self._loss_start = None
+            self._last_metrics = None
+            self._failure_detail = ''
+            self._collision_diagnostic = None
+            self._trajectory = self._tracker = None
+            self._replan_count = 0
+            empty_path = PathMessage()
+            empty_path.header.frame_id = 'odom'
+            self._path_pub.publish(empty_path)
+            self._run_counter += 1
+            self._run_id = f'{self._instance_id}:{self._run_counter}'
+            self._set_state('SEARCH')
+            self._publish_status()
+            response.success, response.message = True, json.dumps(dict(
+                message='Searching rear LiDAR for V shape', run_id=self._run_id))
+        return response
+
+    def _cancel(self, _request, response):
+        self._set_state('IDLE')
+        response.success, response.message = True, 'Docking stopped'
+        return response
+
+    def _odom(self, msg):
+        self._odom_receipt = time.monotonic()
+        self._odom_stamp = Time.from_msg(msg.header.stamp).nanoseconds
+        q = msg.pose.pose.orientation
+        self._yaw = atan2(2 * (q.w*q.z + q.x*q.y), 1 - 2 * (q.y*q.y + q.z*q.z))
+        self._odom_pose = dict(x=msg.pose.pose.position.x, y=msg.pose.pose.position.y, yaw=self._yaw)
+
+    def _cache_obstacles(self, message, transform):
+        if self._odom_pose is None:
+            return
+        points = scan_points(message, transform, rear=False)
+        length = self.get_parameter('footprint.half_length').value
+        width = self.get_parameter('footprint.half_width').value
+        points = points[(abs(points[:, 0]) > length+.015) | (abs(points[:, 1]) > width+.015)]
+        p = self._odom_pose
+        c, s = cos(p['yaw']), sin(p['yaw'])
+        fixed = points @ np.array([[c, s], [-s, c]]) + [p['x'], p['y']]
+        self._obstacle_cache[message.header.frame_id] = (time.monotonic(),
+            Time.from_msg(message.header.stamp).nanoseconds, fixed)
+
+    def _other_scan(self, message):
+        try:
+            transform = self._tf.lookup_transform('base_link', message.header.frame_id, Time()).transform
+        except TransformException:
+            self._obstacle_cache.pop(message.header.frame_id, None)
+            return
+        self._cache_obstacles(message, transform)
+
+    def _obstacles(self):
+        now, ros_ns = time.monotonic(), self.get_clock().now().nanoseconds
+        if len(self._obstacle_cache) != 2 or any(
+                now-wall > 1. or (ros_ns-stamp)/1e9 > .7
+                for wall, stamp, _points in self._obstacle_cache.values()):
+            return None
+        return np.concatenate([value[2] for value in self._obstacle_cache.values()])
+
+    def _path_blocked(self, points, start_distance=0., details=None):
+        return swept_collision(self._trajectory, points, start_distance=start_distance,
+            half_length=self.get_parameter('footprint.half_length').value,
+            half_width=self.get_parameter('footprint.half_width').value,
+            margin=self.get_parameter('footprint.margin').value, details=details)
+
+    def _plan_trajectory(self, points):
+        self._stop()
+        self._set_state('PLAN_QUINTIC')
+        self._publish_status()
+        start = rear_pose(self._odom_pose) if self.rear else dict(self._odom_pose)
+        goal = compose(self._marker_odom, inverse(self.reference))
+        self._trajectory = plan_quintic(start, goal, **{
+            key:self.get_parameter('planning.'+key).value
+            for key in ('max_lateral', 'max_heading', 'max_curvature', 'max_distance')})
+        if self._collision_check_enabled and self._path_blocked(points):
+            raise PlanningError('Swept robot footprint intersects measured obstacles')
+        self._tracker = TrajectoryTracker(self._trajectory, **{
+            key:self.get_parameter('tracking.'+key).value
+            for key in ('heading_kp', 'heading_ki', 'heading_kd', 'cross_track_gain', 'max_cross_track')})
+        message = PathMessage()
+        message.header.frame_id = 'odom'
+        message.header.stamp = self.get_clock().now().to_msg()
+        for point, angle in zip(self._trajectory.xy, self._trajectory.yaw):
+            pose = PoseStamped()
+            pose.header = message.header
+            pose.pose.position.x, pose.pose.position.y = map(float, point)
+            body_yaw = float(angle)-(3.141592653589793 if self.rear else 0.)
+            pose.pose.orientation.z, pose.pose.orientation.w = sin(body_yaw/2), cos(body_yaw/2)
+            message.poses.append(pose)
+        self._path_pub.publish(message)
+        self.get_logger().info(f'Quintic path: {self._trajectory.length:.3f}m; goal in odom={goal}')
+        self._set_state('APPROACH')
+
+    def _follow_trajectory(self, dt, using_odometry):
+        points = self._obstacles() if self._collision_check_enabled else np.empty((0, 2))
+        if self._collision_check_enabled and points is None:
+            self._set_state('FAILED_SCAN')
+            return
+        if self._odom_pose is None or self._marker_odom is None:
+            self._set_state('FAILED_ODOM')
+            return
+        try:
+            if self._trajectory is None:
+                self._plan_trajectory(points)
+            elif (not self._replan_count and not using_odometry and self._target.full_shape and
+                  self.get_parameter('planning.midpoint_replan').value and
+                  self._trajectory.distance[self._tracker.index] > self._trajectory.length*.5 and
+                  self._trajectory.length-self._trajectory.distance[self._tracker.index] > .12):
+                self._stop()
+                self._replan_count += 1
+                self._plan_trajectory(points)
+            details = {}
+            if (self._collision_check_enabled and self._path_blocked(
+                    points, float(self._trajectory.distance[self._tracker.index]), details)):
+                self._fail_obstacle('path', details)
+                return
+            motion_pose = rear_pose(self._odom_pose) if self.rear else self._odom_pose
+            command = self._tracker.command(motion_pose, max(.001, dt),
+                max_speed=self.get_parameter('max_linear_speed').value,
+                max_omega=self.get_parameter('max_angular_speed').value, blind=using_odometry)
+        except PlanningError as exc:
+            self.get_logger().error('Quintic planning rejected: '+str(exc))
+            self._last_metrics['planning_error'] = str(exc)
+            self._set_state('FAILED_PATH')
+            return
+        except ValueError as exc:
+            self.get_logger().error('Tracking rejected: '+str(exc))
+            self._last_metrics['tracking_error'] = str(exc)
+            self._set_state('FAILED_TRACKING')
+            return
+        self._last_metrics.update(path_progress=command.progress, path_remaining=command.remaining,
+                                  cross_track=command.cross_track, tracking_heading_error=command.heading_error,
+                                  replan_count=self._replan_count)
+        self._v = approach(self._v, -command.speed if self.rear else command.speed, .15*dt)
+        self._w = approach(self._w, command.omega, .60*dt)
+        message = Twist()
+        message.linear.x, message.angular.z = self._v, self._w
+        self._cmd.publish(message)
+
+    def _align_terminal(self, heading_error, dt):
+        points = self._obstacles() if self._collision_check_enabled else np.empty((0, 2))
+        if self._collision_check_enabled and points is None:
+            self._set_state('FAILED_SCAN')
+            return
+        details = {}
+        if rotation_collision(self._odom_pose, -heading_error, points, details=details, **{
+                key:self.get_parameter('footprint.'+key).value
+                for key in ('half_length', 'half_width', 'margin')}):
+            self._fail_obstacle('final_rotation', details)
+            return
+        self._set_state('ALIGN_FINAL')
+        # Final yaw comes from the CURRENT scan, not the initial odom anchor.
+        # Never keep translating just to reduce a residual yaw/signature error.
+        self._v = 0.
+        desired = terminal_yaw_rate(heading_error,
+            self.get_parameter('max_angular_speed').value,
+            self.get_parameter('tracking.terminal_kp').value)
+        self._w = approach(self._w, desired, .60*dt)
+        message = Twist()
+        message.angular.z = self._w
+        self._cmd.publish(message)
+
+    def _scan(self, msg):
+        stamp = Time.from_msg(msg.header.stamp).nanoseconds
+        if self._scan_stamp is not None and stamp <= self._scan_stamp:
+            return
+        self._scan_stamp = stamp
+        self._scan_receipt = time.monotonic()
+        try:
+            transform = self._tf.lookup_transform('base_link', msg.header.frame_id, Time()).transform
+        except TransformException:
+            self._scan_transform_ok = False
+            self._near_points = ()
+            return
+        self._scan_transform_ok = True
+        self._cache_obstacles(msg, transform)
+        points = scan_points(msg, transform, self.rear)
+        corridor = points[(points[:, 0] > 0.34) & (abs(points[:, 1]) < 0.23)]
+        self._corridor_points = tuple(map(tuple, corridor.tolist()))
+        near = points[(points[:, 0] > 0.28) & (points[:, 0] < 0.9) & (abs(points[:, 1]) < 0.25)]
+        self._near_points = tuple(map(tuple, near.tolist()))
+        prior = self._target if self._acquired else None
+        diagnostic = {}
+        found = detect_profile(points, prior=prior, diagnostics=diagnostic)
+        if found is None and self._acquired and self._target is not None and self._target.x < 0.8:
+            partial_diagnostic = {}
+            found = detect_profile(points, allow_partial=True, prior=prior, diagnostics=partial_diagnostic)
+            diagnostic['partial_tracking'] = partial_diagnostic
+        self._perception_diagnostic = diagnostic
+        if found is None:
+            self._full_streak = 0
+            return
+        self._target, self._target_stamp = found, stamp
+        if self._odom_pose is not None:
+            observation_frame = rear_pose(self._odom_pose) if self.rear else self._odom_pose
+            self._marker_odom = compose(observation_frame, dict(x=found.x, y=found.y, yaw=found.yaw))
+            self._last_observed_odom = dict(self._odom_pose)
+        if found.full_shape:
+            self._full_streak += 1
+            if self._full_streak >= 3:
+                self._acquired = True
+        pose = PoseStamped()
+        pose.header.stamp = msg.header.stamp
+        pose.header.frame_id = 'base_link'
+        sign = -1 if self.rear else 1
+        pose.pose.position.x, pose.pose.position.y = sign * found.x, sign * found.y
+        yaw = found.yaw + (3.141592653589793 if self.rear else 0.0)
+        from math import cos
+        pose.pose.orientation.z, pose.pose.orientation.w = sin(yaw / 2), cos(yaw / 2)
+        self._pose.publish(pose)
+
+    def _tick(self):
+        self._state_pub.publish(String(data=self._state))
+        now = time.monotonic()
+        dt, self._last_tick = min(now - self._last_tick, 0.1), now
+        if self._state not in ACTIVE:
+            return
+        safety = getattr(self, 'safety', None)
+        if safety is not None and safety.error():
+            self._set_state('FAILED_SAFETY_PERMIT')
+            return
+        ros_ns = self.get_clock().now().nanoseconds
+        elapsed = (ros_ns - self._start_ns) / 1e9
+        if elapsed > self.get_parameter('max_docking_time').value:
+            self._set_state('FAILED_TIMEOUT')
+            return
+        if (self._scan_receipt is None or now - self._scan_receipt > 1.0 or
+                self._scan_stamp is None or (ros_ns - self._scan_stamp) / 1e9 > 0.7):
+            self._set_state('FAILED_SCAN')
+            return
+        if not self._scan_transform_ok:
+            self._set_state('FAILED_TF')
+            return
+        if (self._odom_receipt is None or now - self._odom_receipt > 1.0 or
+                self._odom_stamp is None or (ros_ns - self._odom_stamp) / 1e9 > 0.7):
+            self._set_state('FAILED_ODOM')
+            return
+        fresh = (self._target_stamp is not None and
+                 self._target_stamp == self._scan_stamp and
+                 (ros_ns - self._target_stamp) / 1e9 <= self.get_parameter('detection_timeout').value)
+        target = self._target
+        using_odometry = False
+        if (not fresh and self._acquired and self.reference.get('blind_finish') and
+                self._marker_odom is not None and self._odom_pose is not None and
+                self._last_observed_odom is not None):
+            travelled = hypot(self._odom_pose['x'] - self._last_observed_odom['x'],
+                              self._odom_pose['y'] - self._last_observed_odom['y'])
+            if (travelled <= self.reference.get('max_blind_travel', 0.18) and
+                    abs(wrap(self._odom_pose['yaw'] - self._last_observed_odom['yaw'])) < 0.15 and
+                    target is not None and target.x < 0.55):
+                frame = rear_pose(self._odom_pose) if self.rear else self._odom_pose
+                predicted = compose(inverse(frame), self._marker_odom)
+                target = ProfilePose(predicted['x'], predicted['y'], predicted['yaw'],
+                                     0.0, False, self._near_points)
+                using_odometry = fresh = True
+        if (self._collision_check_enabled and safety is not None and safety.required
+                and self._obstacles() is None):
+            self._set_state('FAILED_SCAN')
+            return
+        if (self._state == 'SEARCH' and
+                elapsed < self.get_parameter('acquisition_wait_time').value):
+            self._stop()
+            return
+        if not self._acquired or not fresh:
+            self._success_count = 0
+            self._last_success_stamp = None
+            if self._acquired:
+                self._set_state('WAIT_DETECTION')
+                self._stop()
+                if self._loss_start is None:
+                    self._loss_start = ros_ns
+                elif (ros_ns - self._loss_start) / 1e9 > 2.5:
+                    self._set_state('FAILED_LOST_SHAPE')
+                return
+            if elapsed > self.get_parameter('search_timeout').value:
+                self._set_state('FAILED_NO_V_SHAPE')
+                return
+            self._stop()
+            return
+        self._loss_start = None
+        if self._state in ('SEARCH', 'WAIT_DETECTION'):
+            self._set_state('APPROACH')
+        corridor_obstacles = [p for p in self._corridor_points if p[0] < target.x-0.08]
+        if (self._collision_check_enabled and target.x > 0.5
+                and len(corridor_obstacles) >= 3):
+            self._fail_obstacle('corridor', dict(count=len(corridor_obstacles),
+                points_rear_facing=corridor_obstacles[:12], target_distance=target.x))
+            return
+        ex, ey, etheta = docking_errors(target, self.reference)
+        reference_points = self.reference.get('points', [])
+        observed_points = self._near_points if self.reference.get('use_near_signature') else target.points
+        signature = (signature_error(observed_points, reference_points)
+                     if reference_points or self.reference.get('use_near_signature') else 0.0)
+        self._last_metrics = dict(
+            state=self._state, face_distance=target.x, error_x=ex, error_y=ey,
+            error_yaw=etheta, signature_error=signature, full_shape=target.full_shape,
+            bounded_blind_finish=using_odometry,
+            unmet=[name for name, error, limit in (
+                ('longitudinal', ex, self.get_parameter('longitudinal_tolerance').value),
+                ('lateral', ey, self.get_parameter('lateral_tolerance').value),
+                ('yaw', etheta, self.get_parameter('yaw_tolerance').value),
+                ('lidar_signature', signature, self.get_parameter('signature_tolerance').value))
+                if abs(error) > limit])
+        self._metrics_pub.publish(String(data=json.dumps(self._last_metrics)))
+        aligned = (abs(ex) <= self.get_parameter('longitudinal_tolerance').value and
+                   abs(ey) <= self.get_parameter('lateral_tolerance').value and
+                   abs(etheta) <= self.get_parameter('yaw_tolerance').value and
+                   signature <= self.get_parameter('signature_tolerance').value)
+        if aligned:
+            self._stop()
+            sample_stamp = self._scan_stamp if using_odometry else self._target_stamp
+            if sample_stamp != self._last_success_stamp:
+                self._success_count += 1
+                self._last_success_stamp = sample_stamp
+            if self._success_count >= self.get_parameter('success_samples').value:
+                self._set_state('DOCKED_GEOMETRY')
+            return
+        self._success_count = 0
+        if (self._trajectory is not None and
+                abs(ex) <= self.get_parameter('longitudinal_tolerance').value and
+                abs(ey) <= self.get_parameter(
+                    'terminal_alignment_lateral_tolerance').value and
+                abs(etheta) > .01):
+            self._align_terminal(etheta, dt)
+            return
+        if ex > 0.03:
+            self._set_state('FAILED_OVERSHOOT')
+            return
+        if ex >= 0.0:
+            # Reaching the taught longitudinal endpoint without LiDAR/angle
+            # agreement is a calibration failure, not a reason to push on.
+            self._set_state('FAILED_REFERENCE_MISMATCH')
+            return
+        self._set_state('APPROACH')
+        self._follow_trajectory(dt, using_odometry)
+
+
+def main():
+    rclpy.init()
+    node = VDocking()
+    try:
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    finally:
+        try:
+            if rclpy.ok():
+                node._stop()
+        except RuntimeError:
+            pass  # ROS context may shut down between ok() and publish().
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()

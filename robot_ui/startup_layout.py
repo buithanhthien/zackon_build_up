@@ -400,6 +400,8 @@ class RobotUI(QMainWindow):
             if (self._nav_goal_handle is not None or self._voice_nav_queue
                     or getattr(self, '_nav_pending', False)):
                 raise ValueError("Hãy dừng và chờ kết quả hủy waypoint trước khi gửi chuyển động mới.")
+            if self._docking_busy():
+                raise ValueError('Hãy hủy docking và chờ dừng trước khi gửi chuyển động mới.')
             self._motion.start(validated)
         except Exception as exc:
             self._report_motion_status(f"Không thể thực hiện: {exc}")
@@ -1717,6 +1719,9 @@ class RobotUI(QMainWindow):
         self._refresh_control_presentation()
 
     def mode_changed(self, mode):
+        if self._docking_busy():
+            self.log('Hãy hủy docking và chờ dừng trước khi đổi chế độ hoặc bản đồ.')
+            return
         self.log(f"Đã chuyển sang chế độ {mode}")
         if mode == "Tracking":
             self.open_tracking_dialog()
@@ -1774,6 +1779,9 @@ class RobotUI(QMainWindow):
             )
 
     def start_reestimate(self):
+        if self._docking_busy():
+            self.log('Hãy hủy docking và chờ dừng trước khi đổi chế độ hoặc bản đồ.')
+            return
         if self.prev_stm32_status == False:
             self.log("Không thể định vị: STM32 chưa kết nối")
             return
@@ -1798,6 +1806,9 @@ class RobotUI(QMainWindow):
         self.localization_worker = None
 
     def open_tracking_dialog(self):
+        if self._docking_busy():
+            self.log('Hãy hủy docking và chờ dừng trước khi đổi chế độ hoặc bản đồ.')
+            return
         from tracking_mode_layout import TrackingModeUI
         dialog = getattr(self, '_tracking_dialog', None)
         if dialog is None or dialog._cleaned:
@@ -1828,18 +1839,43 @@ class RobotUI(QMainWindow):
         self._camera_test_dialog.activateWindow()
 
     def start_new_map(self):
+        if self._docking_busy():
+            self.log('Hãy hủy docking và chờ dừng trước khi đổi chế độ hoặc bản đồ.')
+            return
         if getattr(self, '_new_map_dialog', None) is None:
             self._new_map_dialog = NewMapUI(self)
         self._new_map_dialog.show()
         self._new_map_dialog.raise_()
         self._new_map_dialog.activateWindow()
 
+    def _docking_busy(self):
+        dialog = getattr(self, '_docking_dialog', None)
+        return dialog is not None and not dialog._cleaned and dialog.busy
+
     def start_docking(self):
-        self.log("Chuyển sang chế độ docking")
-        if self.close():
-            subprocess.Popen([sys.executable, f'{SOURCE_PATH}/robot_ui/docking_layout.py'])
+        dialog = getattr(self, '_docking_dialog', None)
+        if dialog is None or dialog._cleaned:
+            if self._navigation_busy() or (self.localization_thread and self.localization_thread.is_alive()):
+                self.log('Hãy dừng chuyển động/định vị hiện tại trước khi mở docking.')
+                return
+            for name in ('_tracking_dialog', '_new_map_dialog'):
+                other = getattr(self, name, None)
+                if other is not None and other.isVisible():
+                    self.log('Hãy đóng chế độ theo dõi/tạo map trước khi mở docking.')
+                    return
+            if dialog is not None:
+                dialog.deleteLater()
+            from docking_layout import DockingUI
+            self._docking_dialog = DockingUI(self)
+            dialog = self._docking_dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def load_map(self):
+        if self._docking_busy():
+            self.log('Hãy hủy docking và chờ dừng trước khi đổi chế độ hoặc bản đồ.')
+            return
         dialog = LoadMapDialog(self)
         if dialog.exec():
             map_name = dialog.get_selected_map()
@@ -2018,6 +2054,10 @@ class RobotUI(QMainWindow):
         )
 
     def closeEvent(self, event):
+        docking = getattr(self, '_docking_dialog', None)
+        if docking is not None and not docking._cleaned and not docking.close():
+            event.ignore()
+            return
         self.cancel_voice_navigation()
         # Keep processing a goal response arriving after Stop until its terminal result.
         deadline = time.monotonic() + 5.0
@@ -2373,6 +2413,8 @@ class RobotUI(QMainWindow):
             pass
 
     def cancel_voice_navigation(self):
+        if self._docking_busy():
+            self._docking_dialog._emergency_stop()
         if getattr(self, 'localization_worker', None) is not None:
             self.localization_worker.stop()
         if getattr(self, '_motion', None) is not None:
@@ -2408,7 +2450,7 @@ class RobotUI(QMainWindow):
             self.log(f'Lỗi hủy waypoint; chưa xác nhận dừng: {exc}')
 
     def _navigation_busy(self):
-        return (self._nav_goal_handle is not None or getattr(self, '_nav_pending', False)
+        return (self._docking_busy() or self._nav_goal_handle is not None or getattr(self, '_nav_pending', False)
                 or bool(self._voice_nav_queue)
                 or (getattr(self, '_motion', None) is not None and self._motion.busy))
 

@@ -1,0 +1,292 @@
+"""Controller safety checks independent of a running ROS graph or simulator."""
+
+import time
+import json
+import numpy as np
+import pytest
+from types import SimpleNamespace as NS
+
+from dock_shape_sim.control.node import VDocking
+from dock_shape_sim.perception.v_shape import ProfilePose
+
+
+class Publisher:
+    def __init__(self):
+        self.messages = []
+
+    def publish(self, message):
+        self.messages.append(message)
+
+
+def controller():
+    now = time.monotonic()
+    parameters = dict(max_docking_time=100., detection_timeout=.6,
+                      longitudinal_tolerance=.015, lateral_tolerance=.015,
+                      yaw_tolerance=.05, signature_tolerance=.015,
+                      terminal_alignment_lateral_tolerance=.05,
+                      success_samples=5, search_timeout=20., acquisition_wait_time=2.,
+                      max_linear_speed=.08, max_angular_speed=.30,
+                      collision_check_enabled=True,
+                      **{'footprint.half_length':.30, 'footprint.half_width':.25,
+                         'footprint.margin':0.0, 'tracking.terminal_kp':1.5})
+    node = NS(_state='APPROACH', rear=True, _last_tick=now-.05, _start_ns=9_000_000_000,
+              _scan_receipt=now, _scan_stamp=10_000_000_000,
+              _scan_transform_ok=True,
+              _collision_check_enabled=True,
+              _target_stamp=10_000_000_000, _odom_receipt=now,
+              _odom_stamp=10_000_000_000, _acquired=True,
+              _target=ProfilePose(.37, 0., 0., 0., False, ()),
+              reference=dict(x=.37, y=0., yaw=0., points=[]),
+              _near_points=(), _corridor_points=(), _marker_odom=None, _odom_pose=None,
+              _trajectory=None,
+              _last_observed_odom=None, _success_count=0,
+              _last_success_stamp=None, _loss_start=None, _yaw=0.,
+              _search_origin=0., _search_sign=1, _v=-.05, _w=.03,
+              _state_pub=Publisher(), _metrics_pub=Publisher(), _cmd=Publisher())
+    node.get_parameter = lambda name: NS(value=parameters[name])
+    node.get_clock = lambda: NS(now=lambda: NS(nanoseconds=10_000_000_000))
+    node.get_logger = lambda: NS(info=lambda message: None, error=lambda message: None)
+    node._stop = lambda: VDocking._stop(node)
+    node._align_terminal = lambda error, duration: VDocking._align_terminal(node, error, duration)
+    node._set_state = lambda state: VDocking._set_state(node, state)
+    node._fail_obstacle = lambda phase, details: VDocking._fail_obstacle(node, phase, details)
+    return node
+
+
+def assert_stopped(node):
+    assert node._cmd.messages[-1].linear.x == 0.
+    assert node._cmd.messages[-1].angular.z == 0.
+
+
+def test_success_requires_five_distinct_new_scans():
+    node = controller()
+    for _ in range(20):
+        VDocking._tick(node)
+    assert node._state == 'APPROACH'
+    assert node._success_count == 1
+    for _ in range(4):
+        node._scan_stamp += 1
+        node._target_stamp = node._scan_stamp
+        VDocking._tick(node)
+    assert node._state == 'DOCKED_GEOMETRY'
+    assert_stopped(node)
+
+
+def test_stale_scan_stops_even_if_last_pose_matches_goal():
+    node = controller()
+    node._scan_receipt -= 2.
+    VDocking._tick(node)
+    assert node._state == 'FAILED_SCAN'
+    assert_stopped(node)
+
+
+def test_stale_odom_cannot_drive_blind_finish():
+    node = controller()
+    node.reference['blind_finish'] = True
+    node._odom_receipt -= 2.
+    VDocking._tick(node)
+    assert node._state == 'FAILED_ODOM'
+    assert_stopped(node)
+
+
+def test_lost_v_does_not_reuse_last_matching_pose_as_success():
+    node = controller()
+    node._success_count = 4
+    node._scan_stamp += 1
+    VDocking._tick(node)
+    assert node._state == 'WAIT_DETECTION'
+    assert node._success_count == 0
+    assert_stopped(node)
+
+
+def test_missing_lidar_transform_stops_instead_of_reusing_signature():
+    node = controller()
+    node._scan_transform_ok = False
+    VDocking._tick(node)
+    assert node._state == 'FAILED_TF'
+    assert_stopped(node)
+
+
+def test_blind_finish_cannot_exceed_travel_limit():
+    node = controller()
+    node._scan_stamp += 1
+    node.reference.update(blind_finish=True, max_blind_travel=.18)
+    node._marker_odom = dict(x=1.4, y=0., yaw=0.)
+    node._last_observed_odom = dict(x=0., y=0., yaw=0.)
+    node._odom_pose = dict(x=.19, y=0., yaw=0.)
+    VDocking._tick(node)
+    assert node._state == 'WAIT_DETECTION'
+    assert_stopped(node)
+
+
+def test_cancel_always_publishes_zero():
+    node = controller()
+    response = VDocking._cancel(node, None, NS())
+    assert response.success and node._state == 'IDLE'
+    assert_stopped(node)
+
+
+def test_obstacle_between_robot_and_target_stops_reverse_motion():
+    node = controller()
+    node._target = ProfilePose(1.2, 0., 0., 0., True, ())
+    node._corridor_points = ((.6, -.05), (.6, 0.), (.6, .05))
+    VDocking._tick(node)
+    assert node._state == 'FAILED_OBSTACLE'
+    assert_stopped(node)
+
+
+
+
+def test_near_endpoint_can_align_yaw_before_strict_lateral_verification():
+    node = controller()
+    node._target = ProfilePose(.364, 0., .114, 0., True, ())
+    node._trajectory = NS()
+    node._odom_pose = dict(x=0., y=0., yaw=0.)
+    node._obstacles = lambda: np.empty((0, 2))
+    VDocking._tick(node)
+    assert node._state == 'ALIGN_FINAL'
+    assert node._cmd.messages[-1].linear.x == 0.
+    assert node._cmd.messages[-1].angular.z > 0.
+
+
+def test_matching_longitudinal_endpoint_without_signature_never_pushes_further():
+    node = controller()
+    node.reference.update(use_near_signature=True, points=[[.3, -.1], [.3, 0.], [.3, .1]])
+    VDocking._tick(node)
+    assert node._state == 'FAILED_REFERENCE_MISMATCH'
+    assert_stopped(node)
+    diagnostic = json.loads(node._metrics_pub.messages[-1].data)
+    assert diagnostic['state'] == 'FAILED_REFERENCE_MISMATCH'
+    assert diagnostic['unmet'] == ['lidar_signature']
+
+
+def test_final_alignment_never_translates_and_turns_towards_goal():
+    node = controller()
+    node._odom_pose = dict(x=0., y=0., yaw=0.)
+    node._obstacles = lambda:np.empty((0,2))
+    VDocking._align_terminal(node, .10, .10)
+    assert node._state == 'ALIGN_FINAL'
+    assert node._cmd.messages[-1].linear.x == 0.
+    assert node._cmd.messages[-1].angular.z < 0.
+
+
+def test_final_alignment_stops_when_body_corner_would_hit_obstacle():
+    node = controller()
+    node._odom_pose = dict(x=0., y=0., yaw=0.)
+    node._obstacles = lambda:np.array([[.32, .20]])
+    VDocking._align_terminal(node, .3, .05)
+    assert node._state == 'FAILED_OBSTACLE'
+    assert_stopped(node)
+
+
+def test_trajectory_needs_both_fresh_collision_scans():
+    node = controller()
+    node._obstacle_cache = {'rear':(time.monotonic(),10_000_000_000,np.empty((0,2)))}
+    node._obstacles = lambda:VDocking._obstacles(node)
+    VDocking._follow_trajectory(node, .05, False)
+    assert node._state == 'FAILED_SCAN'
+    assert_stopped(node)
+
+
+def search_controller(elapsed, acquired=False):
+    node = controller()
+    node._state = 'SEARCH'
+    node._start_ns = 10_000_000_000 - int(elapsed * 1e9)
+    node._acquired = acquired
+    node._odom_pose = dict(x=0., y=0., yaw=0.)
+    node.safety = NS(required=True, error=lambda: None)
+    node._obstacles = lambda: np.array([[-.22, -.24]])
+    return node
+
+
+@pytest.mark.parametrize('elapsed', [.002, 1.999])
+@pytest.mark.parametrize('acquired', [False, True])
+def test_search_stands_still_for_two_seconds_before_motion(elapsed, acquired):
+    node = search_controller(elapsed, acquired)
+    VDocking._tick(node)
+    assert node._state == 'SEARCH'
+    assert node._success_count == 0
+    assert_stopped(node)
+
+
+@pytest.mark.parametrize('points', [[], [[-.22, -.24]], [[-.231, -.320]]])
+def test_search_stays_stationary_after_wait_without_rotation_collision(points):
+    node = search_controller(2.)
+    node._full_streak = 2
+    node._obstacles = lambda: np.asarray(points).reshape(-1, 2)
+    VDocking._tick(node)
+    assert node._state == 'SEARCH'
+    assert_stopped(node)
+
+
+def test_stationary_search_times_out_without_driving_blind():
+    node = search_controller(20.01)
+    VDocking._tick(node)
+    assert node._state == 'FAILED_NO_V_SHAPE'
+    assert_stopped(node)
+
+
+def test_acquired_target_enters_approach_after_wait_without_search_rotation():
+    node = search_controller(2., acquired=True)
+    node._target = ProfilePose(1.2, 0., 0., 0., True, ())
+    followed = []
+    node._follow_trajectory = lambda duration, blind: followed.append(blind)
+    VDocking._tick(node)
+    assert node._state == 'APPROACH'
+    assert followed == [False]
+
+
+def test_acquisition_wait_does_not_ignore_stale_scan():
+    node = search_controller(.5)
+    node._scan_receipt -= 2.
+    VDocking._tick(node)
+    assert node._state == 'FAILED_SCAN'
+    assert_stopped(node)
+
+
+def test_acquisition_wait_does_not_ignore_revoked_permission():
+    node = search_controller(.5)
+    node.safety.error = lambda: 'Permission revoked'
+    VDocking._tick(node)
+
+    assert node._state == 'FAILED_SAFETY_PERMIT'
+    assert_stopped(node)
+
+def test_disabled_collision_check_does_not_require_obstacle_scans():
+    node = controller()
+    node._collision_check_enabled = False
+    node._obstacles = lambda: (_ for _ in ()).throw(AssertionError('obstacle scan used'))
+    node._odom_pose = dict(x=0., y=0., yaw=0.)
+    node._marker_odom = dict(x=1., y=0., yaw=0.)
+    node._trajectory = NS(distance=np.array([0.]), length=1.)
+    node._replan_count = 1
+    node._tracker = NS(index=0, command=lambda *args, **kwargs: NS(
+        progress=.1, remaining=.9, cross_track=0., heading_error=0., speed=.04, omega=0.))
+    node._last_metrics = {}
+    node._path_blocked = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError('footprint collision used'))
+    VDocking._follow_trajectory(node, .05, False)
+    assert node._state == 'APPROACH'
+    assert node._cmd.messages[-1].linear.x < 0.
+
+
+def test_disabled_collision_check_ignores_corridor_points():
+    node = controller()
+    node._collision_check_enabled = False
+    node._target = ProfilePose(1.2, 0., 0., 0., True, ())
+    node._corridor_points = ((.6, -.05), (.6, 0.), (.6, .05))
+    followed = []
+    node._follow_trajectory = lambda duration, blind: followed.append(blind)
+    VDocking._tick(node)
+    assert node._state == 'APPROACH'
+    assert followed == [False]
+
+
+def test_disabled_collision_check_does_not_block_final_alignment():
+    node = controller()
+    node._collision_check_enabled = False
+    node._odom_pose = dict(x=0., y=0., yaw=0.)
+    node._obstacles = lambda: (_ for _ in ()).throw(AssertionError('obstacle scan used'))
+    VDocking._align_terminal(node, .1, .05)
+    assert node._state == 'ALIGN_FINAL'
+    assert_stopped(node)
